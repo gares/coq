@@ -774,8 +774,6 @@ end = struct
      to .vo via Marshal (which doesn't care about types).
   *)
   type table = constr_substituted array
-  let key_as_lazy_constr (i:int) = (Obj.magic i : lazy_constr)
-  let key_of_lazy_constr (c:lazy_constr) = (Obj.magic c : int)
 
   (* To avoid any future misuse of the lightened library that could 
      interpret encoded keys as real [constr_substituted], we hide 
@@ -805,7 +803,8 @@ end = struct
 	    }    
     and traverse_struct struc =
       let traverse_body (l,body) = (l,match body with
-	| SFBconst cb when is_opaque cb ->
+        | (SFBconst ({ const_body = (OpaqueDefIdx _|OpaqueDef _); _ } as cb)) ->
+          ignore(Lazy.force cb.const_constraints);
 	  SFBconst {cb with const_body = on_opaque_const_body cb.const_body}
 	| (SFBconst _ | SFBmind _ ) as x ->
 	  x
@@ -853,7 +852,7 @@ end = struct
 	  in
 	  incr counter;
 	  opaque_definitions := opaque_definition :: !opaque_definitions;
-	  OpaqueDef (key_as_lazy_constr !counter)),
+	  OpaqueDefIdx !counter),
 
        (* Get the final table representation. *)
        (fun () -> Array.of_list (List.rev !opaque_definitions)))
@@ -869,9 +868,8 @@ end = struct
   *)
   let load ~load_proof (table : table Lazy.t) lightened_library =
     let decode_key = function
-      | Undef _ | Def _ -> assert false
-      | OpaqueDef k ->
-	  let k = key_of_lazy_constr k in
+      | Undef _ | Def _ | OpaqueDef _ -> assert false
+      | OpaqueDefIdx k ->
 	  let access key =
 	    try (Lazy.force table).(key)
 	    with _ -> error "Error while retrieving an opaque body"

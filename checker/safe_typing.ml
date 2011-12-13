@@ -89,7 +89,6 @@ end = struct
      to .vo via Marshal (which doesn't care about types).
   *)
   type table = constr_substituted array
-  let key_of_lazy_constr (c:lazy_constr) = (Obj.magic c : int)
 
   (* To avoid any future misuse of the lightened library that could 
      interpret encoded keys as real [constr_substituted], we hide 
@@ -119,7 +118,7 @@ end = struct
 	    }    
     and traverse_struct struc =
       let traverse_body (l,body) = (l,match body with
-	| (SFBconst cb) when is_opaque cb ->
+        | (SFBconst ({ const_body = OpaqueDefIdx _; _ } as cb)) ->
 	  SFBconst {cb with const_body = on_opaque_const_body cb.const_body}
 	| (SFBconst _ | SFBmind _ ) as x -> 
 	  x
@@ -154,9 +153,9 @@ end = struct
   *)
   let load table lightened_library =
     let decode_key = function
+      | OpaqueDef _ -> assert false
       | Undef _ | Def _ -> assert false
-      | OpaqueDef k ->
-          let k = key_of_lazy_constr k in
+      | OpaqueDefIdx k ->
 	  let body =
 	    try table.(k)
 	    with _ -> error "Error while retrieving an opaque body"

@@ -132,6 +132,7 @@ let constant_value env kn =
     | Def l_body -> force_constr l_body
     | OpaqueDef _ -> raise (NotEvaluableConst Opaque)
     | Undef _ -> raise (NotEvaluableConst NoBody)
+    | OpaqueDefIdx _ -> assert false
 
 (* A global const is evaluable if it is defined and not opaque *)
 let evaluable_constant cst env =

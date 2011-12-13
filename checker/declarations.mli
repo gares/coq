@@ -51,6 +51,7 @@ type constant_def =
   | Undef of inline
   | Def of constr_substituted
   | OpaqueDef of lazy_constr
+  | OpaqueDefIdx of int (* used for marshalling only *)
 
 type constant_body = {
     const_hyps : section_context; (* New: younger hyp at top *)

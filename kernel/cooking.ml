@@ -123,11 +123,13 @@ let on_body f = function
   | Def cs -> Def (Declarations.from_val (f (Declarations.force cs)))
   | OpaqueDef lc ->
     OpaqueDef (Declarations.opaque_from_val (f (Declarations.force_opaque lc)))
+  | OpaqueDefIdx _ -> assert false
 
 let constr_of_def = function
   | Undef _ -> assert false
   | Def cs -> Declarations.force cs
   | OpaqueDef lc -> Declarations.force_opaque lc
+  | OpaqueDefIdx _ -> assert false
 
 let cook_constant env r =
   let cb = r.d_from in

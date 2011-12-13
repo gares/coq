@@ -380,6 +380,7 @@ let inline_delta_resolver env inl mp mbid mtb delta =
 	  let constant = lookup_constant con env in
 	  let l = make_inline delta r in
 	  match constant.const_body with
+            | OpaqueDefIdx _ -> assert false
 	    | Undef _ | OpaqueDef _ -> l
 	    | Def body ->
 	      let constr = Declarations.force body in

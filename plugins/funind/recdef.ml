@@ -1263,6 +1263,7 @@ let is_opaque_constant c =
     | Declarations.OpaqueDef _ -> true
     | Declarations.Undef _ -> true
     | Declarations.Def _ -> false
+    | Declarations.OpaqueDefIdx _ -> assert false
 
 let open_new_goal (build_proof:tactic -> tactic -> unit) using_lemmas ref_ goal_name (gls_type,decompose_and_tac,nb_goal)   =
   (* Pp.msgnl (str "gls_type := " ++ Printer.pr_lconstr gls_type); *)

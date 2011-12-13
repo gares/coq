@@ -504,6 +504,7 @@ type constant_def =
   | Undef of inline
   | Def of constr_substituted
   | OpaqueDef of lazy_constr
+  | OpaqueDefIdx of int (* used for marshalling only *)
 
 let val_cst_def =
   val_sum "constant_def" 0

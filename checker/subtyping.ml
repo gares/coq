@@ -264,9 +264,11 @@ let check_constant env mp1 l info1 cb2 spec2 subst1 subst2 =
            anything of the right type can implement it, even if bodies differ.
 	*)
 	(match cb2.const_body with
+          | OpaqueDefIdx _ -> assert false
 	  | Undef _ | OpaqueDef _ -> ()
 	  | Def lc2 ->
 	    (match cb1.const_body with
+              | OpaqueDefIdx _ -> assert false
 	      | Undef _ | OpaqueDef _ -> error ()
 	      | Def lc1 ->
 	        (* NB: cb1 might have been strengthened and appear as transparent.

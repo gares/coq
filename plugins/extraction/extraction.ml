@@ -277,6 +277,7 @@ let rec extract_type env db j c args =
 	   | (Info, TypeScheme) ->
 	       let mlt = extract_type_app env db (r, type_sign env typ) args in
 	       (match cb.const_body with
+                  | OpaqueDefIdx _ -> assert false
 		  | Undef _ | OpaqueDef _ -> mlt
 		  | Def _ when is_custom r -> mlt
 		  | Def lbody ->
@@ -291,6 +292,7 @@ let rec extract_type env db j c args =
 	   | (Info, Default) ->
                (* Not an ML type, for example [(c:forall X, X->X) Type nat] *)
 	       (match cb.const_body with
+                  | OpaqueDefIdx _ -> assert false
 		  | Undef _  | OpaqueDef _ -> Tunknown (* Brutal approx ... *)
 		  | Def lbody ->
 		      (* We try to reduce. *)
@@ -514,6 +516,7 @@ and mlt_env env r = match r with
 	 let cb = Environ.lookup_constant kn env in
 	 let typ = Typeops.type_of_constant_type env cb.const_type in
 	 match cb.const_body with
+           | OpaqueDefIdx _ -> assert false
 	   | Undef _ | OpaqueDef _ -> None
 	   | Def l_body ->
 	       (match flag_of_type env typ with
@@ -972,6 +975,7 @@ let extract_constant env kn cb =
     | (Logic,Default) -> warn_log (); Dterm (r, MLdummy, Tdummy Kother)
     | (Info,TypeScheme) ->
         (match cb.const_body with
+          | OpaqueDefIdx _ -> assert false
 	  | Undef _ -> warn_info (); mk_typ_ax ()
 	  | Def c -> mk_typ (force c)
 	  | OpaqueDef c ->
@@ -979,6 +983,7 @@ let extract_constant env kn cb =
 	    if access_opaque () then mk_typ (force_opaque c) else mk_typ_ax ())
     | (Info,Default) ->
         (match cb.const_body with
+          | OpaqueDefIdx _ -> assert false
 	  | Undef _ -> warn_info (); mk_ax ()
 	  | Def c -> mk_def (force c)
 	  | OpaqueDef c ->
@@ -994,6 +999,7 @@ let extract_constant_spec env kn cb =
     | (Info, TypeScheme) ->
 	let s,vl = type_sign_vl env typ in
 	(match cb.const_body with
+          | OpaqueDefIdx _ -> assert false
 	  | Undef _ | OpaqueDef _ -> Stype (r, vl, None)
 	  | Def body ->
 	      let db = db_from_sign s in
@@ -1010,9 +1016,10 @@ let extract_with_type env cb =
 	let s,vl = type_sign_vl env typ in
 	let db = db_from_sign s in
 	let c = match cb.const_body with
+          | OpaqueDefIdx _ -> assert false
 	  | Def body -> force body
 	  (* A "with Definition ..." is necessarily transparent *)
-	  | Undef _ | OpaqueDef _ -> assert false
+	  | Undef _ | OpaqueDef _ | OpaqueDefIdx _ -> assert false
 	in
 	let t = extract_type_scheme env db c (List.length s) in
 	Some (vl, t)

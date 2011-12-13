@@ -83,6 +83,7 @@ type constant_def =
   | Undef of inline
   | Def of constr_substituted
   | OpaqueDef of lazy_constr
+  | OpaqueDefIdx of int (* used for marshalling only *)
 
 type constant_body = {
     const_hyps : section_context; (* New: younger hyp at top *)
@@ -95,14 +96,17 @@ let body_of_constant cb = match cb.const_body with
   | Undef _ -> None
   | Def c -> Some c
   | OpaqueDef lc -> Some (force_lazy_constr lc)
+  | OpaqueDefIdx _ -> assert false
 
 let constant_has_body cb = match cb.const_body with
   | Undef _ -> false
   | Def _ | OpaqueDef _ -> true
+  | OpaqueDefIdx _ -> assert false
 
 let is_opaque cb = match cb.const_body with
   | OpaqueDef _ -> true
   | Undef _ | Def _ -> false
+  | OpaqueDefIdx _ -> assert false
 
 (* Substitutions of [constant_body] *)
 
@@ -126,6 +130,7 @@ let subst_const_def sub = function
   | Undef inl -> Undef inl
   | Def c -> Def (subst_constr_subst sub c)
   | OpaqueDef lc -> OpaqueDef (subst_lazy_constr sub lc)
+  | OpaqueDefIdx _ -> assert false
 
 let subst_const_body sub cb = {
   const_hyps = (assert (cb.const_hyps=[]); []);
@@ -165,6 +170,7 @@ let hcons_const_def = function
       let constr = force_opaque lc in
       OpaqueDef (opaque_from_val (hcons_constr constr))
     else OpaqueDef lc
+  | OpaqueDefIdx _ -> assert false
 
 let hcons_const_body cb =
   { cb with

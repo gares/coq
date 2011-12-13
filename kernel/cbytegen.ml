@@ -716,6 +716,7 @@ let compile env c =
   init_code,!fun_code, Array.of_list fv
 
 let compile_constant_body env = function
+  | OpaqueDefIdx _ -> assert false
   | Undef _ | OpaqueDef _ -> BCconstant
   | Def sb ->
       let body = Declarations.force sb in

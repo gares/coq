@@ -95,6 +95,7 @@ and check_with_def env sign (idl,c) mp equiv =
                  any implementations of parameters and opaques terms,
 	         as long as they have the right type *)
 	      let def,cst = match cb.const_body with
+                | OpaqueDefIdx _ -> assert false
 		| Undef _ | OpaqueDef _ ->
 		    let (j,cst1) = Typeops.infer env' c in
 		    let typ = Typeops.type_of_constant_type env' cb.const_type in

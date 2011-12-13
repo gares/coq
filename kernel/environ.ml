@@ -176,6 +176,7 @@ let constant_value env kn =
     | Def l_body -> Declarations.force l_body
     | OpaqueDef _ -> raise (NotEvaluableConst Opaque)
     | Undef _ -> raise (NotEvaluableConst NoBody)
+    | OpaqueDefIdx _ -> assert false
 
 let constant_opt_value env cst =
   try Some (constant_value env cst)

@@ -209,7 +209,8 @@ let opacity env = function
 	| Undef _ -> None
 	| OpaqueDef _ -> Some FullyOpaque
 	| Def _ -> Some
-          (TransparentMaybeOpacified (Conv_oracle.get_strategy(ConstKey cst))))
+          (TransparentMaybeOpacified (Conv_oracle.get_strategy(ConstKey cst)))
+        | OpaqueDefIdx _ -> assert false)
   | _ -> None
 
 let print_opacity ref =
@@ -563,6 +564,7 @@ let print_full_pure_context () =
 	  let typ = ungeneralized_type_of_constant_type cb.const_type in
 	  hov 0 (
 	    match cb.const_body with
+              | OpaqueDefIdx _ -> assert false
 	      | Undef _ ->
 		str "Parameter " ++
 		print_basename con ++ str " : " ++ cut () ++ pr_ltype typ

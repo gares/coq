@@ -119,6 +119,7 @@ let check_definition_sub env cb1 cb2 =
      any implementations of parameters and opaques terms,
      as long as they have the right type *)
   (match cb2.const_body with
+    | OpaqueDefIdx _ -> assert false
     | Undef _ | OpaqueDef _ -> ()
     | Def lc2 ->
 	(match cb1.const_body with
