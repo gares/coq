@@ -3534,30 +3534,7 @@ let tclABSTRACT name_op tac gl =
 
 
 let admit_as_an_axiom gl =
-  let current_sign = Global.named_context()
-  and global_sign = pf_hyps gl in
-  let sign,secsign =
-    List.fold_right
-      (fun (id,_,_ as d) (s1,s2) ->
-	 if mem_named_context id current_sign &
-           interpretable_as_section_decl (Sign.lookup_named id current_sign) d
-         then (s1,add_named_decl d s2)
-	 else (add_named_decl d s1,s2))
-      global_sign (empty_named_context,empty_named_context) in
-  let name = add_suffix (get_current_proof_name ()) "_admitted" in
-  let na = next_global_ident_away name (pf_ids_of_hyps gl) in
-  let concl = it_mkNamedProd_or_LetIn (pf_concl gl) sign in
-  if occur_existential concl then error"\"admit\" cannot handle existentials.";
-  let axiom =
-    let cd = 
-      Entries.ParameterEntry (Pfedit.get_used_variables(),concl,None) in
-    let con = Declare.declare_constant ~internal:Declare.KernelSilent na (cd,IsAssumption Logical) in
-    constr_of_global (ConstRef con)
-  in
-  exact_no_check
-    (applist (axiom,
-              List.rev (Array.to_list (instance_from_named_context sign))))
-    gl
+  simplest_case (Coqlib.build_coq_proof_admitted ()) gl
 
 let unify ?(state=full_transparent_state) x y gl =
   try
