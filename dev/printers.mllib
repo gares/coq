@@ -28,6 +28,7 @@ Heap
 Option
 Dnet
 Hashtbl_alt
+Future
 
 Names
 Univ
@@ -38,6 +39,7 @@ Sign
 Cbytecodes
 Copcodes
 Cemitcodes
+Future
 Declarations
 Retroknowledge
 Pre_env
