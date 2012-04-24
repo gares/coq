@@ -36,6 +36,7 @@ Predicate
 Rtree
 Heap
 Dnet
+Future
 
 Names
 Univ
@@ -50,6 +51,7 @@ Cbytecodes
 Copcodes
 Cemitcodes
 Nativevalues
+Future
 Lazyconstr
 Declareops
 Retroknowledge
