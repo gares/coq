@@ -44,7 +44,7 @@ let declare_tactic_option ?(default=Tacexpr.TacId []) name =
     Pptactic.pr_glob_tactic (Global.env ()) !default_tactic_expr ++
       (if !locality then str" (locally defined)" else str" (globally defined)")
   in
-  let freeze () = !locality, !default_tactic_expr in
+  let freeze _ = !locality, !default_tactic_expr in
   let unfreeze (local, t) = set_default_tactic local t in
   let init () = () in
     Summary.declare_summary name

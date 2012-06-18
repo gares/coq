@@ -37,7 +37,7 @@ let get_discharged_hyps sp =
 let init () =
   discharged_hyps_map := Spmap.empty
 
-let freeze () = !discharged_hyps_map
+let freeze _ = !discharged_hyps_map
 
 let unfreeze dhm = discharged_hyps_map := dhm
 

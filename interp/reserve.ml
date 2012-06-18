@@ -42,7 +42,7 @@ let in_reserved : identifier * notation_constr -> obj =
   declare_object {(default_object "RESERVED-TYPE") with
     cache_function = cache_reserved_type }
 
-let freeze_reserved () = (!reserve_table,!reserve_revtable)
+let freeze_reserved _ = (!reserve_table,!reserve_revtable)
 let unfreeze_reserved (r,rr) = reserve_table := r; reserve_revtable := rr
 let init_reserved () =
   reserve_table := Idmap.empty; reserve_revtable := Gmapl.empty

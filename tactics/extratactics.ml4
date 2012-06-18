@@ -450,7 +450,7 @@ let inTransitivity : bool * constr -> obj =
 
 (* Synchronisation with reset *)
 
-let freeze () = !transitivity_left_table, !transitivity_right_table
+let freeze _ = !transitivity_left_table, !transitivity_right_table
 
 let unfreeze (l,r) =
   transitivity_left_table := l;

@@ -58,7 +58,7 @@ let head_map = ref Evalrefmap.empty
 
 let init () = head_map := Evalrefmap.empty
 
-let freeze () = !head_map
+let freeze _ = !head_map
 
 let unfreeze hm = head_map := hm
 

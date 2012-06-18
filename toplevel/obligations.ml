@@ -469,7 +469,7 @@ let map_first m =
 
 let from_prg : program_info ProgMap.t ref = ref ProgMap.empty
 
-let freeze () = !from_prg
+let freeze _ = !from_prg
 let unfreeze v = from_prg := v
 let init () = from_prg := ProgMap.empty
 

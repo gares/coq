@@ -279,7 +279,7 @@ let make_hints g st only_classes sign =
   in Hint_db.add_list hintlist (Hint_db.empty st true)
 
 let autogoal_hints_cache : (Environ.named_context_val * hint_db) option ref = ref None
-let freeze () = !autogoal_hints_cache
+let freeze _ = !autogoal_hints_cache
 let unfreeze v = autogoal_hints_cache := v
 let init () = autogoal_hints_cache := None
 

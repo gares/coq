@@ -33,7 +33,7 @@ let generalizable_table = ref Idpred.empty
 
 let _ =
   Summary.declare_summary "generalizable-ident"
-    { Summary.freeze_function = (fun () -> !generalizable_table);
+    { Summary.freeze_function = (fun _ -> !generalizable_table);
       Summary.unfreeze_function = (fun r -> generalizable_table := r);
       Summary.init_function = (fun () -> generalizable_table := Idpred.empty) }
 

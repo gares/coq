@@ -520,7 +520,7 @@ let init () =
 
 
 
-let freeze () =
+let freeze _ =
   !the_ccitab,
   !the_dirtab,
   !the_modtypetab,

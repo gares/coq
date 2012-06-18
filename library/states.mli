@@ -17,15 +17,10 @@ val intern_state : string -> unit
 val extern_state : string -> unit
 
 type state
-val freeze : unit -> state
+val freeze : marshallable:bool -> state
 val unfreeze : state -> unit
 
 (** {6 Rollback } *)
-
-(** [with_heavy_rollback f x] applies [f] to [x] and restores the
-  state of the whole system as it was before the evaluation if an exception
-  is raised. *)
-val with_heavy_rollback : ('a -> 'b) -> (exn -> exn) -> 'a -> 'b
 
 (** [with_state_protection f x] applies [f] to [x] and restores the
   state of the whole system as it was before the evaluation of f *)

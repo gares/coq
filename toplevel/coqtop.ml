@@ -113,7 +113,7 @@ let add_compile verbose s =
   Flags.make_silent true;
   compile_list := (verbose,s) :: !compile_list
 let compile_files () =
-  let init_state = States.freeze() in
+  let init_state = States.freeze ~marshallable:false in
   let coqdoc_init_state = Lexer.location_table () in
     List.iter
       (fun (v,f) ->

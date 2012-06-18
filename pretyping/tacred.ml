@@ -136,7 +136,7 @@ type frozen = (int * constant_evaluation) Cmap.t
 let init () =
   eval_table := Cmap.empty
 
-let freeze () =
+let freeze _ =
   !eval_table
 
 let unfreeze ct =
@@ -542,7 +542,7 @@ let behaviour_table = ref (Refmap.empty : behaviour Refmap.t)
 
 let _ =
   Summary.declare_summary "simplbehaviour"
-    { Summary.freeze_function = (fun () -> !behaviour_table);
+    { Summary.freeze_function = (fun _ -> !behaviour_table);
       Summary.unfreeze_function = (fun x -> behaviour_table := x);
       Summary.init_function = (fun () -> behaviour_table := Refmap.empty) }
 

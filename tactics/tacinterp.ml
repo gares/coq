@@ -215,7 +215,7 @@ let lookup r = Gmap.find r !mactab
 
 let _ =
   let init () = mactab := Gmap.empty in
-  let freeze () = !mactab in
+  let freeze _ = !mactab in
   let unfreeze fs = mactab := fs in
   Summary.declare_summary "tactic-definition"
     { Summary.freeze_function   = freeze;

@@ -252,7 +252,8 @@ let add_anonymous_leaf obj =
   add_entry oname (Leaf obj)
 
 let add_frozen_state () =
-  let _ = add_anonymous_entry (FrozenState (freeze_summaries())) in ()
+  let _ = add_anonymous_entry 
+    (FrozenState (freeze_summaries ~marshallable:false)) in ()
 
 (* Modules. *)
 
@@ -471,7 +472,7 @@ let is_in_section ref =
   try ignore (section_instance ref); true with Not_found -> false
 
 let init_sectab () = sectab := []
-let freeze_sectab () = !sectab
+let freeze_sectab _ = !sectab
 let unfreeze_sectab s = sectab := s
 
 let _ =
@@ -497,7 +498,7 @@ let open_section id =
   let name = make_path id, make_kn id (* this makes little sense however *) in
   if Nametab.exists_section dir then
     errorlabstrm "open_section" (pr_id id ++ str " already exists.");
-  let fs = freeze_summaries() in
+  let fs = freeze_summaries ~marshallable:false in
   add_entry name (OpenedSection (prefix, fs));
   (*Pushed for the lifetime of the section: removed by unfrozing the summary*)
   Nametab.push_dir (Nametab.Until 1) dir (DirOpenSection prefix);
@@ -616,7 +617,7 @@ let label_before_name (loc,id) =
 
 type frozen = Names.dir_path option * library_segment
 
-let freeze () = (!comp_name, !lib_stk)
+let freeze ~marshallable:_ = (!comp_name, !lib_stk)
 
 let unfreeze (mn,stk) =
   comp_name := mn;

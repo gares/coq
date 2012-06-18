@@ -240,6 +240,6 @@ let declare_red_expr locality s expr =
     Lib.add_anonymous_leaf (inReduction (locality,s,expr))
 
 let _ = declare_summary "Declare Reduction"
-  { freeze_function = (fun () -> !red_expr_tab);
+  { freeze_function = (fun _ -> !red_expr_tab);
     unfreeze_function = ((:=) red_expr_tab);
     init_function = (fun () -> red_expr_tab := Stringmap.empty) }

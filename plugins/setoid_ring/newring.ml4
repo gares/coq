@@ -384,7 +384,7 @@ let find_ring_structure env sigma l =
 let _ =
   Summary.declare_summary "tactic-new-ring-table"
     { Summary.freeze_function =
-        (fun () -> !from_carrier,!from_relation,!from_name);
+        (fun _ -> !from_carrier,!from_relation,!from_name);
       Summary.unfreeze_function =
         (fun (ct,rt,nt) ->
           from_carrier := ct; from_relation := rt; from_name := nt);
@@ -961,7 +961,7 @@ let find_field_structure env sigma l =
 let _ =
   Summary.declare_summary "tactic-new-field-table"
     { Summary.freeze_function =
-        (fun () -> !field_from_carrier,!field_from_relation,!field_from_name);
+        (fun _ -> !field_from_carrier,!field_from_relation,!field_from_name);
       Summary.unfreeze_function =
         (fun (ct,rt,nt) ->
           field_from_carrier := ct; field_from_relation := rt;

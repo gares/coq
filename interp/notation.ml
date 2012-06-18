@@ -846,7 +846,7 @@ let find_notation_printing_rule ntn =
 (**********************************************************************)
 (* Synchronisation with reset *)
 
-let freeze () =
+let freeze _ =
  (!scope_map, !notation_level_map, !scope_stack, !arguments_scope,
   !delimiters_map, !notations_key_table, !printing_rules,
   !scope_class_map)

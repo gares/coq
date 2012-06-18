@@ -63,7 +63,7 @@ let inScheme : string * (inductive * constant) array -> obj =
 (**********************************************************************)
 (* Saving/restoring the table of scheme *)
 
-let freeze_schemes () = !scheme_map
+let freeze_schemes _ = !scheme_map
 let unfreeze_schemes sch = scheme_map := sch
 let init_schemes () = scheme_map := Indmap.empty
 

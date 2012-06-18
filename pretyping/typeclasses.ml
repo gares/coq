@@ -101,7 +101,7 @@ let classes : typeclasses ref = ref Gmap.empty
 
 let instances : instances ref = ref Gmap.empty
 
-let freeze () = !classes, !instances
+let freeze _ = !classes, !instances
 
 let unfreeze (cl,is) =
   classes:=cl;

@@ -159,7 +159,7 @@ let normalize_evar evd ev =
 let new_meta =
   let meta_ctr = ref 0 in
   Summary.declare_summary "meta counter"
-    { Summary.freeze_function = (fun () -> !meta_ctr);
+    { Summary.freeze_function = (fun _ -> !meta_ctr);
       Summary.unfreeze_function = (fun n -> meta_ctr := n);
       Summary.init_function = (fun () -> meta_ctr := 0) };
   fun () -> incr meta_ctr; !meta_ctr
@@ -254,7 +254,7 @@ let extract_subfilter initial_filter refined_filter =
 let new_untyped_evar =
   let evar_ctr = ref 0 in
   Summary.declare_summary "evar counter"
-    { Summary.freeze_function = (fun () -> !evar_ctr);
+    { Summary.freeze_function = (fun _ -> !evar_ctr);
       Summary.unfreeze_function = (fun n -> evar_ctr := n);
       Summary.init_function = (fun () -> evar_ctr := 0) };
   fun () -> incr evar_ctr; existential_of_int !evar_ctr

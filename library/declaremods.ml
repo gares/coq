@@ -134,7 +134,7 @@ let openmod_info =
 let library_cache = ref Dirmap.empty
 
 let _ = Summary.declare_summary "MODULE-INFO"
-	  { Summary.freeze_function = (fun () ->
+	  { Summary.freeze_function = (fun _ ->
 					 !modtab_substobjs,
 					 !modtab_objects,
 					 !openmod_info,
@@ -348,7 +348,7 @@ let openmodtype_info =
   ref ([],[] : mod_bound_id list * module_type_body list)
 
 let _ = Summary.declare_summary "MODTYPE-INFO"
-	  { Summary.freeze_function = (fun () ->
+	  { Summary.freeze_function = (fun _ ->
 					 !modtypetab,!openmodtype_info);
 	    Summary.unfreeze_function = (fun ft ->
 					   modtypetab := fst ft;
@@ -989,7 +989,7 @@ let declare_include_ interp_struct me_asts =
     of summaries *)
 
 let protect_summaries f =
-  let fs = Summary.freeze_summaries () in
+  let fs = Summary.freeze_summaries ~marshallable:false in
   try f fs
   with e ->
     (* Something wrong: undo the whole process *)

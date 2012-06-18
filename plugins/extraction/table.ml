@@ -549,7 +549,7 @@ let extr_lang : lang -> obj =
        load_function = (fun _ (_,l) -> lang_ref := l)}
 
 let _ = declare_summary "Extraction Lang"
-	  { freeze_function = (fun () -> !lang_ref);
+	  { freeze_function = (fun _ -> !lang_ref);
 	    unfreeze_function = ((:=) lang_ref);
 	    init_function = (fun () -> lang_ref := Ocaml) }
 
@@ -587,7 +587,7 @@ let inline_extraction : bool * global_reference list -> obj =
     }
 
 let _ = declare_summary "Extraction Inline"
-	  { freeze_function = (fun () -> !inline_table);
+	  { freeze_function = (fun _ -> !inline_table);
 	    unfreeze_function = ((:=) inline_table);
 	    init_function = (fun () -> inline_table := empty_inline_table) }
 
@@ -666,7 +666,7 @@ let implicit_extraction : global_reference * int_or_id list -> obj =
     }
 
 let _ = declare_summary "Extraction Implicit"
-	  { freeze_function = (fun () -> !implicits_table);
+	  { freeze_function = (fun _ -> !implicits_table);
 	    unfreeze_function = ((:=) implicits_table);
 	    init_function = (fun () -> implicits_table := Refmap'.empty) }
 
@@ -725,7 +725,7 @@ let blacklist_extraction : string list -> obj =
     }
 
 let _ = declare_summary "Extraction Blacklist"
-	  { freeze_function = (fun () -> !blacklist_table);
+	  { freeze_function = (fun _ -> !blacklist_table);
 	    unfreeze_function = ((:=) blacklist_table);
 	    init_function = (fun () -> blacklist_table := Idset.empty) }
 
@@ -801,7 +801,7 @@ let in_customs : global_reference * string list * string -> obj =
     }
 
 let _ = declare_summary "ML extractions"
-	  { freeze_function = (fun () -> !customs);
+	  { freeze_function = (fun _ -> !customs);
 	    unfreeze_function = ((:=) customs);
 	    init_function = (fun () -> customs := Refmap'.empty) }
 
@@ -815,7 +815,7 @@ let in_custom_matchs : global_reference * string -> obj =
     }
 
 let _ = declare_summary "ML extractions custom match"
-	  { freeze_function = (fun () -> !custom_matchs);
+	  { freeze_function = (fun _ -> !custom_matchs);
 	    unfreeze_function = ((:=) custom_matchs);
 	    init_function = (fun () -> custom_matchs := Refmap'.empty) }
 

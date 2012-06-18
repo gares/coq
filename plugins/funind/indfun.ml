@@ -160,7 +160,7 @@ let build_newrecursive
       (env0,Constrintern.empty_internalization_env) lnameargsardef in
   let recdef =
     (* Declare local notations *)
-    let fs = States.freeze() in
+    let fs = States.freeze ~marshallable:false in
     let def =
       try
 	List.map

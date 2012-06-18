@@ -65,5 +65,5 @@ let oracle_order l2r k1 k2 =
 
 (* summary operations *)
 let init() = (cst_opacity := Cmap.empty; var_opacity := Idmap.empty)
-let freeze () = (!var_opacity, !cst_opacity)
+let freeze _ = (!var_opacity, !cst_opacity)
 let unfreeze (vo,co) = (cst_opacity := co; var_opacity := vo)

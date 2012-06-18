@@ -28,7 +28,9 @@ let env_is_empty () = is_empty !global_env
 
 let _ =
   declare_summary "Global environment"
-    { freeze_function = (fun () -> !global_env);
+    { freeze_function = (fun b -> 
+        if b then Safe_typing.join_safe_environment !global_env 
+        else !global_env);
       unfreeze_function = (fun fr -> global_env := fr);
       init_function = (fun () -> global_env := empty_environment) }
 

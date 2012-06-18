@@ -276,7 +276,7 @@ let recover_notation_grammar ntn prec =
    grammar rules. *)
 type frozen_t = all_grammar_command list * Lexer.frozen_t
 
-let freeze () = (!grammar_state, Lexer.freeze ())
+let freeze _ = (!grammar_state, Lexer.freeze ())
 
 (* We compare the current state of the grammar and the state to unfreeze,
    by computing the longest common suffixes *)

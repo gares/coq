@@ -41,7 +41,7 @@ let defined_types = ref TypeDnet.empty
  * Bookeeping & States
  *)
 
-let freeze () =
+let freeze _ =
   (!all_types,!defined_types)
 
 let unfreeze (lt,dt) =

@@ -72,7 +72,7 @@ module MakeTable =
 
     let _ =
       if A.synchronous then
-	let freeze () = !t in
+	let freeze _ = !t in
 	let unfreeze c = t := c in
 	let init () = t := MySet.empty in
 	Summary.declare_summary nick
@@ -253,7 +253,7 @@ let declare_option cast uncast
 		       load_function = (fun _ (_,v) -> write v)}
     in
     let _ = declare_summary (nickname key)
-	     { freeze_function = read;
+	     { freeze_function = (fun _ -> read ());
 	       unfreeze_function = write;
 	       init_function = (fun () -> write default) }
     in

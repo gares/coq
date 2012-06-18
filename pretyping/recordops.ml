@@ -132,7 +132,7 @@ open Summary
 
 let _ =
   declare_summary "record-methods-state"
-    { freeze_function = (fun () -> !meth_dnet);
+    { freeze_function = (fun _ -> !meth_dnet);
       unfreeze_function = (fun m -> meth_dnet := m);
       init_function = (fun () -> meth_dnet := MethodsDnet.empty) }
 
@@ -347,7 +347,7 @@ let is_open_canonical_projection env sigma (c,args) =
     with Failure _ -> false
   with Not_found -> false
 
-let freeze () =
+let freeze _ =
   !structure_table, !projection_table, !object_table
 
 let unfreeze (s,p,o) =

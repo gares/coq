@@ -68,7 +68,7 @@ let rewtab =
 
 let _ =
   let init () = rewtab := Stringmap.empty in
-  let freeze () = !rewtab in
+  let freeze _ = !rewtab in
   let unfreeze fs = rewtab := fs in
   Summary.declare_summary "autorewrite"
     { Summary.freeze_function   = freeze;

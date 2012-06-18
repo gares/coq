@@ -25,7 +25,7 @@ let syntax_table = ref (KNmap.empty : (interpretation*version) KNmap.t)
 
 let _ = Summary.declare_summary
 	  "SYNTAXCONSTANT"
-	  { Summary.freeze_function = (fun () -> !syntax_table);
+	  { Summary.freeze_function = (fun _ -> !syntax_table);
 	    Summary.unfreeze_function = (fun ft -> syntax_table := ft);
 	    Summary.init_function = (fun () -> syntax_table := KNmap.empty) }
 

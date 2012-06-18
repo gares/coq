@@ -702,7 +702,7 @@ let rec select_stronger_impargs = function
 (*s Registration as global tables *)
 
 let init () = implicits_table := Refmap.empty
-let freeze () = !implicits_table
+let freeze _ = !implicits_table
 let unfreeze t = implicits_table := t
 
 let _ =

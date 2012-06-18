@@ -23,7 +23,7 @@ type variable_data =
 let vartab = ref (Idmap.empty : variable_data Idmap.t)
 
 let _ = Summary.declare_summary "VARIABLE"
-  { Summary.freeze_function = (fun () -> !vartab);
+  { Summary.freeze_function = (fun _ -> !vartab);
     Summary.unfreeze_function = (fun ft -> vartab := ft);
     Summary.init_function = (fun () -> vartab := Idmap.empty) }
 
@@ -45,7 +45,7 @@ let variable_exists id = Idmap.mem id !vartab
 let csttab = ref (Cmap.empty : logical_kind Cmap.t)
 
 let _ = Summary.declare_summary "CONSTANT"
-	  { Summary.freeze_function = (fun () -> !csttab);
+	  { Summary.freeze_function = (fun _ -> !csttab);
 	    Summary.unfreeze_function = (fun ft -> csttab := ft);
 	    Summary.init_function = (fun () -> csttab := Cmap.empty) }
 

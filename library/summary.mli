@@ -10,7 +10,9 @@
    in synchronization during the various backtracks of the system. *)
 
 type 'a summary_declaration = {
-  freeze_function : unit -> 'a;
+  (** freeze_function [true] is for marshalling to disk. 
+   *  e.g. lazy must be forced *)
+  freeze_function : bool -> 'a;
   unfreeze_function : 'a -> unit;
   init_function : unit -> unit }
 
@@ -18,7 +20,7 @@ val declare_summary : string -> 'a summary_declaration -> unit
 
 type frozen
 
-val freeze_summaries : unit -> frozen
+val freeze_summaries : marshallable:bool -> frozen
 val unfreeze_summaries : frozen -> unit
 val init_summaries : unit -> unit
 
@@ -28,3 +30,6 @@ val init_summaries : unit -> unit
     plugins to initialize themselves properly.
 *)
 
+type data
+val freeze_summary : ?complement:bool -> string list -> data
+val unfreeze_summary : data -> unit

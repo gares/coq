@@ -28,7 +28,7 @@ let name_table = ref empty_name_table
 
 let _ =
   Summary.declare_summary "rename-arguments"
-    { Summary.freeze_function = (fun () -> !name_table);
+    { Summary.freeze_function = (fun _ -> !name_table);
       Summary.unfreeze_function = (fun r -> name_table := r);
       Summary.init_function = (fun () -> name_table := empty_name_table) }
 

@@ -377,7 +377,7 @@ let in_Function : function_info -> Libobject.obj =
 
 
 (* Synchronisation with reset *)
-let freeze () =
+let freeze _ =
   !from_function,!from_graph
 let unfreeze (functions,graphs) =
 (*   Pp.msgnl (str "unfreezing function_table : " ++ pr_table l); *)
