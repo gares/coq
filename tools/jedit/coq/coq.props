@@ -1,0 +1,15 @@
+## Isabelle plugin properties
+##
+##:encoding=ISO-8859-1:wrap=soft:maxLineLen=100:
+
+#identification
+plugin.pide.jedit.Plugin.name=PIDE/Coq
+plugin.pide.jedit.Plugin.author=Johannes Hölzl, Fabian Immler, Makarius Wenzel, Enrico Tassi
+plugin.pide.jedit.Plugin.version=0.0.1
+plugin.pide.jedit.Plugin.description=Coq asynchronous proof document editing
+options.pide.label=Coq
+plugin.pide.jedit.Plugin.menu.label=Coq
+
+# plugin.pide.jedit.Plugin.option-pane=coq
+options.pide.auto-start.title=Auto Start
+options.pide.auto-start=true

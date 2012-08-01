@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+<!DOCTYPE ACTIONS SYSTEM "actions.dtd">
+
+<ACTIONS>
+	<ACTION NAME="pide.session-panel">
+		<CODE>
+			wm.addDockableWindow("pide-session");
+		</CODE>
+	</ACTION>
+	<ACTION NAME="pide.output-panel">
+		<CODE>
+			wm.addDockableWindow("pide-output");
+		</CODE>
+	</ACTION>
+	<ACTION NAME="pide.raw-output-panel">
+		<CODE>
+			wm.addDockableWindow("pide-raw-output");
+		</CODE>
+	</ACTION>
+	<ACTION NAME="pide.protocol-panel">
+		<CODE>
+			wm.addDockableWindow("pide-protocol");
+		</CODE>
+	</ACTION>
+	<ACTION NAME="pide.input-sub">
+	  <CODE>
+	    pide.jedit.JEdit_Prover.input_sub(textArea);
+	  </CODE>
+	</ACTION>
+	<ACTION NAME="pide.input-sup">
+	  <CODE>
+	    pide.jedit.JEdit_Prover.input_sup(textArea);
+	  </CODE>
+	</ACTION>
+	<ACTION NAME="pide.input-isub">
+	  <CODE>
+	    pide.jedit.JEdit_Prover.input_isub(textArea);
+	  </CODE>
+	</ACTION>
+	<ACTION NAME="pide.input-isup">
+	  <CODE>
+	    pide.jedit.JEdit_Prover.input_isup(textArea);
+	  </CODE>
+	</ACTION>
+	<ACTION NAME="pide.input-bsub">
+	  <CODE>
+	    pide.jedit.JEdit_Prover.input_bsub(textArea);
+	  </CODE>
+	</ACTION>
+	<ACTION NAME="pide.input-bsup">
+	  <CODE>
+	    pide.jedit.JEdit_Prover.input_bsup(textArea);
+	  </CODE>
+	</ACTION>
+	<ACTION NAME="pide.input-bold">
+	  <CODE>
+	    pide.jedit.JEdit_Prover.input_bold(textArea);
+	  </CODE>
+	</ACTION>
+	<ACTION NAME="pide.check-buffer">
+	  <CODE>
+	    pide.jedit.JEdit_Prover.check_buffer(buffer);
+	  </CODE>
+	</ACTION>
+	<ACTION NAME="pide.cancel-execution">
+	  <CODE>
+	    pide.jedit.JEdit_Prover.cancel_execution();
+	  </CODE>
+	</ACTION>
+</ACTIONS>

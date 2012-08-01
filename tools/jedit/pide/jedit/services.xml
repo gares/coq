@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<!DOCTYPE SERVICES SYSTEM "services.dtd">
+
+<SERVICES>
+ 	<SERVICE CLASS="console.Shell" NAME="Scala">
+		new pide.jedit.Scala_Console();
+	</SERVICE>
+</SERVICES>

@@ -1,0 +1,37 @@
+#system parameters
+plugin.pide.jedit.Plugin.activate=startup
+plugin.pide.jedit.Plugin.usePluginHome=false
+
+#dependencies
+plugin.pide.jedit.Plugin.depend.0=jdk 1.6
+plugin.pide.jedit.Plugin.depend.1=jedit 04.03.99.00
+plugin.pide.jedit.Plugin.depend.2=plugin console.ConsolePlugin 4.4.1
+plugin.pide.jedit.Plugin.depend.3=plugin errorlist.ErrorListPlugin 1.8
+plugin.pide.jedit.Plugin.depend.4=plugin sidekick.SideKickPlugin 0.8
+plugin.pide.jedit.Plugin.depend.5=plugin gatchan.jedit.hyperlinks.HyperlinksPlugin 1.0.1
+
+#actions
+pide.check-buffer.label=Commence full proof checking of current buffer
+pide.check-buffer.shortcut=C+e SPACE
+pide.cancel-execution.label=Cancel current proof checking process
+pide.cancel-execution.shortcut=C+e BACK_SPACE
+pide.input-isub.label=Input subscript
+pide.input-isub.shortcut=C+e DOWN
+pide.input-isup.label=Input superscript
+pide.input-isup.shortcut=C+e UP
+pide.input-bold.label=Input bold face
+pide.input-bold.shortcut=C+e RIGHT
+
+#menu actions
+plugin.pide.jedit.Plugin.menu=pide.session-panel pide.output-panel pide.raw-output-panel pide.protocol-panel
+pide.session-panel.label=Prover Session panel
+pide.output-panel.label=Output panel
+pide.raw-output-panel.label=Raw Output panel
+pide.protocol-panel.label=Protocol panel
+
+#dockables
+pide-session.title=Prover Session
+pide-output.title=Output
+pide-raw-output.title=Raw Output
+pide-protocol.title=Protocol
+

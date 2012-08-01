@@ -73,6 +73,7 @@ SRCDIRS:=\
   kernel	kernel/byterun	library 	proofs 		tactics \
   pretyping	interp		toplevel/utils	toplevel 	parsing \
   printing	grammar 	intf            ide/utils	ide	\
+  tools/jedit \
   $(addprefix plugins/, \
     omega	romega 		micromega 	quote \
     setoid_ring xml 		extraction 	fourier \
@@ -93,9 +94,10 @@ COQMAKEFILE:=bin/coq_makefile$(EXE)
 GALLINA:=bin/gallina$(EXE)
 COQTEX:=bin/coq-tex$(EXE)
 COQWC:=bin/coqwc$(EXE)
+PIDE:=bin/pide$(EXE)
 COQDOC:=bin/coqdoc$(EXE)
 
-TOOLS:=$(COQDEP) $(COQMAKEFILE) $(GALLINA) $(COQTEX) $(COQWC) $(COQDOC)
+TOOLS:=$(COQDEP) $(COQMAKEFILE) $(GALLINA) $(COQTEX) $(COQWC) $(COQDOC) $(PIDE)
 
 ###########################################################################
 # Documentation
