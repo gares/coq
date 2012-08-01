@@ -19,7 +19,7 @@ Require Import Coq.Relations.Relation_Definitions.
 Require Export Coq.Classes.RelationClasses.
 
 Generalizable All Variables.
-Local Obligation Tactic := simpl_relation.
+Obligation Tactic := simpl_relation.
 
 (** * Morphisms.
 
@@ -165,7 +165,7 @@ Proof. simpl_relation. apply subr. apply H. apply subl. apply H0. Qed.
 
 Lemma subrelation_refl A R : @subrelation A R R.
 Proof. simpl_relation. Qed.
-
+Join.
 Ltac subrelation_tac T U :=
   (is_ground T ; is_ground U ; class_apply @subrelation_refl) ||
     class_apply @subrelation_respectful || class_apply @subrelation_refl.
@@ -181,7 +181,7 @@ Proof.
 Qed.
 
 CoInductive apply_subrelation : Prop := do_subrelation.
-
+Join.
 Ltac proper_subrelation :=
   match goal with
     [ H : apply_subrelation |- _ ] => clear H ; class_apply @subrelation_proper
@@ -406,7 +406,7 @@ Class Params {A : Type} (of : A) (arity : nat).
 Class PartialApplication.
 
 CoInductive normalization_done : Prop := did_normalization.
-
+Join.
 Ltac partial_application_tactic :=
   let rec do_partial_apps H m cont := 
     match m with
@@ -478,7 +478,7 @@ Lemma inverse_arrow `(NA : Normalizes A R (inverse R'''), NB : Normalizes B R' (
 Proof. unfold Normalizes in *. intros. 
   rewrite NA, NB. firstorder.
 Qed.
-
+Join.
 Ltac inverse :=
   match goal with
     | [ |- Normalizes _ (respectful _ _) _ ] => class_apply @inverse_arrow
@@ -531,7 +531,7 @@ Proof.
   setoid_rewrite H.
   assumption.
 Qed.
-
+Join.
 Ltac proper_normalization :=
   match goal with
     | [ _ : normalization_done |- _ ] => fail 1
@@ -549,7 +549,7 @@ Proof. firstorder. Qed.
 
 Lemma proper_eq A (x : A) : Proper (@eq A) x.
 Proof. intros. apply reflexive_proper. Qed.
-
+Join.
 Ltac proper_reflexive :=
   match goal with
     | [ _ : normalization_done |- _ ] => fail 1

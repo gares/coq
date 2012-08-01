@@ -16,7 +16,7 @@ Require Import Coq.Classes.Morphisms.
 Require Import Coq.Program.Basics.
 Require Import Coq.Program.Tactics.
 
-Local Obligation Tactic := simpl_relation.
+Obligation Tactic := simpl_relation.
 
 (** Standard instances for [not], [iff] and [impl]. *)
 

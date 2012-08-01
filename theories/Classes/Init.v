@@ -27,7 +27,7 @@ Ltac class_apply c := autoapply c using typeclass_instances.
    actually different. *)
 
 Class Unconvertible (A : Type) (a b : A) := unconvertible : unit.
-
+Join.
 Ltac unconvertible :=
   match goal with
     | |- @Unconvertible _ ?x ?y => unify x y with typeclass_instances ; fail 1 "Convertible"

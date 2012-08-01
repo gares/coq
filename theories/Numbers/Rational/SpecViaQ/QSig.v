@@ -112,7 +112,7 @@ Ltac qify := unfold eq, lt, le in *; autorewrite with qsimpl;
 Ltac solve_wd1 := intros x x' Hx; qify; now rewrite Hx.
 Ltac solve_wd2 := intros x x' Hx y y' Hy; qify; now rewrite Hx, Hy.
 
-Local Obligation Tactic := solve_wd2 || solve_wd1.
+Obligation Tactic := solve_wd2 || solve_wd1.
 
 Instance : Measure to_Q.
 Instance eq_equiv : Equivalence eq := {}.

@@ -47,7 +47,7 @@ End IsEq.
 
 (** * Earlier specification of equality by three separate lemmas. *)
 
-Module Type IsEqOrig (Import E:Eq').
+Module Type IsEqOrig (Import E:Eq'). Join.
   Axiom eq_refl : forall x : t, x==x.
   Axiom eq_sym : forall x y : t, x==y -> y==x.
   Axiom eq_trans : forall x y z : t, x==y -> y==z -> x==z.
@@ -57,7 +57,7 @@ End IsEqOrig.
 
 (** * Types with decidable equality *)
 
-Module Type HasEqDec (Import E:Eq').
+Module Type HasEqDec (Import E:Eq'). Join.
   Parameter eq_dec : forall x y : t, { x==y } + { ~ x==y }.
 End HasEqDec.
 
