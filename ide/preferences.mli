@@ -79,6 +79,7 @@ type pref =
       mutable spaces_instead_of_tabs : bool;
       mutable tab_length : int;
       mutable highlight_current_line : bool;
+      mutable emacs_keyb : bool;
 
     }
 

@@ -32,7 +32,9 @@ let message_view () : message_view =
       | Interface.Error -> [Tags.Message.error]
       | _ -> []
       in
-      buffer#insert ~tags msg;
-      buffer#insert ~tags "\n"
+      if msg <> "" then begin
+        buffer#insert ~tags msg;
+        buffer#insert ~tags "\n"
+      end
 
   end

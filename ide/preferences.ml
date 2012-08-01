@@ -148,11 +148,24 @@ type pref =
       mutable spaces_instead_of_tabs : bool;
       mutable tab_length : int;
       mutable highlight_current_line : bool;
+      mutable emacs_keyb : bool;
 
 }
 
 let use_default_doc_url = "(automatic)"
 
+(* USE IF NO CONF FOUND main win dimension 
+  let width, height =
+    let width = Gdk.Screen.width ~screen:(Gdk.Screen.default ()) () in
+    let height = Gdk.Screen.height ~screen:(Gdk.Screen.default ()) () in
+    (* hack for xinerama, no proper support of monitors from lablgtk *)
+    let wide = width > 2000 in
+    let tall = height > 1400 in
+    if (wide && tall) || (not wide && not tall) then width, height
+    else if wide then width / 2, height
+    else width, height / 2 in
+  w#resize ~width:(width * 90 / 100) ~height:(height * 80 / 100);
+*)
 let current = {
     cmd_coqtop = None;
     cmd_coqc = "coqc";
@@ -212,9 +225,9 @@ let current = {
     vertical_tabs = false;
     opposite_tabs = false;
 
-    background_color = "cornsilk";
-    processed_color = "light green";
-    processing_color = "light blue";
+    background_color = Tags.default_bg_color;
+    processed_color = Tags.default_processed_color;
+    processing_color = Tags.default_processing_color;
 
     dynamic_word_wrap = false;
     show_line_number = false;
@@ -224,6 +237,7 @@ let current = {
     spaces_instead_of_tabs = true;
     tab_length = 2;
     highlight_current_line = false;
+    emacs_keyb = false;
   }
 
 let save_pref () =
@@ -291,6 +305,7 @@ let save_pref () =
     add "spaces_instead_of_tabs" [string_of_bool p.spaces_instead_of_tabs] ++
     add "tab_length" [string_of_int p.tab_length] ++
     add "highlight_current_line" [string_of_bool p.highlight_current_line] ++
+    add "emacs_keyb" [string_of_bool p.emacs_keyb] ++
     Config_lexer.print_file pref_file
 
 let load_pref () =
@@ -375,6 +390,7 @@ let load_pref () =
     set_bool "spaces_instead_of_tabs" (fun v -> np.spaces_instead_of_tabs <- v);
     set_int "tab_length" (fun v -> np.tab_length <- v);
     set_bool "highlight_current_line" (fun v -> np.highlight_current_line <- v);
+    set_bool "emacs_keyb" (fun v -> np.emacs_keyb <- v);
     ()
 
 let configure ?(apply=(fun () -> ())) () =
@@ -465,16 +481,19 @@ let configure ?(apply=(fun () -> ())) () =
       ~packing:box#pack ()
     in
     let reset_cb () =
-      background_button#set_color (Tags.color_of_string "cornsilk");
-      processing_button#set_color (Tags.color_of_string "light blue");
-      processed_button#set_color (Tags.color_of_string "light green");
+      background_button#set_color
+        (Tags.color_of_string Tags.default_bg_color);
+      processing_button#set_color
+        (Tags.color_of_string Tags.default_processing_color);
+      processed_button#set_color 
+        (Tags.color_of_string Tags.default_processed_color);
     in
     let _ = reset_button#connect#clicked ~callback:reset_cb in
     let label = "Color configuration" in
     let callback () =
       current.background_color <- Tags.string_of_color background_button#color;
       current.processing_color <- Tags.string_of_color processing_button#color;
-      current.processed_color <- Tags.string_of_color processed_button#color;
+      current.processed_color  <- Tags.string_of_color processed_button#color;
       !refresh_editor_hook ();
       Tags.set_processing_color processing_button#color;
       Tags.set_processed_color processed_button#color
@@ -485,24 +504,10 @@ let configure ?(apply=(fun () -> ())) () =
   let config_editor =
     let label = "Editor configuration" in
     let box = GPack.vbox () in
-    let table = GPack.table
-      ~row_spacings:5
-      ~col_spacings:5
-      ~border_width:2
-      ~packing:(box#pack ~expand:true) ()
-    in
-    let row = ref 0 in
     let gen_button text active =
-      let button = GButton.check_button
-        ~packing:(table#attach ~left:0 ~top:!row) ()
-      in
-      let _ = GMisc.label ~text ~xalign:0.
-        ~packing:(table#attach ~expand:`X ~left:1 ~top:!row) ()
-      in
-      let () = incr row in
-      let () = button#set_active active in
-      button
-    in
+      let button = GButton.check_button ~label:text ~packing:box#add () in
+      button#set_active active;
+      button in
     let wrap = gen_button "Dynamic word wrap" current.dynamic_word_wrap in
     let line = gen_button "Show line number" current.show_line_number in
     let auto_indent = gen_button "Auto indentation" current.auto_indent in
@@ -510,13 +515,12 @@ let configure ?(apply=(fun () -> ())) () =
     let show_spaces = gen_button "Show spaces" current.show_spaces in
     let show_right_margin = gen_button "Show right margin" current.show_right_margin in
     let spaces_instead_of_tabs =
-      gen_button "Insert spaces instead of tabs"
-      current.spaces_instead_of_tabs
+      gen_button "Insert spaces instead of tabs" current.spaces_instead_of_tabs
     in
     let highlight_current_line =
-      gen_button "Highlight current line"
-      current.highlight_current_line
-    in
+      gen_button "Highlight current line" current.highlight_current_line in
+    let emacs_keyb =
+      gen_button "Emacs/PG keybindings" current.emacs_keyb in
 (*     let lbox = GPack.hbox ~packing:box#pack () in *)
 (*     let _ = GMisc.label ~text:"Tab width" *)
 (*         ~xalign:0. *)
@@ -533,6 +537,7 @@ let configure ?(apply=(fun () -> ())) () =
       current.show_right_margin <- show_right_margin#active;
       current.spaces_instead_of_tabs <- spaces_instead_of_tabs#active;
       current.highlight_current_line <- highlight_current_line#active;
+      current.emacs_keyb <- emacs_keyb#active;
       current.auto_complete <- auto_complete#active;
 (*       current.tab_length <- tab_width#value_as_int; *)
       !refresh_editor_hook ()

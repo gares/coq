@@ -17,6 +17,9 @@ let undotted_sep = [ '{' '}' '-' '+' '*' ]
 
 let dot_sep = '.' (space | eof)
 
+let begin_comment = '(' '*'
+let end_comment   = '*' ')'
+
 rule coq_string = parse
   | "\\\"" { coq_string lexbuf }
   | "\\\\" { coq_string lexbuf }
@@ -25,27 +28,27 @@ rule coq_string = parse
   | _ { coq_string lexbuf }
 
 and comment = parse
-  | "(*" { ignore (comment lexbuf); comment lexbuf }
+  | begin_comment { ignore (comment lexbuf); comment lexbuf }
   | "\"" { let () = coq_string lexbuf in comment lexbuf }
-  | "*)" { (true, Lexing.lexeme_start lexbuf + 2) }
+  | end_comment { (true, Lexing.lexeme_end lexbuf + 1) }
   | eof { (false, Lexing.lexeme_end lexbuf) }
   | _ { comment lexbuf }
 
-and sentence initial = parse
-  | "(*" {
-      let trully_terminated,comm_end = comment lexbuf in
-      if not trully_terminated then raise Unterminated;
+and sentence initial soff = parse
+  | begin_comment {
+      let truly_terminated, comm_end = comment lexbuf in
+      if not truly_terminated then raise Unterminated;
       (* A comment alone is a sentence.
 	 A comment in a sentence doesn't terminate the sentence.
          Note: comm_end is the first position _after_ the comment,
 	 as required when tagging a zone, hence the -1 to locate the
 	 ")" terminating the comment.
       *)
-      if initial then true, comm_end - 1 else sentence false lexbuf
+      if initial then true, soff, comm_end - 1 else sentence false soff lexbuf
     }
   | "\"" {
       let () = coq_string lexbuf in
-      sentence false lexbuf
+      sentence false soff lexbuf
     }
   | ".." {
       (* We must have a particular rule for parsing "..", where no dot
@@ -53,22 +56,24 @@ and sentence initial = parse
 	 (cf. for instance the syntax for recursive notation).
 	 This rule and the following one also allow to treat the "..."
 	 special case, where the third dot is a terminator. *)
-      sentence false lexbuf
+      sentence false soff lexbuf
     }
-  | dot_sep { false, Lexing.lexeme_start lexbuf } (* The usual "." terminator *)
+    (* The usual "." terminator *)
+  | dot_sep { false, soff, Lexing.lexeme_end lexbuf }
   | undotted_sep {
       (* Separators like { or } and bullets * - + are only active
 	 at the start of a sentence *)
-      if initial then false, Lexing.lexeme_start lexbuf
-      else sentence false lexbuf
+      if initial then false, soff, Lexing.lexeme_end lexbuf
+      else sentence false soff lexbuf
     }
   | space+ {
        (* Parsing spaces is the only situation preserving initiality *)
-       sentence initial lexbuf
+       sentence initial
+         (if initial then Lexing.lexeme_end lexbuf else soff) lexbuf
     }
   | _ {
       (* Any other characters *)
-      sentence false lexbuf
+      sentence false soff lexbuf
     }
   | eof { raise Unterminated }
 
@@ -81,6 +86,6 @@ and sentence initial = parse
   *)
 
   let delimit_sentence slice =
-    sentence true (Lexing.from_string slice)
+    sentence true 0 (Lexing.from_string slice)
 
 }

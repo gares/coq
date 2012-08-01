@@ -70,12 +70,12 @@ let coqide_known_option table = List.mem table [
   ["Printing";"Universes"]]
 
 let is_known_option cmd = match cmd with
-  | VernacSetOption (_,o,BoolValue true)
-  | VernacUnsetOption (_,o) -> coqide_known_option o
+  | VernacSetOption (o,BoolValue true)
+  | VernacUnsetOption o -> coqide_known_option o
   | _ -> false
 
 let is_debug cmd = match cmd with
-  | VernacSetOption (_,["Ltac";"Debug"], _) -> true
+  | VernacSetOption (["Ltac";"Debug"], _) -> true
   | _ -> false
 
 let is_query cmd = match cmd with
@@ -110,15 +110,17 @@ let coqide_cmd_checks (loc,ast) =
 
 (** Interpretation (cf. [Ide_intf.interp]) *)
 
+let backto id =
+  Vernac.eval_expr
+    (Loc.ghost, Vernacexpr.VernacBacktrack (Obj.magic id,0,0));
+  Stm.get_checked_states(), ()
+
 let interp (raw,verbosely,s) =
   let pa = Pcoq.Gram.parsable (Stream.of_string s) in
   let loc_ast = Vernac.parse_sentence (pa,None) in
   if not raw then coqide_cmd_checks loc_ast;
-  Flags.make_silent (not verbosely);
-  let status = Vernac.eval_expr ~preserving:raw loc_ast in
-  Flags.make_silent true;
-  let ret = read_stdout () in
-  if status then Util.Inl ret else Util.Inr ret
+  Vernac.eval_expr loc_ast;
+  Stm.get_checked_states(), Stm.get_current_state ()
 
 (** Goal display *)
 
@@ -184,6 +186,7 @@ let process_goal sigma g =
   { Interface.goal_hyp = hyps; Interface.goal_ccl = ccl; Interface.goal_id = id; }
 
 let goals () =
+  Vernac.observe max_int;
   try
     let pfts = Proof_global.give_me_the_proof () in
     let (goals, zipper, sigma) = Proof.proof pfts in
@@ -194,42 +197,47 @@ let goals () =
       (lg, rg)
     in
     let bg = List.map map_zip zipper in
+    Stm.get_checked_states(),
     Some { Interface.fg_goals = fg; Interface.bg_goals = bg; }
-  with Proof_global.NoCurrentProof -> None
+  with Proof_global.NoCurrentProof -> Stm.get_checked_states(), None
 
 let evars () =
   try
+  Vernac.observe max_int;
     let pfts = Proof_global.give_me_the_proof () in
     let { Evd.it = all_goals ; sigma = sigma } = Proof.V82.subgoals pfts in
     let exl = Evarutil.non_instantiated sigma in
     let map_evar ev = { Interface.evar_info = string_of_ppcmds (pr_evar ev); } in
     let el = List.map map_evar exl in
-    Some el
-  with Proof_global.NoCurrentProof -> None
+    Stm.get_checked_states(), Some el
+  with Proof_global.NoCurrentProof -> Stm.get_checked_states(), None
 
 let hints () =
   try
     let pfts = Proof_global.give_me_the_proof () in
     let { Evd.it = all_goals ; sigma = sigma } = Proof.V82.subgoals pfts in
     match all_goals with
-    | [] -> None
+    | [] -> Stm.get_checked_states(), None
     | g :: _ ->
       let env = Goal.V82.env sigma g in
       let hint_goal = concl_next_tac sigma g in
       let get_hint_hyp env d accu = hyp_next_tac sigma env d :: accu in
       let hint_hyps = List.rev (Environ.fold_named_context get_hint_hyp env ~init: []) in
-      Some (hint_hyps, hint_goal)
-  with Proof_global.NoCurrentProof -> None
+      Stm.get_checked_states(), Some (hint_hyps, hint_goal)
+  with Proof_global.NoCurrentProof -> Stm.get_checked_states(), None
+
 
 (** Other API calls *)
 
 let inloadpath dir =
-  Library.is_in_load_paths (CUnix.physical_path_of_string dir)
+  [], Library.is_in_load_paths (CUnix.physical_path_of_string dir)
 
-let status () =
+let status force =
   (** We remove the initial part of the current [dir_path]
       (usually Top in an interactive session, cf "coqtop -top"),
       and display the other parts (opened sections and modules) *)
+  Vernac.observe max_int;
+  if force then Stm.join ();
   let path =
     let l = Names.repr_dirpath (Lib.cwd ()) in
     List.rev_map Names.string_of_id l
@@ -242,20 +250,21 @@ let status () =
     let l = Proof_global.get_all_proof_names () in
     List.map Names.string_of_id l
   in
-  {
+  Stm.get_checked_states(),
+  ({
     Interface.status_path = path;
     Interface.status_proofname = proof;
     Interface.status_allproofs = allproofs;
     Interface.status_statenum = Lib.current_command_label ();
     Interface.status_proofnum = Pfedit.current_proof_depth ();
-  }
+  })
 
-let search flags = Search.interface_search flags
+let search flags = [], Search.interface_search flags
 
 let get_options () =
   let table = Goptions.get_tables () in
   let fold key state accu = (key, state) :: accu in
-  Goptions.OptionMap.fold fold table []
+  [], (Goptions.OptionMap.fold fold table [])
 
 let set_options options =
   let iter (name, value) = match value with
@@ -263,81 +272,90 @@ let set_options options =
   | IntValue i -> Goptions.set_int_option_value name i
   | StringValue s -> Goptions.set_string_option_value name s
   in
-  List.iter iter options
+  [], (List.iter iter options)
 
-let about () = {
+let mkcases s = [], Vernacentries.make_cases s
+
+let about () = [], {
   Interface.coqtop_version = Coq_config.version;
   Interface.protocol_version = Serialize.protocol_version;
   Interface.release_date = Coq_config.date;
   Interface.compile_date = Coq_config.compile_date;
 }
 
+
+let quit xml_oc () =
+  (* Here we do send an acknowledgement message to prove everything went OK. *)
+  let dummy = Interface.Good ([], ()) in
+  let xml_answer = Serialize.of_answer (Serialize.quit ()) dummy in
+  let () = Xml_printer.print xml_oc xml_answer in
+  let () = pr_debug "Exiting gracefully." in
+  exit 0
+
 (** Grouping all call handlers together + error handling *)
 
-exception Quit
-
-let eval_call c =
-  let rec handle_exn e =
+let eval_call xml_oc log c =
+  let rec handle_exn ?(states=[]) ?(state=Stategraph.dummy_state_id) e =
     catch_break := false;
-    let pr_exn e = (read_stdout ())^("\n"^(string_of_ppcmds (Errors.print e))) in
+    let pr_exn e = (read_stdout ())^("\n"^(string_of_ppcmds(Errors.print e))) in
     match e with
-      | Quit ->
-        (* Here we do send an acknowledgement message to prove everything went 
-          OK. *)
-        let dummy = Interface.Good () in
-        let xml_answer = Serialize.of_answer Serialize.quit dummy in
-        let () = Xml_utils.print_xml !orig_stdout xml_answer in
-        let () = flush !orig_stdout in
-        let () = pr_debug "Exiting gracefully." in
-        exit 0
-      | Errors.Drop -> None, "Drop is not allowed by coqide!"
-      | Errors.Quit -> None, "Quit is not allowed by coqide!"
-      | Vernac.DuringCommandInterp (_,inner) -> handle_exn inner
-      | Error_in_file (_,_,inner) -> None, pr_exn inner
-      | Loc.Exc_located (loc, inner) when loc = Loc.ghost -> None, pr_exn inner
-      | Loc.Exc_located (loc, inner) -> Some (Loc.unloc loc), pr_exn inner
-      | e -> None, pr_exn e
+    | Errors.Drop ->
+        Stm.get_checked_states(),states,(state,None),
+        "Drop is not allowed by coqide!"
+    | Errors.Quit ->
+        Stm.get_checked_states(),states,(state,None),
+        "Quit is not allowed by coqide!"
+    | Vernac.DuringCommandInterp (_,inner) -> handle_exn ~states ~state inner
+    | Stategraph.ErrorReachingState (states,state,inner) ->
+        handle_exn ~states ~state inner
+    | Error_in_file (_,_,inner) ->
+        Stm.get_checked_states(),states,(state,None), pr_exn inner
+    | Loc.Exc_located (loc, inner) when loc = Loc.ghost ->
+        Stm.get_checked_states(),states,(state,None), pr_exn inner
+    | Loc.Exc_located (loc, inner) ->
+        Stm.get_checked_states(),states,(state,Some (Loc.unloc loc)),
+        pr_exn inner
+    | e -> Stm.get_checked_states(),states,(state,None), pr_exn e
   in
-  let interruptible f x =
+  let wrap f x =
     catch_break := true;
     Util.check_for_interrupt ();
     let r = f x in
     catch_break := false;
+    let out = read_stdout () in
+    if out <> "" then log (Pp.str out);
     r
   in
-  let handler = {
-    Serialize.interp = interruptible interp;
-    Serialize.rewind = interruptible Backtrack.back;
-    Serialize.goals = interruptible goals;
-    Serialize.evars = interruptible evars;
-    Serialize.hints = interruptible hints;
-    Serialize.status = interruptible status;
-    Serialize.search = interruptible search;
-    Serialize.inloadpath = interruptible inloadpath;
-    Serialize.get_options = interruptible get_options;
-    Serialize.set_options = interruptible set_options;
-    Serialize.mkcases = interruptible Vernacentries.make_cases;
-    Serialize.quit = (fun () -> raise Quit);
-    Serialize.about = interruptible about;
-    Serialize.handle_exn = handle_exn; }
+  let handler = { Interface.
+    interp = wrap interp;
+    backto = wrap backto;
+    goals = wrap goals;
+    evars = wrap evars;
+    hints = wrap hints;
+    status = wrap status;
+    search = wrap search;
+    inloadpath = wrap inloadpath;
+    get_options = wrap get_options;
+    set_options = wrap set_options;
+    mkcases = wrap mkcases;
+    quit = quit xml_oc;
+    about = wrap about;
+    handle_exn = handle_exn; }
   in
-  (* If the messages of last command are still there, we remove them *)
-  ignore (read_stdout ());
   Serialize.abstract_eval_call handler c
 
 (** Message dispatching. *)
 
-let slave_logger level message =
+let slave_logger xml_oc level message =
   (* convert the message into XML *)
   let msg = Pp.string_of_ppcmds (hov 0 message) in
   let message = {
     Interface.message_level = level;
     Interface.message_content = msg;
   } in
-  let xml = Serialize.of_message message in
-  (* Send it to stdout *)
-  Xml_utils.print_xml !orig_stdout xml;
-  flush !orig_stdout
+  let () = pr_debug (Printf.sprintf "-oob-> %S" msg) in
+  let xml = Serialize.of_oob_message message in
+  Xml_printer.print xml_oc xml
 
 (** The main loop *)
 
@@ -349,12 +367,16 @@ let slave_logger level message =
     a different request could hang the ide... *)
 
 let fail err =
-  Serialize.of_value (fun _ -> assert false) (Interface.Fail (None, err))
+  let state = Stategraph.dummy_state_id in
+  Serialize.of_value (fun _ -> assert false) 
+    (Interface.Fail ([],[],(state,None), err))
 
 let loop () =
   init_signal_handler ();
   catch_break := false;
-  Pp.set_logger slave_logger;
+  let xml_ic = Xml_parser.make (Xml_parser.SChannel stdin) in
+  let xml_oc = Xml_printer.make (Xml_printer.TChannel !orig_stdout) in
+  Pp.set_logger (slave_logger xml_oc);
   (* We'll handle goal fetching and display in our own way *)
   Vernacentries.enable_goal_printing := false;
   Vernacentries.qed_display_script := false;
@@ -363,13 +385,12 @@ let loop () =
     while true do
       let xml_answer =
         try
-          let p = Xml_parser.make (Xml_parser.SChannel stdin) in
-          let () = Xml_parser.check_eof p false in
-          let xml_query = Xml_parser.parse p in
+          let () = Xml_parser.check_eof xml_ic false in
+          let xml_query = Xml_parser.parse xml_ic in
           let q = Serialize.to_call xml_query in
-          let () = pr_debug ("<-- " ^ Serialize.pr_call q) in
-          let r = eval_call q in
-          let () = pr_debug ("--> " ^ Serialize.pr_full_value q r) in
+          let () = pr_debug ("<----- " ^ Serialize.pr_call q) in
+          let r = eval_call xml_oc (slave_logger xml_oc Interface.Notice) q in
+          let () = pr_debug ("-----> " ^ Serialize.pr_full_value q r) in
           Serialize.of_answer q r
         with
         | Xml_parser.Error (err, loc) ->
@@ -378,15 +399,11 @@ let loop () =
         | Serialize.Marshal_error ->
           fail "Incorrect query."
       in
-      Xml_utils.print_xml !orig_stdout xml_answer;
-      flush !orig_stdout
+      Xml_printer.print xml_oc xml_answer
     done
   with e ->
     let msg = Printexc.to_string e in
     let r = "Fatal exception in coqtop:\n" ^ msg in
     pr_debug ("==> " ^ r);
-    (try
-      Xml_utils.print_xml !orig_stdout (fail r);
-      flush !orig_stdout
-    with _ -> ());
+    (try Xml_printer.print xml_oc (fail r) with _ -> ());
     exit 1

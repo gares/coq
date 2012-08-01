@@ -8,7 +8,9 @@
 
 open Preferences
 
-class command_window coqtop =
+class command_window coqtop
+  ~mark_as_broken ~mark_as_processed ~cur_state
+=
 (*  let window = GWindow.window
 		 ~allow_grow:true ~allow_shrink:true
 		 ~width:500 ~height:250
@@ -116,13 +118,27 @@ object(self)
         result#buffer#insert "\n"
       in
       let process handle =
-        let answer = match Coq.interp handle insert ~raw:true phrase with
-        | Interface.Fail (l,str) ->
-            "Error while interpreting "^phrase^":\n"^str
-        | Interface.Good results | Interface.Unsafe results ->
-            "Result for command " ^ phrase ^ ":\n" ^ results
-        in
-        result#buffer#insert answer
+        let old = cur_state () in
+        insert Interface.Notice ("Result for command " ^ phrase ^ ":\n");
+        match Coq.interp handle insert ~raw:true phrase with
+        | Interface.Fail (good_states, bad_states, (id, _), str) ->
+            mark_as_processed good_states;
+            mark_as_broken bad_states;
+            ignore(Coq.backto handle old);
+            insert Interface.Error
+              ("Error while interpreting "^phrase^":\n"^str)
+        | Interface.Good (good_states, _) ->
+            mark_as_processed good_states;
+            match Coq.status handle insert false with
+            | Interface.Fail (good_states, bad_states, (id,_), str) ->
+                mark_as_processed good_states;
+                mark_as_broken bad_states;
+                ignore(Coq.backto handle old);
+                insert Interface.Error
+                   ("Error while interpreting "^phrase^":\n"^str)
+            | Interface.Good (good_states, _) ->
+                mark_as_processed good_states;
+                ignore(Coq.backto handle old)
       in
       result#buffer#set_text "";
       Coq.try_grab coqtop process ignore

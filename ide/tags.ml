@@ -13,24 +13,47 @@ let make_tag (tt:GText.tag_table) ~name prop =
   tt#add new_tag#as_tag;
   new_tag
 
-let processed_color = ref "light green"
-let processing_color = ref "light blue"
+let default_bg_color = "cornsilk"
+let default_processed_color = "light green"
+let default_processing_color = "light blue"
+
+let processed_color   = ref default_processed_color
+let processing_color  = ref default_processing_color
+let broken_color      = ref "pink"
 
 module Script =
 struct
   let table = GText.tag_table ()
-  let comment_sentence = make_tag table ~name:"comment_sentence" []
-  let error = make_tag table ~name:"error" [`UNDERLINE `DOUBLE ; `FOREGROUND "red"]
-  let to_process = make_tag table ~name:"to_process" [`BACKGROUND !processing_color ;`EDITABLE false]
-  let processed = make_tag table ~name:"processed" [`BACKGROUND !processed_color;`EDITABLE false]
-  let unjustified = make_tag table ~name:"unjustified" [`UNDERLINE `SINGLE; `FOREGROUND "red"; `BACKGROUND "gold";`EDITABLE false]
-  let found = make_tag table ~name:"found" [`BACKGROUND "blue"; `FOREGROUND "white"]
+
+  let comment = make_tag table ~name:"comment" []
   let sentence = make_tag table ~name:"sentence" []
+  let sentence_end = make_tag table ~name:"sentence_end" []
+
+(* DEBUG: make the lexing phase visible
+  let comment = make_tag table ~name:"comment" [`BACKGROUND "violet"]
+  let sentence = make_tag table ~name:"sentence" [`BACKGROUND "grey"]
+  let sentence_end = make_tag table ~name:"sentence_end" [`UNDERLINE `SINGLE]
+*)
+
+  let error = make_tag table ~name:"error"
+    [ `FOREGROUND "red" ]
+  let broken = make_tag table ~name:"broken"
+    [ `BACKGROUND !broken_color] (*; `EDITABLE false ]*)
+  let processing = make_tag table ~name:"processing"
+    [ `BACKGROUND !processing_color] (* ;`EDITABLE false ]*)
+  let processed = make_tag table ~name:"processed"
+    [ `BACKGROUND !processed_color] (*;`EDITABLE false ]*)
+  let unsafe = make_tag table ~name:"unsafe"
+    [ `FOREGROUND "red"; `BACKGROUND "gold"] (*; `EDITABLE false ]*)
+
+  let found = make_tag table ~name:"found"
+    [ `BACKGROUND "blue"; `FOREGROUND "white" ]
 end
 module Proof =
 struct
   let table = GText.tag_table ()
-  let highlight = make_tag table ~name:"highlight" [`BACKGROUND !processed_color]
+  let highlight = make_tag table ~name:"highlight"
+    [`BACKGROUND !processed_color]
   let hypothesis = make_tag table ~name:"hypothesis" []
   let goal = make_tag table ~name:"goal" []
 end
@@ -63,4 +86,4 @@ let get_processing_color () = color_of_string !processing_color
 let set_processing_color clr =
   let s = string_of_color clr in
   processing_color := s;
-  Script.to_process#set_property (`BACKGROUND s)
+  Script.processing#set_property (`BACKGROUND s)

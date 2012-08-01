@@ -174,17 +174,21 @@ let ignore_error f arg =
 (** * The structure describing a coqtop sub-process *)
 
 type handle = {
-  pid : int;
-  (* Unix process id *)
-  cout : in_channel;
-  cin : out_channel;
+  pid : int; (* Unix process id *)
   mutable alive : bool;
-  xml_parser : Xml_parser.t;
+  xml_oc : Xml_printer.t;
+  xml_ic : Xml_parser.t;
+  close_xml_channels : unit -> unit
 }
 
 type coqtop = {
   (* lock managing coqtop access *)
   lock : Mutex.t;
+  (* thread owning the lock. Begin coqide very imperative it may be the case
+   * that a function that grabs the toplevel then triggers a gtk signal that
+   * needs to grab the toplevel, but the handle cannot be threaded around.
+   * We say that a thread can check if it is already owning the lock. *)
+  mutable thread : Thread.t option;
   (* non quoted command-line arguments of coqtop *)
   sup_args : string list;
   (* actual coqtop process *)
@@ -252,15 +256,16 @@ let unsafe_spawn_handle args =
   let prog = coqtop_path () in
   let args = Array.of_list (prog :: "-ideslave" :: args) in
   let (pid, ic, oc) = open_process_pid prog args in
-  let p = Xml_parser.make (Xml_parser.SChannel ic) in
-  Xml_parser.check_eof p false;
+  let xml_ic = Xml_parser.make (Xml_parser.SChannel ic) in
+  Xml_parser.check_eof xml_ic false;
+  let xml_oc = Xml_printer.make (Xml_printer.TChannel oc) in
   incr toplvl_ctr;
   {
     pid = pid;
-    cin = oc;
-    cout = ic;
     alive = true;
-    xml_parser = p;
+    xml_oc = xml_oc;
+    xml_ic = xml_ic;
+    close_xml_channels = (fun () -> close_in ic; close_out oc);
   }
 
 (** This clears any potentially remaining open garbage. *)
@@ -269,8 +274,7 @@ let unsafe_clear_handle coqtop =
   if handle.alive then begin
     (* invalidate the old handle *)
     handle.alive <- false;
-    ignore_error close_out handle.cin;
-    ignore_error close_in handle.cout;
+    handle.close_xml_channels ();
     ignore_error (Unix.waitpid []) handle.pid;
     decr toplvl_ctr
   end
@@ -282,6 +286,7 @@ let spawn_coqtop hook sup_args =
   {
     handle = handle;
     lock = Mutex.create ();
+    thread = None;
     sup_args = sup_args;
     trigger = hook;
     is_closed = false;
@@ -310,6 +315,7 @@ let unsafe_process coqtop f =
   try
     f coqtop.handle;
     coqtop.is_computing <- false;
+    coqtop.thread <- None;
     Mutex.unlock coqtop.lock
   with
   | DeadCoqtop ->
@@ -329,22 +335,33 @@ let unsafe_process coqtop f =
       ignore_error coqtop.trigger coqtop.handle;
     end;
     Mutex.unlock toplvl_ctr_mtx;
+    coqtop.thread <- None;
     Mutex.unlock coqtop.lock;
   | err ->
     (* Another error occured, we propagate it. *)
     coqtop.is_computing <- false;
+    coqtop.thread <- None;
     Mutex.unlock coqtop.lock;
     raise err
+  
+let already_grabbed coqtop =
+  if Option.map Thread.id coqtop.thread = Some (Thread.id (Thread.self ()))
+  then (assert (Mutex.try_lock coqtop.lock = false); Some coqtop.handle)
+  else None
 
 let grab coqtop f =
   Mutex.lock coqtop.lock;
+  coqtop.thread <- Some (Thread.self ());
   if not coqtop.is_closed && not coqtop.is_to_reset then unsafe_process coqtop f
-  else Mutex.unlock coqtop.lock
+  else (coqtop.thread <- None; Mutex.unlock coqtop.lock)
 
 let try_grab coqtop f g =
-  if Mutex.try_lock coqtop.lock then
-    if not coqtop.is_closed && not coqtop.is_to_reset then unsafe_process coqtop f
-    else Mutex.unlock coqtop.lock
+  if Mutex.try_lock coqtop.lock then begin
+    coqtop.thread <- Some (Thread.self ());
+    if not coqtop.is_closed && not coqtop.is_to_reset
+    then unsafe_process coqtop f
+    else (coqtop.thread <- None; Mutex.unlock coqtop.lock)
+    end
   else g ()
 
 (** * Calls to coqtop *)
@@ -354,9 +371,9 @@ let try_grab coqtop f g =
 let eval_call coqtop logger (c:'a Serialize.call) =
   (** Retrieve the messages sent by coqtop until an answer has been received *)
   let rec loop () =
-    let xml = Xml_parser.parse coqtop.xml_parser in
-    if Serialize.is_message xml then
-      let message = Serialize.to_message xml in
+    let xml = Xml_parser.parse coqtop.xml_ic in
+    if Serialize.is_oob_message xml then
+      let message = Serialize.to_oob_message xml in
       let level = message.Interface.message_level in
       let content = message.Interface.message_content in
       let () = logger level content  in
@@ -364,8 +381,8 @@ let eval_call coqtop logger (c:'a Serialize.call) =
     else (Serialize.to_answer xml : 'a Interface.value)
   in
   try
-    Xml_utils.print_xml coqtop.cin (Serialize.of_call c);
-    flush coqtop.cin;
+    let xml = Serialize.of_call c in
+    Xml_printer.print coqtop.xml_oc xml;
     loop ()
   with
   | Serialize.Marshal_error ->
@@ -381,18 +398,18 @@ let eval_call coqtop logger (c:'a Serialize.call) =
 
 let interp coqtop log ?(raw=false) ?(verbose=true) s =
   eval_call coqtop log (Serialize.interp (raw,verbose,s))
-let rewind coqtop i = eval_call coqtop default_logger (Serialize.rewind i)
+let backto coqtop i = eval_call coqtop default_logger (Serialize.backto i)
 let inloadpath coqtop s = eval_call coqtop default_logger (Serialize.inloadpath s)
 let mkcases coqtop s = eval_call coqtop default_logger (Serialize.mkcases s)
-let status coqtop = eval_call coqtop default_logger Serialize.status
-let hints coqtop = eval_call coqtop default_logger Serialize.hints
-let search coqtop flags = eval_call coqtop default_logger (Serialize.search flags)
+let status coqtop log x = eval_call coqtop log (Serialize.status x)
+let hints coqtop x = eval_call coqtop default_logger (Serialize.hints x)
+let search coqtop x = eval_call coqtop default_logger (Serialize.search x)
 
 let unsafe_close coqtop =
   if Mutex.try_lock coqtop.lock then begin
     let () =
       try
-        match eval_call coqtop.handle default_logger Serialize.quit with
+        match eval_call coqtop.handle default_logger (Serialize.quit()) with
         | Interface.Good _ -> ()
         | _ -> raise Exit
       with err -> kill_coqtop coqtop
@@ -462,7 +479,7 @@ struct
     let options = List.map (fun (name, v) -> (name, Interface.BoolValue v)) options in
     let options = (width, Interface.IntValue !width_ref):: options in
     match eval_call coqtop default_logger (Serialize.set_options options) with
-    | Interface.Good () -> ()
+    | Interface.Good _ -> ()
     | _ -> raise (Failure "Cannot set options.")
 
   let enforce_hack coqtop =
@@ -471,10 +488,10 @@ struct
 
 end
 
-let goals coqtop =
-  let () = PrintOpt.enforce_hack coqtop in
-  eval_call coqtop default_logger Serialize.goals
+let goals coqtop log x =
+  let () = PrintOpt.enforce_hack coqtop in (* XXX *)
+  eval_call coqtop log (Serialize.goals x)
 
-let evars coqtop =
-  let () = PrintOpt.enforce_hack coqtop in
-  eval_call coqtop default_logger Serialize.evars
+let evars coqtop x =
+  let () = PrintOpt.enforce_hack coqtop in (* XXX *)
+  eval_call coqtop default_logger (Serialize.evars x)
