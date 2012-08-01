@@ -449,12 +449,12 @@ let is_oob_message = function
 
 let of_unit () = Element ("unit", [], [])
 
-let of_interp_rty  : interp_rty -> xml = of_pair of_state_id of_string
+let of_interp_rty  : interp_rty -> xml = of_state_id
 let of_backto_rty  : backto_rty -> xml = of_unit
-let of_goals_rty   : goals_rty -> xml  = of_pair (of_option of_goals) of_string
+let of_goals_rty   : goals_rty -> xml  = of_option of_goals
 let of_evars_rty   : evars_rty -> xml  = of_option (of_list of_evar)
 let of_hints_rty   : hints_rty -> xml  = of_hints
-let of_status_rty  : status_rty -> xml = of_pair of_status of_string
+let of_status_rty  : status_rty -> xml = of_status
 let of_get_options_rty : get_options_rty -> xml =
   of_list (of_pair (of_list of_string) of_option_state)
 let of_set_options_rty : set_options_rty -> xml = of_unit
@@ -608,17 +608,17 @@ let pr_pair f g (a,b) = f a ^ " " ^ g b
 
 let pr_full_value call value = match call with
   | Interp _ -> 
-      pr_value_gen (pr_pair pr_state_id pr_string)
+      pr_value_gen pr_state_id
         (Obj.magic value : interp_rty value)
   | Backto _ -> 
       pr_value_gen pr_unit (Obj.magic value : backto_rty value)
   | Goals _ -> 
-      pr_value_gen (pr_pair pr_goals pr_string)
+      pr_value_gen pr_goals
         (Obj.magic value : goals_rty value)
   | Evars _ -> pr_value_gen pr_evars (Obj.magic value : evars_rty value)
   | Hints _ -> pr_value value
   | Status _ -> 
-      pr_value_gen (pr_pair pr_status pr_string)
+      pr_value_gen pr_status
         (Obj.magic value : status_rty value)
   | GetOptions _ ->
       pr_value_gen pr_getoptions (Obj.magic value : get_options_rty value)

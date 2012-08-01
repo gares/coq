@@ -8,6 +8,8 @@
 
 (** Coq : Interaction with the Coq toplevel *)
 
+open Interface
+
 (** * Version and date *)
 
 val short_version : unit -> string
@@ -74,6 +76,9 @@ val grab : coqtop -> (handle -> unit) -> unit
     something to happen. *)
 val try_grab : coqtop -> (handle -> unit) -> (unit -> unit) -> unit
 
+(** To avoid calling grab from within the same function *)
+val already_grabbed : coqtop -> handle option
+
 (** Check if coqtop is computing. Does not take any lock. *)
 val is_computing : coqtop -> bool
 
@@ -90,16 +95,15 @@ val interrupter : (int -> unit) ref
 type logger = Interface.message_level -> string -> unit
 (** Except for interp, we use the default logger for any call. *)
 
-val interp :
-  handle -> logger -> ?raw:bool -> ?verbose:bool -> string -> string Interface.value
-val rewind : handle -> int -> int Interface.value
-val status : handle -> Interface.status Interface.value
-val goals : handle -> Interface.goals option Interface.value
-val evars : handle -> Interface.evar list option Interface.value
-val hints : handle -> (Interface.hint list * Interface.hint) option Interface.value
-val inloadpath : handle -> string -> bool Interface.value
-val mkcases : handle -> string -> string list list Interface.value
-val search : handle -> Interface.search_flags -> Interface.search_answer list Interface.value
+val interp : handle -> logger -> ?raw:bool -> ?verbose:bool -> string -> interp_rty value
+val backto : handle -> backto_sty -> backto_rty value
+val status : handle -> logger -> status_sty -> status_rty value
+val goals  : handle -> logger -> goals_sty  -> goals_rty value
+val evars  : handle -> evars_sty  -> evars_rty value
+val hints  : handle -> hints_sty  -> hints_rty value
+val inloadpath : handle -> inloadpath_sty -> inloadpath_rty value
+val mkcases : handle -> mkcases_sty -> mkcases_rty value
+val search : handle -> search_sty -> search_rty value
 
 (** A specialized version of [raw_interp] dedicated to
     set/unset options. *)

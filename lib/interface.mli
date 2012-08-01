@@ -129,12 +129,12 @@ type 'a value =
 
 (** * The structure that coqtop should implement *)
 
-type interp_rty      = Stategraph.state_id * string
+type interp_rty      = Stategraph.state_id
 type backto_rty      = unit
-type goals_rty       = goals option * string
+type goals_rty       = goals option
 type evars_rty       = evar list option
 type hints_rty       = (hint list * hint) option
-type status_rty      = status * string
+type status_rty      = status
 type get_options_rty = (option_name * option_state) list
 type set_options_rty = unit
 type inloadpath_rty  = bool

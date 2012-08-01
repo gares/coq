@@ -59,7 +59,7 @@ let get_completion (buffer : GText.buffer) coqtop w =
     let ans = ref accu in
     let flags = [Interface.Name_Pattern ("^" ^ w), true] in
     let query handle = match Coq.search handle flags with
-    | Interface.Good l ->
+    | Interface.Good (_,l) ->
       let fold accu elt =
         Proposals.add elt.Interface.search_answer_base_name accu
       in
@@ -138,7 +138,6 @@ object (self)
 
   method undo () =
     if Mutex.try_lock undo_lock then begin
-      Minilib.log "UNDO";
       let effective = self#process_action history in
       if effective then self#backward ();
       Mutex.unlock undo_lock;

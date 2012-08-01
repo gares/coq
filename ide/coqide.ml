@@ -9,14 +9,23 @@
 open Preferences
 open Gtk_parsing
 open Ideutils
+module TS = Tags.Script
 
-type flag = [ `COMMENT | `UNSAFE ]
+type status = Processed | Processing | Broken | Unsafe
+
+let status_tag = function
+  | Processed -> TS.processed
+  | Broken -> TS.broken
+  | Processing -> TS.processing
+  | Unsafe -> TS.unsafe
 
 type ide_info = {
   start : GText.mark;
   stop : GText.mark;
-  flags : flag list;
-}
+  id : Stategraph.state_id;
+  phrase : string;
+  mutable status : status;
+}  
 
 class type _analyzed_view =
 object
@@ -35,6 +44,7 @@ object
   method get_insert : GText.iter
   method get_start_of_input : GText.iter
   method go_to_insert : Coq.handle -> unit
+  method go_to_start_of_input : Coq.handle -> unit
   method go_to_next_occ_of_cur_word : unit
   method go_to_prev_occ_of_cur_word : unit
   method tactic_wizard : Coq.handle -> string list -> unit
@@ -45,10 +55,17 @@ object
   method erroneous_reset_initial : Coq.handle -> unit
   method requested_reset_initial : Coq.handle -> unit
   method set_message : string -> unit
+  method push_message : Interface.message_level -> string -> unit
   method raw_coq_query : Coq.handle -> string -> unit
   method show_goals : Coq.handle -> unit
   method backtrack_last_phrase : Coq.handle -> unit
   method help_for_keyword : unit -> unit
+  method mark_as : status -> Stategraph.state_id list -> unit
+  method join_document :  Coq.handle -> unit
+  method cur_state : Stategraph.state_id
+  method handle_failure :
+    Coq.handle -> Stategraph.state_id list -> Stategraph.state_id list ->
+      Stategraph.state_id -> (int * int) option -> string -> unit
 end
 
 
@@ -124,7 +141,7 @@ let session_notebook =
   Wg_Notebook.create build_session kill_session
     ~border_width:2 ~show_border:false ~scrollable:true ()
 
-let cb = GData.clipboard Gdk.Atom.primary
+let clipbrd = GData.clipboard Gdk.Atom.primary
 
 let update_notebook_pos () =
   let pos =
@@ -190,14 +207,29 @@ let break () =
 let do_if_not_computing term text f =
   let threaded_task () =
     let info () = Minilib.log ("Discarded query:" ^ text) in
-    try Coq.try_grab term.toplvl f info
+    try
+      Coq.try_grab term.toplvl f info
     with
     | e ->
       let msg = "Unknown error, please report:\n" ^ (Printexc.to_string e) in
       term.analyzed_view#set_message msg
   in
-  Minilib.log ("Launching thread " ^ text);
-  ignore (Thread.create threaded_task ())
+  match Coq.already_grabbed term.toplvl with
+  | Some handle -> Minilib.log "already grabbed by us!"; f handle
+  | None ->
+      Minilib.log ("Launching thread " ^ text);
+      ignore (Thread.create threaded_task ())
+
+(* TODO: move this code in coq.ml *)
+let coq_grab toplvl f =
+  match Coq.already_grabbed toplvl with
+  | Some handle -> Minilib.log "already grabbed by us!"; f handle
+  | None -> Minilib.log "grabbing"; Coq.grab toplvl f
+
+let coq_try_grab toplvl f g =
+  match Coq.already_grabbed toplvl with
+  | Some handle -> Minilib.log "already grabbed be us!"; f handle
+  | None -> Minilib.log "try grabbing"; Coq.try_grab toplvl f g
 
 let warning msg =
   GToolbox.message_box ~title:"Warning"
@@ -272,7 +304,7 @@ let setopts ct opts v =
   Coq.PrintOpt.set ct opts
 
 let get_current_word () =
-  match session_notebook#current_term,cb#text with
+  match session_notebook#current_term,clipbrd#text with
     | {script=script; analyzed_view=av;},None ->
       Minilib.log "None selected";
       let it = av#get_insert in
@@ -298,31 +330,6 @@ let with_file handler name ~f =
     try f ic; close_in ic with e -> close_in ic; raise e
   with Sys_error s -> handler s
 
-(** Cut a part of the buffer in sentences and tag them.
-    May raise [Coq_lex.Unterminated] when the zone ends with
-    an unterminated sentence. *)
-
-let split_slice_lax (buffer: GText.buffer) from upto =
-  buffer#remove_tag ~start:from ~stop:upto Tags.Script.comment_sentence;
-  buffer#remove_tag ~start:from ~stop:upto Tags.Script.sentence;
-  let slice = buffer#get_text ~start:from ~stop:upto () in
-  let rec split_substring str =
-    let off_conv = byte_offset_to_char_offset str in
-    let slice_len = String.length str in
-    let is_comment,end_off = Coq_lex.delimit_sentence str
-    in
-    let start = from#forward_chars (off_conv end_off) in
-    let stop = start#forward_char in
-    buffer#apply_tag ~start ~stop
-      (if is_comment then Tags.Script.comment_sentence else Tags.Script.sentence);
-    let next = end_off + 1 in
-    if next < slice_len then begin
-      ignore (from#nocopy#forward_chars (off_conv next));
-      split_substring (String.sub str next (slice_len - next))
-    end
-  in
-  split_substring slice
-
 (** Searching forward and backward a position fulfilling some condition *)
 
 let rec forward_search cond (iter:GText.iter) =
@@ -333,8 +340,52 @@ let rec backward_search cond (iter:GText.iter) =
   if iter#is_start || cond iter then iter
   else backward_search cond iter#backward_char
 
-let is_sentence_end s = s#has_tag Tags.Script.sentence || s#has_tag Tags.Script.comment_sentence
+let is_sentence_end s = s#has_tag TS.sentence_end(* || s#has_tag TS.comment*)
+let is_sentence s = s#has_tag TS.sentence
 let is_char s c = s#char = Char.code c
+let is_spc_dot c = Glib.Unichar.isspace c#char || is_char c '.'
+let is_between c start stop = c#compare start >= 0 && c#compare stop < 0
+let at_iter i = i#backward_char#char
+let neg p c = not(p c)
+
+(** Cut a part of the buffer in sentences and tag them.
+    May raise [Coq_lex.Unterminated] when the zone ends with
+    an unterminated sentence.
+    
+    The buffer is tagged as follows:
+
+    <comment>(* bla *)</comment>
+    <sentence>Lemma foo<sentence_end>.</sentence_end></sentence>    
+    <sentence><sentence_end>{</sentence_end></sentence>
+
+*)
+
+let split_slice_lax (buffer: GText.buffer) from upto =
+  buffer#remove_tag ~start:from ~stop:upto TS.comment;
+  buffer#remove_tag ~start:from ~stop:upto TS.sentence;
+  buffer#remove_tag ~start:from ~stop:upto TS.sentence_end;
+  let slice = buffer#get_text ~start:from ~stop:upto () in
+  let rec split_substring str start =
+    let off_conv = byte_offset_to_char_offset str in
+    let slice_len = String.length str in
+    let is_comment, start_off, end_off = Coq_lex.delimit_sentence str in
+    let start = start#forward_chars (off_conv start_off) in
+    let stop = start#forward_chars (off_conv (end_off - start_off)) in
+    if is_comment then begin
+      buffer#apply_tag TS.comment ~start ~stop;
+      let new_len = slice_len - end_off in
+      if new_len > 0 then split_substring (String.sub str end_off new_len) stop
+    end else begin
+      let stop, next =
+        if Glib.Unichar.isspace (at_iter stop)
+        then stop#backward_char, stop else stop, stop in
+      buffer#apply_tag TS.sentence ~start ~stop;
+      buffer#apply_tag TS.sentence_end ~start:stop#backward_char ~stop:stop;
+      let new_len = slice_len - end_off in
+      if new_len > 0 then split_substring (String.sub str end_off new_len) next
+    end
+  in
+  split_substring slice from
 
 (** Search backward the first character of a sentence, starting at [iter]
     and going at most up to [soi] (meant to be the end of the locked zone).
@@ -355,42 +406,32 @@ let grab_sentence_start (iter:GText.iter) soi =
 
 (** Search forward the first character immediately after a sentence end *)
 
-let rec grab_sentence_stop (start:GText.iter) =
-  (forward_search is_sentence_end start)#forward_char
+let grab_sentence_stop (start:GText.iter) =
+  let stop = forward_search is_sentence_end start in
+  let stop = stop#forward_char in
+  if Glib.Unichar.isspace stop#char && is_sentence_end stop
+  then stop#forward_char
+  else stop
 
 (** Search forward the first character immediately after a "." sentence end
     (and not just a "{" or "}" or comment end *)
 
-let rec grab_ending_dot (start:GText.iter) =
-  let is_ending_dot s = is_sentence_end s && s#char = Char.code '.' in
-  (forward_search is_ending_dot start)#forward_char
+let is_ending_dot s = is_sentence_end s && s#char = Char.code '.'
+
+let rec grab_ending_dot n (start:GText.iter) = if n = 0 then start else
+  grab_ending_dot (n-1) (forward_search is_ending_dot start)#forward_char
 
 (** Retag a zone that has been edited *)
 
 let tag_on_insert buffer =
-  try
-    (* the start of the non-locked zone *)
-    let soi = buffer#get_iter_at_mark (`NAME "start_of_input") in
-    (* the inserted zone is between [prev_insert] and [insert] *)
-    let insert = buffer#get_iter_at_mark `INSERT in
-    let prev_insert = buffer#get_iter_at_mark (`NAME "prev_insert") in
-    (* [prev_insert] is normally always before [insert] even when deleting.
-      Let's check this nonetheless *)
-    let prev_insert =
-      if insert#compare prev_insert < 0 then insert else prev_insert
-    in
-    let start = grab_sentence_start prev_insert soi in
-    (** The status of "{" "}" as sentence delimiters is too fragile.
-        We retag up to the next "." instead. *)
-    let stop = grab_ending_dot insert in
-    try split_slice_lax buffer start stop
-    with Coq_lex.Unterminated ->
-      try split_slice_lax buffer start buffer#end_iter
-      with Coq_lex.Unterminated -> ()
-  with Not_found ->
-    (* This is raised by [grab_sentence_start] *)
-    let err_pos = buffer#get_iter_at_mark (`NAME "start_of_input") in
-    buffer#apply_tag Tags.Script.error ~start:err_pos ~stop:err_pos#forward_char
+  Minilib.log "tag_on_insert";
+  (* the start of the non-locked zone, we retag from here *)
+  let start = buffer#get_iter_at_mark (`NAME "start_of_input") in
+  let stop = grab_ending_dot 5 (get_insert buffer) in
+  try split_slice_lax buffer start stop
+  with Coq_lex.Unterminated ->
+    try split_slice_lax buffer start buffer#end_iter
+    with Coq_lex.Unterminated -> ()
 
 let force_retag buffer =
   try split_slice_lax buffer buffer#start_iter buffer#end_iter
@@ -401,21 +442,21 @@ let toggle_proof_visibility (buffer:GText.buffer) (cursor:GText.iter) =
   (* move back twice if not into proof_decl,
    * once if into proof_decl and back_char into_proof_decl,
    * don't move if into proof_decl and back_char not into proof_decl *)
-  if not (cursor#has_tag Tags.Script.proof_decl) then
-    ignore (cursor#nocopy#backward_to_tag_toggle (Some Tags.Script.proof_decl));
-  if cursor#backward_char#has_tag Tags.Script.proof_decl then
-    ignore (cursor#nocopy#backward_to_tag_toggle (Some Tags.Script.proof_decl));
+  if not (cursor#has_tag TS.proof_decl) then
+    ignore (cursor#nocopy#backward_to_tag_toggle (Some TS.proof_decl));
+  if cursor#backward_char#has_tag TS.proof_decl then
+    ignore (cursor#nocopy#backward_to_tag_toggle (Some TS.proof_decl));
   let decl_start = cursor in
-  let prf_end = decl_start#forward_to_tag_toggle (Some Tags.Script.qed) in
+  let prf_end = decl_start#forward_to_tag_toggle (Some TS.qed) in
   let decl_end = grab_ending_dot decl_start in
   let prf_end = grab_ending_dot prf_end in
   let prf_end = prf_end#forward_char in
-  if decl_start#has_tag Tags.Script.folded then (
-    buffer#remove_tag ~start:decl_start ~stop:decl_end Tags.Script.folded;
-    buffer#remove_tag ~start:decl_end ~stop:prf_end Tags.Script.hidden)
+  if decl_start#has_tag TS.folded then (
+    buffer#remove_tag ~start:decl_start ~stop:decl_end TS.folded;
+    buffer#remove_tag ~start:decl_end ~stop:prf_end TS.hidden)
   else (
-    buffer#apply_tag ~start:decl_start ~stop:decl_end Tags.Script.folded;
-    buffer#apply_tag ~start:decl_end ~stop:prf_end Tags.Script.hidden)
+    buffer#apply_tag ~start:decl_start ~stop:decl_end TS.folded;
+    buffer#apply_tag ~start:decl_end ~stop:prf_end TS.hidden)
 *)
 
 (** The arguments that will be passed to coqtop. No quoting here, since
@@ -430,7 +471,7 @@ object(self)
   val input_buffer = _script#source_buffer
   val proof_view = _pv
   val message_view = _mv
-  val cmd_stack = Stack.create ()
+  val cmd_stack = Searchstack.create ()
   val mycoqtop = _ct
 
   val mutable filename = _fn
@@ -440,6 +481,18 @@ object(self)
   val mutable detached_views = []
 
   val hidden_proofs = Hashtbl.create 32
+
+  method mark_as newstatus ids =
+    let mark_newstatus ({ id; start; stop; status } as slot) =
+      if status = Processing && List.mem id ids then begin
+        let start = input_buffer#get_iter_at_mark start in
+        let stop  = input_buffer#get_iter_at_mark stop in
+        input_buffer#remove_tag (status_tag Processing) ~start ~stop;
+        input_buffer#apply_tag (status_tag newstatus) ~start ~stop;
+        slot.status <- newstatus
+      end
+    in
+    Searchstack.iter mark_newstatus cmd_stack
 
   method add_detached_view (w:GWindow.window) =
     detached_views <- w::detached_views
@@ -567,12 +620,21 @@ object(self)
     message_view#clear ();
     message_view#push Interface.Notice s
 
-  method private push_message level content =
+  method push_message level content =
     message_view#push level content
 
-  method get_start_of_input =  input_buffer#get_iter_at_mark (`NAME "start_of_input")
+  method get_start_of_input = 
+    input_buffer#get_iter_at_mark (`NAME "start_of_input")
+  
+  method private set_start_of_input where = 
+    input_buffer#move_mark ~where (`NAME "start_of_input")
 
   method get_insert = get_insert input_buffer
+  
+  method private move_caret_to where =
+    let cond s = s#has_tag TS.sentence in
+    let where = forward_search cond where in
+    input_buffer#place_cursor ~where
 
   method recenter_insert =
     (* BUG : to investigate further:
@@ -612,35 +674,53 @@ object(self)
         (b#place_cursor start;
          self#recenter_insert)
 
+  method handle_failure handle good_states bad_states s l msg =
+    sync self#mark_as Processed good_states;
+    sync self#display_error handle (`State s) true bad_states l msg
+
   method show_goals handle =
     Coq.PrintOpt.set_printing_width proof_view#width;
-    match Coq.goals handle with
-    | Interface.Fail (l, str) ->
-      self#set_message ("Error in coqtop:\n"^str)
-    | Interface.Good goals | Interface.Unsafe goals ->
-      begin match Coq.evars handle with
-      | Interface.Fail (l, str)->
-        self#set_message ("Error in coqtop:\n"^str)
-      | Interface.Good evs  | Interface.Unsafe evs ->
-        proof_view#set_goals goals;
-        proof_view#set_evars evs;
-        proof_view#refresh ()
+    match Coq.goals handle self#push_message () with
+    | Interface.Fail (good_states, bad_states, (s,l), msg) ->
+        self#handle_failure handle good_states bad_states s l msg
+    | Interface.Good (good_states, goals) ->
+        sync self#mark_as Processed good_states;
+        begin match Coq.evars handle () with
+        | Interface.Fail (good_states, bad_states, (s,l), msg) ->
+            self#handle_failure handle good_states bad_states s l msg
+        | Interface.Good (good_states, evs) ->
+            sync self#mark_as Processed good_states;
+            proof_view#set_goals goals;
+            proof_view#set_evars evs;
+            proof_view#refresh ()
       end
+
+  method join_document handle =
+    match Coq.status handle self#push_message true with
+    | Interface.Fail (good_states, bad_states, (s,l), msg) ->
+        self#handle_failure handle good_states bad_states s l msg
+    | Interface.Good (good_states, status) ->
+        sync self#mark_as Processed good_states
+
+  method cur_state =
+    try (Searchstack.top cmd_stack).id
+    with Stack.Empty -> Stategraph.initial_state_id
 
   (* This method is intended to perform stateless commands *)
   method raw_coq_query handle phrase =
-    let () = Minilib.log "raw_coq_query starting now" in
-    let display_error s =
-      if not (Glib.Utf8.validate s) then
-        flash_info "This error is so nasty that I can't even display it."
-      else self#insert_message s;
-    in
-    match Coq.interp handle self#push_message ~raw:true ~verbose:false phrase with
-    | Interface.Fail (_, err) -> sync display_error err
-    | Interface.Good msg | Interface.Unsafe msg -> sync self#insert_message msg
+    Minilib.log "raw_coq_query starting now";
+    match Coq.interp handle self#push_message ~raw:true ~verbose:false phrase
+    with
+    | Interface.Fail (good_states, bad_states, (s,l), msg) ->
+        self#handle_failure handle good_states bad_states s l msg
+    | Interface.Good (good_states, id) ->
+                    (* XXX we have to force and undo *)
+        sync self#mark_as Processed good_states
 
   method private find_phrase_starting_at (start:GText.iter) =
     try
+            Minilib.log(Printf.sprintf "%C %C"
+               (Char.chr start#char) (Char.chr self#get_start_of_input#char));
       let start = grab_sentence_start start self#get_start_of_input in
       let stop = grab_sentence_stop start in
       (* Is this phrase non-empty and complete ? *)
@@ -649,130 +729,98 @@ object(self)
       else None
     with Not_found -> None
 
-  (** [fill_command_queue until q] fills a command queue until the [until]
-      condition returns true; it is fed with the number of phrases read and the
-      iters enclosing the current sentence. *)
-  method private fill_command_queue until queue =
+  (** [fill_command_queue until] fills a command queue until the [until]
+      condition, fed with the number of phrases read and the
+      iters enclosing the current sentence, returns true. *)
+  method private fill_command_queue until =
     let rec loop len iter =
-      let opt_sentence = self#find_phrase_starting_at iter in
-      match opt_sentence with
-      | None -> raise Exit
+      if iter#is_end then [] else
+      match self#find_phrase_starting_at iter with
+      | None -> []
+      | Some (start, stop) when until len start stop -> []
       | Some (start, stop) ->
-        if until len start stop then raise Exit;
-        input_buffer#apply_tag Tags.Script.to_process ~start ~stop;
-        (* Check if this is a comment *)
-        let is_comment = stop#backward_char#has_tag Tags.Script.comment_sentence in
-        let flags = if is_comment then [`COMMENT] else [] in
-        let payload = {
-          start = `MARK (input_buffer#create_mark start);
-          stop = `MARK (input_buffer#create_mark stop);
-          flags = flags;
-        } in
-        Queue.push payload queue;
-        if not stop#is_end then loop (succ len) stop
+          Minilib.log ("Enqueueing " ^ start#get_slice ~stop);
+          sync input_buffer#apply_tag (status_tag Processing) ~start ~stop;
+          let sentence = {
+            start = `MARK (input_buffer#create_mark start);
+            stop = `MARK (input_buffer#create_mark stop);
+            status = Processing;
+            (* For now: state assigned after execution
+             * When fully async: here put an exec-id, prover sends back not
+             *   only state-id but (exec-id, state-id) pairs *)
+            id = Stategraph.dummy_state_id;
+            phrase = start#get_slice ~stop; } in
+          sentence :: loop (succ len) stop
     in
-    try loop 0 self#get_start_of_input with Exit -> ()
+      loop 0 self#get_start_of_input
 
   method private process_command_queue ?(verbose = false) queue handle =
-    let error = ref None in
-    let info = ref [] in
-    let current_flags = ref [] in
-    let push_info level message = info := (level, message) :: !info in
-    (* First, process until error *)
     Minilib.log "Begin command processing";
-    while not (Queue.is_empty queue) && !error = None do
-      let sentence = Queue.peek queue in
-      (* If the line is not a comment, we interpret it. *)
-      if not (List.mem `COMMENT sentence.flags) then begin
+    let rec cleanup = function
+    | [] -> ()
+    | sentence :: rest ->
         let start = input_buffer#get_iter_at_mark sentence.start in
         let stop = input_buffer#get_iter_at_mark sentence.stop in
-        let phrase = start#get_slice ~stop in
-        match Coq.interp handle push_info ~verbose phrase with
-        | Interface.Fail (loc, msg) ->
-          error := Some (phrase, loc, msg);
-        | Interface.Good msg ->
-          push_info Interface.Notice msg;
-          current_flags := []
-        | Interface.Unsafe msg ->
-          current_flags := [`UNSAFE]
-      end;
-      (* If there is no error, then we mark it done *)
-      if !error = None then begin
-        (* We reget the iters here because Gtk is unable to warranty that they
-           were not modified meanwhile. Not really necessary but who knows... *)
-        let start = input_buffer#get_iter_at_mark sentence.start in
-        let stop = input_buffer#get_iter_at_mark sentence.stop in
-        let sentence = { sentence with
-          flags = !current_flags @ sentence.flags
-        } in
-        let tag =
-          if List.mem `UNSAFE !current_flags then Tags.Script.unjustified
-          else Tags.Script.processed
-        in
-        input_buffer#move_mark ~where:stop (`NAME "start_of_input");
-        input_buffer#apply_tag tag ~start ~stop;
-        input_buffer#remove_tag Tags.Script.to_process ~start ~stop;
-        (* Discard the old stack info and put it were it belongs *)
-        ignore (Queue.pop queue);
-        Stack.push sentence cmd_stack;
-      end;
-    done;
-    (* Then clear all irrelevant commands *)
-    while not (Queue.is_empty queue) do
-      let sentence = Queue.pop queue in
-      let start = input_buffer#get_iter_at_mark sentence.start in
-      let stop = input_buffer#get_iter_at_mark sentence.stop in
-      input_buffer#remove_tag Tags.Script.to_process ~start ~stop;
-      input_buffer#delete_mark sentence.start;
-      input_buffer#delete_mark sentence.stop;
-    done;
-    (* Return the list of info messages and the error *)
-    (List.rev !info, !error)
-
-  method private show_error phrase loc msg = match loc with
-  | None ->
-    message_view#clear ();
-    message_view#push Interface.Error msg
-  | Some (start, stop) ->
-    let soi = self#get_start_of_input in
-    let start = soi#forward_chars (byte_offset_to_char_offset phrase start) in
-    let stop = soi#forward_chars (byte_offset_to_char_offset phrase stop) in
-    input_buffer#apply_tag Tags.Script.error ~start ~stop;
-    input_buffer#place_cursor ~where:start;
-    message_view#clear ();
-    message_view#push Interface.Error msg
+        input_buffer#remove_tag (status_tag Processing) ~start ~stop;
+        input_buffer#delete_mark sentence.start;
+        input_buffer#delete_mark sentence.stop;
+        cleanup rest in
+    let rec loop = function
+    | [] -> ()
+    | sentence :: rest as all ->
+        Minilib.log ("Processing " ^ sentence.phrase);
+        match Coq.interp handle self#push_message ~verbose sentence.phrase with
+        | Interface.Fail (good_states, bad_states, (s,l), msg) ->
+            Searchstack.push sentence cmd_stack;
+            self#handle_failure handle good_states bad_states s l msg;
+            cleanup all
+        | Interface.Good (good_states, id) ->
+            (* We reget the iters here because Gtk is unable to warranty that
+             * they were not modified meanwhile. Not really necessary but who
+             * knows. *)
+            let stop = input_buffer#get_iter_at_mark sentence.stop in
+            let sentence = { sentence with id = id; status = Processing } in
+            self#set_start_of_input stop;
+            Searchstack.push sentence cmd_stack;
+            sync self#mark_as Processed good_states;
+            loop rest in
+    loop queue
 
   (** Compute the phrases until [until] returns [true]. *)
   method private process_until until finish handle verbose =
-    let queue = Queue.create () in
+    Minilib.log "Advancing ...";
     (* Lock everything and fill the waiting queue *)
     push_info "Coq is computing";
     message_view#clear ();
     input_view#set_editable false;
-    self#fill_command_queue until queue;
+    let queue = self#fill_command_queue until in
     (* Now unlock and process asynchronously *)
     input_view#set_editable true;
-    let (msg, error) = self#process_command_queue ~verbose queue handle in
+    self#process_command_queue ~verbose queue handle;
     pop_info ();
     (* Display the goal and any error *)
     self#show_goals handle;
+(*
     match error with
     | None ->
-      if verbose then
+      if verbose then XXX this should be reused somehow
         List.iter (fun (lvl, msg) -> self#push_message lvl msg) msg;
       finish ();
       self#recenter_insert
     | Some (phrase, loc, msg) ->
       self#show_error phrase loc msg
+*)
 
   method process_next_phrase handle verbose =
-    let until len start stop = 1 <= len in
-    let finish () = input_buffer#place_cursor self#get_start_of_input in
+    let until len _ _ = 1 <= len in
+    let finish () = self#move_caret_to self#get_start_of_input in
     self#process_until until finish handle verbose
 
   method private process_until_iter handle iter =
     let until len start stop =
-      if current.stop_before then stop#compare iter > 0
+      if current.stop_before then
+        stop#compare iter > 0 && 
+       (stop#compare iter#forward_char <> 0 || not(is_sentence_end iter))
       else start#compare iter >= 0
     in
     let finish () = () in
@@ -784,130 +832,128 @@ object(self)
   (** Clear the command stack until [until] returns [true]. Returns the number
       of commands sent to Coqtop to backtrack. *)
   method private clear_command_stack until =
-    let rec loop len real_len =
-      if Stack.is_empty cmd_stack then real_len
-      else
-        let phrase = Stack.top cmd_stack in
-        let is_comment = List.mem `COMMENT phrase.flags in
-        let start = input_buffer#get_iter_at_mark phrase.start in
-        let stop = input_buffer#get_iter_at_mark phrase.stop in
-        if not (until len real_len start stop) then begin
-          (* [until] has not been reached, so we clear this command *)
-          ignore (Stack.pop cmd_stack);
-          input_buffer#remove_tag Tags.Script.processed ~start ~stop;
-          input_buffer#remove_tag Tags.Script.unjustified ~start ~stop;
-          input_buffer#move_mark ~where:start (`NAME "start_of_input");
-          input_buffer#delete_mark phrase.start;
-          input_buffer#delete_mark phrase.stop;
-          loop (succ len) (if is_comment then real_len else succ real_len)
-        end else
-          real_len
-    in
-    loop 0 0
+    let n = try Searchstack.find (fun n phrase ->
+      let start = input_buffer#get_iter_at_mark phrase.start in
+      let stop = input_buffer#get_iter_at_mark phrase.stop in
+      if until n start stop then `Stop n else `Cont (n+1)) 0 cmd_stack
+      with Not_found -> Searchstack.length cmd_stack in
+    for i=1 to n do
+      let phrase = Searchstack.pop cmd_stack in
+      let start = input_buffer#get_iter_at_mark phrase.start in
+      let stop = input_buffer#get_iter_at_mark phrase.stop in
+      List.iter (fun x -> input_buffer#remove_tag x ~start ~stop)
+        (List.map status_tag [Processing;Broken;Processed;Unsafe]);
+      input_buffer#delete_mark phrase.start;
+      input_buffer#delete_mark phrase.stop;
+    done;
+    if not (Searchstack.is_empty cmd_stack) then begin
+      self#set_start_of_input
+        (input_buffer#get_iter_at_mark (Searchstack.top cmd_stack).stop)
+    end
 
   (** Actually performs the undoing *)
-  method private undo_command_stack handle n =
-    match Coq.rewind handle n with
-    | Interface.Good n | Interface.Unsafe n ->
-      let until _ len _ _ = n <= len in
-      (* Coqtop requested [n] more ACTUAL backtrack *)
-      ignore (self#clear_command_stack until)
-    | Interface.Fail (l, str) ->
-      self#set_message
-        ("Error while backtracking: " ^ str ^
-          "\nCoqIDE and coqtop may be out of sync, you may want to use Restart.")
+  method private undo_command_stack handle id =
+    match Coq.backto handle id with
+    | Interface.Fail (good_states, bad_states, (s,l), msg) ->
+        self#handle_failure handle good_states bad_states s l msg
+    | Interface.Good (good_states, ()) ->
+        sync self#mark_as Processed good_states
 
   (** Wrapper around the raw undo command *)
   method private backtrack_until until finish handle =
+    Minilib.log "Backtracking ...";
     push_info "Coq is undoing";
-    message_view#clear ();
     (* Lock everything *)
     input_view#set_editable false;
-    let to_undo = self#clear_command_stack until in
-    self#undo_command_stack handle to_undo;
+    self#clear_command_stack until;
+    self#undo_command_stack handle self#cur_state;
     input_view#set_editable true;
     pop_info ();
+    Minilib.log "Backtracked.";
     finish ()
 
   method private backtrack_to_iter handle iter =
-    let until _ _ _ stop = iter#compare stop >= 0 in
+    let until _ start stop = iter#compare stop >= 0 in
     let finish () = () in
-    self#backtrack_until until finish handle;
-    (* We may have backtracked too much: let's replay *)
-    self#process_until_iter handle iter
-
-  method backtrack_last_phrase handle =
-    let until len _ _ _ = 1 <= len in
-    let finish () = input_buffer#place_cursor self#get_start_of_input in
     self#backtrack_until until finish handle;
     self#show_goals handle
 
-  method go_to_insert handle =
-    let point = self#get_insert in
+  method backtrack_last_phrase handle =
+    let until len _ _ = 1 <= len in
+    let finish () = self#move_caret_to self#get_start_of_input in
+    self#backtrack_until until finish handle;
+    message_view#clear ();
+    self#show_goals handle
+  
+  method private go_to handle point =
     if point#compare self#get_start_of_input >= 0
     then self#process_until_iter handle point
-    else self#backtrack_to_iter handle point
+    else (self#backtrack_to_iter handle point;
+         message_view#clear ())
 
-  method private send_to_coq handle phrase =
-    let display_error (loc, s) =
-        if not (Glib.Utf8.validate s) then
-          flash_info "This error is so nasty that I can't even display it."
-        else self#insert_message s
-      in
+  method go_to_insert handle = self#go_to handle self#get_insert
+  method go_to_start_of_input handle = self#go_to handle self#get_start_of_input
+
+  method private wizard_try_add_phrase handle coqphrase insertphrase =
+    let send_to_coq handle phrase =
       Minilib.log "Send_to_coq starting now";
       match Coq.interp handle default_logger ~verbose:false phrase with
-      | Interface.Fail (l, str) -> sync display_error (l, str); None
-      | Interface.Good msg -> sync self#insert_message msg; Some []
-      | Interface.Unsafe msg -> sync self#insert_message msg; Some [`UNSAFE]
-
-  method private insert_this_phrase_on_success handle coqphrase insertphrase =
-    let mark_processed flags =
+      | Interface.Fail (good_states, bad_states, (s,l), msg) ->
+          self#handle_failure handle good_states bad_states s l msg; None
+      | Interface.Good (good_states, id) ->
+                      (* XXX WE should force now id *)
+          self#mark_as Processed good_states;
+          Some id in
+    let mark_processed id =
       let stop = self#get_start_of_input in
       if stop#starts_line then
         input_buffer#insert ~iter:stop insertphrase
       else input_buffer#insert ~iter:stop ("\n"^insertphrase);
       let start = self#get_start_of_input in
-      input_buffer#move_mark ~where:stop (`NAME "start_of_input");
-      let tag =
-        if List.mem `UNSAFE flags then Tags.Script.unjustified
-        else Tags.Script.processed
-      in
-      input_buffer#apply_tag tag ~start ~stop;
+      self#set_start_of_input stop;
       if self#get_insert#compare stop <= 0 then
         input_buffer#place_cursor ~where:stop;
       let ide_payload = {
         start = `MARK (input_buffer#create_mark start);
         stop = `MARK (input_buffer#create_mark stop);
-        flags = [];
-      } in
-      Stack.push ide_payload cmd_stack;
+        id = id;
+        status = Processing; (* XXX see above *)
+        phrase = insertphrase; } in
+      Searchstack.push ide_payload cmd_stack;
       self#show_goals handle;
     in
-    match self#send_to_coq handle coqphrase with
-    | Some flags -> sync mark_processed flags; true
-    | None ->
-      sync (fun _ -> self#insert_message ("Unsuccessfully tried: "^coqphrase)) ();
-      false
+    match send_to_coq handle coqphrase with
+    | Some id -> sync mark_processed id; true
+    | None -> sync (fun _ ->
+        self#insert_message ("Unsuccessfully tried: "^coqphrase)) ();
+        false
+
+  method tactic_wizard handle l =
+    async message_view#clear ();
+    ignore
+      (List.exists (fun p ->
+         self#wizard_try_add_phrase handle ("progress "^p^".\n") (p^".\n")) l)
 
   method private generic_reset_initial handle =
     let start = input_buffer#start_iter in
     (* clear the stack *)
-    while not (Stack.is_empty cmd_stack) do
-      let phrase = Stack.pop cmd_stack in
+    while not (Searchstack.is_empty cmd_stack) do
+      let phrase = Searchstack.pop cmd_stack in
       input_buffer#delete_mark phrase.start;
       input_buffer#delete_mark phrase.stop
     done;
     (* reset the buffer *)
-    input_buffer#move_mark ~where:start (`NAME "start_of_input");
-    input_buffer#remove_tag Tags.Script.processed start input_buffer#end_iter;
-    input_buffer#remove_tag Tags.Script.unjustified start input_buffer#end_iter;
-    input_buffer#remove_tag Tags.Script.to_process start input_buffer#end_iter;
-    tag_on_insert (input_buffer :> GText.buffer);
+    self#set_start_of_input start;
+    input_buffer#remove_tag TS.processed start input_buffer#end_iter;
+    input_buffer#remove_tag TS.unsafe start input_buffer#end_iter;
+    input_buffer#remove_tag TS.broken start input_buffer#end_iter;
+    input_buffer#remove_tag TS.processing start input_buffer#end_iter;
+    force_retag (input_buffer :> GText.buffer);
     (* clear the views *)
     message_view#clear ();
     proof_view#clear ();
     (* apply the initial commands to coq *)
-    self#include_file_dir_in_path handle;
+    self#include_file_dir_in_path handle
 
   method erroneous_reset_initial handle =
     self#generic_reset_initial handle;
@@ -917,30 +963,72 @@ object(self)
   method requested_reset_initial handle =
     self#generic_reset_initial handle
 
-  method tactic_wizard handle l =
-    async message_view#clear ();
-    ignore
-      (List.exists
-         (fun p ->
-           self#insert_this_phrase_on_success handle
-             ("progress "^p^".\n") (p^".\n")) l)
+  method private display_error handle
+    phrase_or_state localize states loc msg
+  =
+    if not (Glib.Utf8.validate msg) then
+      flash_info "This error is so nasty that I can't even display it."
+    else begin
+      message_view#clear();
+      message_view#push Interface.Error msg;
+      if localize then begin
+        match loc with
+        | None -> ()
+        | Some (start,stop) ->
+          let phrase, place, i = match phrase_or_state with
+          | `Phrase phrase -> phrase, true, self#get_start_of_input
+          | `State state ->
+              let x =
+                try Searchstack.find (fun () s ->
+                      if s.id = state then `Stop s else `Cont ()) () cmd_stack
+                with Not_found -> assert false in
+              x.phrase, false, input_buffer#get_iter_at_mark x.start in
+          let convert_pos = byte_offset_to_char_offset phrase in
+          let start = convert_pos start in
+          let stop = convert_pos stop in
+          let starti = i#forward_chars start in
+          let stopi = i#forward_chars stop in
+          input_buffer#apply_tag TS.error ~start:starti ~stop:stopi;
+          if place then input_buffer#place_cursor ~where:starti
+      end
+    end;
+    (* mark broken states *)
+    let state = match phrase_or_state with `State x -> [x] | _ -> [] in
+    let bad_states = Stategraph.dummy_state_id :: state @ states in
+    sync self#mark_as Broken bad_states;
+    (* go back to a good state so that next cmd can be eventually interpreted *)
+    let i =
+      let not_broken acc { stop; status } = match acc, status with
+        | Some x, (Processed|Unsafe) -> `Stop (input_buffer#get_iter_at_mark x)
+        | None, (Processed|Unsafe) -> `Stop (input_buffer#get_iter_at_mark stop)
+        | _, Broken -> `Cont None
+        | _, Processing -> `Cont (Some stop) in
+      try Searchstack.find not_broken None cmd_stack
+      with Not_found -> input_buffer#start_iter in
+    self#backtrack_to_iter handle i
 
   method private include_file_dir_in_path handle =
     match filename with
-      | None -> ()
-      | Some f ->
-	let dir = Filename.dirname f in
-	match Coq.inloadpath handle dir with
-	  | Interface.Fail (_,str) ->
-	    self#set_message
-	      ("Could not determine lodpath, this might lead to problems:\n"^str)
-	  | Interface.Good true | Interface.Unsafe true -> ()
-	  | Interface.Good false | Interface.Unsafe false ->
-	    let cmd = Printf.sprintf "Add LoadPath \"%s\". "  dir in
-	    match Coq.interp handle default_logger cmd with
-	      | Interface.Fail (l,str) ->
-		self#set_message ("Couln't add loadpath:\n"^str)
-	      | Interface.Good _ | Interface.Unsafe _ -> ()
+    | None -> ()
+    | Some f ->
+        let dir = Filename.dirname f in
+        match Coq.inloadpath handle dir with
+        | Interface.Fail (good_states, bad_states, (s,l), msg) ->
+            self#handle_failure handle good_states bad_states s l 
+              ("Could not determine lodpath, "^
+               "this might lead to problems:\n"^ msg)
+        | Interface.Good (good_states, true) ->
+            sync self#mark_as Processed good_states
+        | Interface.Good (good_states, false) ->
+            sync self#mark_as Processed good_states;
+            let cmd = Printf.sprintf "Add LoadPath \"%s\". "  dir in
+            match Coq.interp handle default_logger cmd with
+            | Interface.Fail (good_states, bad_states, (s,l), msg) ->
+                self#handle_failure handle good_states bad_states s l
+      	          ("Couln't add loadpath:\n"^ msg)
+            | Interface.Good (good_states, id) ->
+                            (* XXX force again *)
+                sync self#mark_as Processed good_states
 
   method help_for_keyword () =
     browse_keyword (self#insert_message) (get_current_word ())
@@ -976,76 +1064,73 @@ object(self)
   untagged and then retagged. *)
 
   initializer
-    ignore (input_buffer#connect#insert_text
-              ~callback:(fun it s ->
-                if (it#compare self#get_start_of_input)<0
-                then GtkSignal.stop_emit ();
-                if String.length s > 1 then
-                  (Minilib.log "insert_text: Placing cursor";input_buffer#place_cursor ~where:it)));
-    ignore (input_buffer#connect#after#apply_tag
-              ~callback:(fun tag ~start ~stop ->
-                if (start#compare self#get_start_of_input)>=0
-                then
-                  begin
-                    input_buffer#remove_tag
-                      Tags.Script.processed
-                      ~start
-                      ~stop;
-                    input_buffer#remove_tag
-                      Tags.Script.unjustified
-                      ~start
-                      ~stop
-                  end
-              )
-    );
-    ignore (input_buffer#connect#begin_user_action
-	      ~callback:(fun () ->
-		           let here = input_buffer#get_iter_at_mark `INSERT in
-			   input_buffer#move_mark (`NAME "prev_insert") here
-	      )
-    );
-    ignore (input_buffer#connect#end_user_action
-              ~callback:(fun () ->
-                last_modification_time <- Unix.time ();
-                let r = input_view#visible_rect in
-                let stop =
-                  input_view#get_iter_at_location
-                    ~x:(Gdk.Rectangle.x r + Gdk.Rectangle.width r)
-                    ~y:(Gdk.Rectangle.y r + Gdk.Rectangle.height r)
-                in
-                input_buffer#remove_tag
-                  Tags.Script.error
-                  ~start:self#get_start_of_input
-                  ~stop;
-                tag_on_insert (input_buffer :> GText.buffer)
-              )
-    );
-    ignore (input_buffer#add_selection_clipboard cb);
-    ignore (input_buffer#connect#after#mark_set
-              ~callback:(fun it (m:Gtk.text_mark) ->
-                !set_location
-                  (Printf.sprintf
-                     "Line: %5d Char: %3d" (self#get_insert#line + 1)
-                     (self#get_insert#line_offset + 1));
-                match GtkText.Mark.get_name m  with
-                  | Some "insert" -> ()
-                  | Some s ->
-                    Minilib.log (s^" moved")
-                  | None -> () )
-    );
-    ignore (input_buffer#connect#insert_text
-              ~callback:(fun it s ->
-                Minilib.log "Should recenter ?";
-                if String.contains s '\n' then begin
-                  Minilib.log "Should recenter: yes";
-                  self#recenter_insert
-                end));
-    let callback () =
+    (* Drive prover to follow user edits *)
+    ignore(input_buffer#connect#begin_user_action ~callback:(fun () ->
+      let here = get_insert input_buffer in
+      input_buffer#move_mark (`NAME "prev_insert") here;
+      if here#compare self#get_start_of_input < 0 then begin
+        coq_grab mycoqtop (fun h -> self#backtrack_to_iter h here)
+      end
+    ));
+    ignore(input_buffer#connect#insert_text ~callback:(fun it s ->
+      if it#compare self#get_start_of_input < 0 then GtkSignal.stop_emit ();
+      if String.length s > 1 then input_buffer#place_cursor ~where:it;
+      if String.contains s '\n' then self#recenter_insert;
+      (* XXX we should only clear the tags of the pasted text *)
+    ));
+    ignore(input_buffer#connect#delete_range ~callback:(fun ~start ~stop ->
+      if stop#compare self#get_start_of_input <= 0 ||
+         start#compare self#get_start_of_input <= 0 then begin
+        let min = if start#compare stop > 0 then stop else start in
+        coq_grab mycoqtop (fun h -> self#backtrack_to_iter h min)
+      end     
+    ));
+    ignore(input_buffer#connect#end_user_action ~callback:(fun () ->
+      last_modification_time <- Unix.time ();
+      let r = input_view#visible_rect in
+      let stop =
+        input_view#get_iter_at_location
+          ~x:(Gdk.Rectangle.x r + Gdk.Rectangle.width r)
+          ~y:(Gdk.Rectangle.y r + Gdk.Rectangle.height r) in
+      input_buffer#remove_tag TS.error
+        ~start:self#get_start_of_input ~stop;
+      tag_on_insert (input_buffer :> GText.buffer);
+      if (get_insert input_buffer)#ends_tag (Some TS.sentence_end) then begin
+(* XXX
+              we should check is the user played here ot not, since copy pasting
+              from here leaves the insert point there
+
+        coq_grab mycoqtop self#go_to_insert
+*)
+      end
+    ));
+    (* Log / Cleanup *)
+    ignore(input_buffer#connect#after#apply_tag ~callback:(fun t ~start ~stop ->
+      if start#compare self#get_start_of_input >= 0 then begin
+        input_buffer#remove_tag TS.processed ~start ~stop;
+        input_buffer#remove_tag TS.broken ~start ~stop;
+      end
+    ));
+    ignore(input_buffer#add_selection_clipboard clipbrd);
+    ignore(input_buffer#connect#mark_deleted ~callback:(fun m ->
+      match GtkText.Mark.get_name m with
+      | None -> ()
+      | Some n -> Minilib.log ("Mark "^n^" deleted")
+    ));
+    ignore(input_buffer#connect#after#mark_set ~callback:(fun it m ->
+      !set_location
+        (Printf.sprintf
+           "Line: %5d Char: %3d" (self#get_insert#line + 1)
+           (self#get_insert#line_offset + 1));
+      match GtkText.Mark.get_name m  with
+      | None -> ()
+      | Some s -> Minilib.log ("Mark "^s^" moved")
+    ));
+    ignore(Glib.Timeout.add ~ms:300 ~callback:(fun () ->
       if Coq.is_computing mycoqtop then pbar#pulse ();
       not (Coq.is_closed mycoqtop);
-    in
-    ignore (Glib.Timeout.add ~ms:300 ~callback);
-    Coq.grab mycoqtop self#include_file_dir_in_path;
+    ));
+    coq_grab mycoqtop self#include_file_dir_in_path;
 end
 
 let last_make = ref "";;
@@ -1075,7 +1160,7 @@ let search_next_error () =
 let create_session file =
   let script_buffer =
     GSourceView2.source_buffer
-      ~tag_table:Tags.Script.table
+      ~tag_table:TS.table
       ~highlight_matching_brackets:true
       ?language:(lang_manager#language current.source_language)
       ?style_scheme:(style_manager#style_scheme current.source_style)
@@ -1103,9 +1188,13 @@ let create_session file =
       ~source_buffer:script_buffer
       ~show_line_numbers:true
       ~wrap_mode:`NONE () in
-  let command = new Wg_Command.command_window ct in
-  let finder = new Wg_Find.finder (script :> GText.view) in
   let legacy_av = new analyzed_view script proof message ct file in
+  let command =
+    new Wg_Command.command_window ct 
+      ~mark_as_broken:(legacy_av#mark_as Broken)
+      ~mark_as_processed:(legacy_av#mark_as Processed)
+      ~cur_state:(fun () -> legacy_av#cur_state) in
+  let finder = new Wg_Find.finder (script :> GText.view) in
   let () = reset := legacy_av#erroneous_reset_initial in
   let () = legacy_av#update_stats in
   let _ =
@@ -1119,7 +1208,7 @@ let create_session file =
       List.fold_left (fun accu opt -> (opt, dflt) :: accu) accu opts
     in
     let options = List.fold_left fold [] print_items in
-    Coq.grab ct (fun handle -> Coq.PrintOpt.set handle options) in
+    coq_grab ct (fun handle -> Coq.PrintOpt.set handle options) in
   script#misc#set_name "ScriptWindow";
   script#buffer#place_cursor ~where:script#buffer#start_iter;
   proof#misc#set_can_focus true;
@@ -1560,19 +1649,21 @@ let main files =
         let av = p.analyzed_view in
         ignore (f handle av);
         pop_info ();
-        let msg = match Coq.status handle with
-        | Interface.Fail (l, str) ->
-          "Oops, problem while fetching coq status."
-        | Interface.Good status | Interface.Unsafe status ->
-          let path = match status.Interface.status_path with
-          | [] | _ :: [] -> "" (* Drop the topmost level, usually "Top" *)
-          | _ :: l -> " in " ^ String.concat "." l
-          in
-          let name = match status.Interface.status_proofname with
-          | None -> ""
-          | Some n -> ", proving " ^ n
-          in
-          "Ready" ^ path ^ name
+        let msg = match Coq.status handle av#push_message false with
+        | Interface.Fail (good_states, bad_states, (s,l), msg) ->
+            av#handle_failure handle good_states bad_states s l msg;
+            msg
+        | Interface.Good (good_states, status) ->
+            av#mark_as Processed good_states;
+            let path = match status.Interface.status_path with
+            | [] | _ :: [] -> "" (* Drop the topmost level, usually "Top" *)
+            | _ :: l -> " in " ^ String.concat "." l
+            in
+            let name = match status.Interface.status_proofname with
+            | None -> ""
+            | Some n -> ", proving " ^ n
+            in
+            "Ready" ^ path ^ name
         in
         push_info msg
       )
@@ -1586,9 +1677,9 @@ let main files =
     let w = get_current_word () in
     let coqtop = session_notebook#current_term.toplvl in
     try
-      Coq.try_grab coqtop begin fun handle -> match Coq.mkcases handle w with
+      coq_try_grab coqtop begin fun handle -> match Coq.mkcases handle w with
         | Interface.Fail _ -> raise Not_found
-        | Interface.Good cases | Interface.Unsafe cases ->
+        | Interface.Good (_, cases) ->
           let print_branch c l =
 	    Format.fprintf c " | @[<hov 1>%a@]=> _@\n"
 	      (print_list (fun c s -> Format.fprintf c "%s@ " s)) l
@@ -1630,7 +1721,7 @@ let main files =
 	  flash_info (f ^ " successfully compiled")
 	else begin
 	  flash_info (f ^ " failed to compile");
-	  Coq.try_grab v.toplvl av#process_until_end_or_error ignore;
+	  coq_try_grab v.toplvl av#process_until_end_or_error ignore;
 	  av#insert_message "Compilation output:\n";
 	  av#insert_message res
 	end
@@ -1675,9 +1766,7 @@ let main files =
       *)
       let starti = input_buffer#get_iter_at_byte ~line:(line-1) start in
       let stopi = input_buffer#get_iter_at_byte ~line:(line-1) stop in
-      input_buffer#apply_tag Tags.Script.error
-	~start:starti
-	~stop:stopi;
+      input_buffer#apply_tag TS.error ~start:starti ~stop:stopi;
       input_buffer#place_cursor ~where:starti;
       av#set_message error_msg;
       v.script#misc#grab_focus ()
@@ -1742,7 +1831,7 @@ let main files =
     if not (word = "") then
       let query = command ^ " " ^ word ^ "." in
       term.message_view#clear ();
-      try Coq.try_grab term.toplvl (f query) ignore
+      try coq_try_grab term.toplvl (f query) ignore
       with e -> term.message_view#push Interface.Error (Printexc.to_string e)
   in
   let query_shortcut s accel =
@@ -1753,7 +1842,7 @@ let main files =
     let callback _ =
       let {script = view } = session_notebook#current_term in
       if view#buffer#insert_interactive text then begin
-	let iter = view#buffer#get_iter_at_mark `INSERT in
+	let iter = get_insert view#buffer in
 	ignore (iter#nocopy#backward_chars offset);
 	view#buffer#move_mark `INSERT ~where:iter;
 	ignore (iter#nocopy#backward_chars len);
@@ -1841,7 +1930,33 @@ let main files =
         ~callback:(fun _ -> session_notebook#previous_page ());
       GAction.add_action "Next tab" ~label:"_Next tab" ~accel:("<Alt>Right") ~stock:`GO_FORWARD
         ~callback:(fun _ -> session_notebook#next_page ());
-      GAction.add_toggle_action "Show Toolbar" ~label:"Show _Toolbar"
+      GAction.add_action "Zoom in" ~label:"_Zoom in" ~accel:("<Control>plus")
+        ~stock:`ZOOM_IN ~callback:(fun _ ->
+          Pango.Font.set_size current.text_font
+            (Pango.Font.get_size current.text_font + Pango.scale);
+          save_pref ();
+          !refresh_editor_hook ());
+      GAction.add_action "Zoom out" ~label:"_Zoom out" ~accel:("<Control>minus")
+        ~stock:`ZOOM_OUT ~callback:(fun _ ->
+          Pango.Font.set_size current.text_font
+            (Pango.Font.get_size current.text_font - Pango.scale);
+          save_pref ();
+          !refresh_editor_hook ());
+      GAction.add_action "Zoom fit" ~label:"_Zoom fit" ~accel:("<Control>0")
+        ~stock:`ZOOM_FIT ~callback:(fun _ ->
+          let script = session_notebook#current_term.script in
+          let space = script#misc#allocation.Gtk.width in
+          let cols = script#right_margin_position in
+          let pango_ctx = script#misc#pango_context in
+          let layout = pango_ctx#create_layout in
+          let fsize = Pango.Font.get_size current.text_font in
+          Pango.Layout.set_text layout (String.make cols 'X');
+          let tlen = fst (Pango.Layout.get_pixel_size layout) in
+          Pango.Font.set_size current.text_font
+            (fsize * space / tlen / Pango.scale * Pango.scale);
+          save_pref ();
+          !refresh_editor_hook ());
+     GAction.add_toggle_action "Show Toolbar" ~label:"Show _Toolbar"
         ~active:(current.show_toolbar) ~callback:
         (fun _ -> current.show_toolbar <- not current.show_toolbar;
            !refresh_toolbar_hook ());
@@ -1892,6 +2007,10 @@ let main files =
       GAction.add_action "Next" ~label:"_Next" ~stock:`GO_FORWARD
 	~callback:(fun _ -> do_or_activate (fun _ a -> a#go_to_next_occ_of_cur_word) ())
 	~tooltip:"Next occurence" ~accel:(current.modifier_for_navigation^"greater");
+      GAction.add_action "Force" ~label:"_Force" ~stock:`EXECUTE
+	~callback:(fun _ -> do_or_activate (fun handle a -> a#join_document handle) ())
+	~tooltip:"Force the processing of the whole document" 
+        ~accel:(current.modifier_for_navigation^"f");
     ];
     GAction.add_actions tactics_actions [
       GAction.add_action "Try Tactics" ~label:"_Try Tactics";
@@ -2020,6 +2139,94 @@ let main files =
 
     ignore (w#event#connect#delete ~callback:(fun _ -> quit_f (); true));
 
+  (* {{{ low level key handling for the Emacs/PG mode *)
+  let make_emacs_mode name enter_sym bindings =
+    let bound k = List.mem_assoc k bindings in
+    let is_set, set, unset, mask = match enter_sym with
+      | None -> (fun () -> true), (fun _ -> false), (fun () -> ()), bound
+      | Some k -> let status = ref false in
+          let is_set () = !status in
+          let set ~dry_run k' =
+            if not (is_set ()) && k = k' then begin
+              if dry_run then true else begin
+               flash_info ("Waiting " ^name^" command: " ^
+                 String.concat " " (List.map (fun (_,(d,_)) ->"^"^d) bindings));
+               status := true; true
+              end
+            end else false in
+          let unset () = status := false in
+          let mask k' = set ~dry_run:true k' || (is_set () && bound k') in
+          is_set, set ~dry_run:false, unset, mask in
+    let run k = if not (is_set ()) then false else try 
+       let action = match snd (List.assoc k bindings) with
+        | `Callback f -> f
+        | `Edit f -> (fun () ->
+            let b = session_notebook#current_term.script#source_buffer in
+            let i = b#get_iter_at_mark `INSERT in
+            f b i)
+        | `Motion f -> (fun () ->
+            let b = session_notebook#current_term.script#source_buffer in
+            let i = b#get_iter_at_mark `INSERT in
+            b#place_cursor ~where:(f i))
+        | `Action(group,name) -> (group#get_action name)#activate in
+        action ();
+        unset ();
+        true
+      with Not_found -> false in
+    run, set, unset, mask in
+  let compile_emacs_modes l =
+    List.fold_left (fun (r,s,u,m) (run, set, unset, mask) ->
+      (fun k -> r k || run k), (fun k -> s k or set k),
+      (fun () -> u (); unset ()), (fun k -> m k || mask k))
+    ((fun _ -> false),(fun _ -> false),(fun () -> ()),(fun _ -> false)) l in
+  let pg_mode = make_emacs_mode "PG" (Some GdkKeysyms._c) [
+    GdkKeysyms._Return, ("RET", `Action(navigation_actions, "Go to"));
+    GdkKeysyms._n, ("n", `Action(navigation_actions, "Forward"));
+    GdkKeysyms._u, ("u", `Action(navigation_actions, "Backward"));
+    GdkKeysyms._b, ("b", `Action(navigation_actions, "End"));
+    GdkKeysyms._r, ("r", `Action(navigation_actions, "Start"));
+    GdkKeysyms._c, ("c", `Action(navigation_actions, "Interrupt"));
+    ] in
+  let std_mode = make_emacs_mode "Emacs" None [
+    GdkKeysyms._underscore, ("_", `Action(edit_actions, "Undo"));
+    GdkKeysyms._g, ("g", `Callback(fun () ->
+      session_notebook#current_term.finder#hide ()));
+    GdkKeysyms._s, ("s", `Callback(fun () ->
+      if session_notebook#current_term.finder#coerce#misc#visible then
+        (edit_actions#get_action "Find Next")#activate ()
+      else (edit_actions#get_action "Find")#activate ()));
+    GdkKeysyms._e, ("e", `Motion(fun i -> i#forward_to_line_end));
+    GdkKeysyms._a, ("a", `Motion(fun i -> i#backward_sentence_start));
+    GdkKeysyms._n, ("n", `Motion(fun i ->
+      i#forward_line#set_line_offset i#line_offset));
+    GdkKeysyms._p, ("p", `Motion(fun i ->
+      i#backward_line#set_line_offset i#line_offset));
+    GdkKeysyms._k, ("k", `Edit(fun b i ->
+      b#delete ~start:i ~stop:i#forward_to_line_end));
+    ] in
+  let std_xmode = make_emacs_mode "Emacs" (Some GdkKeysyms._x) [
+    GdkKeysyms._s, ("s", `Action(file_actions, "Save"));
+    GdkKeysyms._c, ("c", `Action(file_actions, "Quit"));
+    ] in
+  let emacs_run, emacs_set, emacs_unset, emacs_mask = compile_emacs_modes
+    [std_xmode; pg_mode; std_mode] in
+  let is_ctrl t =
+    GdkEvent.Key.state t = [`CONTROL] || 
+    GdkEvent.Key.state t = [`CONTROL; `SHIFT] ||
+    GdkEvent.Key.state t = [`SHIFT; `CONTROL] in
+  ignore(w#event#connect#key_release ~callback:(fun t ->
+          current.emacs_keyb && is_ctrl t &&
+          emacs_mask (GdkEvent.Key.keyval t)
+  ));
+  ignore(w#event#connect#key_press ~callback:(fun t ->
+    if current.emacs_keyb && is_ctrl t then
+      let keyval = GdkEvent.Key.keyval t in
+      if emacs_run keyval then (emacs_unset (); true)
+      else emacs_set keyval
+    else false
+  ));
+  (* }}} *)
+
   (* Reset on tab switch *)
   ignore (session_notebook#connect#switch_page
     (fun _ -> if current.reset_on_tab_switch then force_reset_initial ()));
@@ -2085,7 +2292,7 @@ let main files =
         p.script#misc#modify_base [`NORMAL, `COLOR clr];
         p.proof_view#misc#modify_base [`NORMAL, `COLOR clr];
         p.message_view#misc#modify_base [`NORMAL, `COLOR clr];
-        p.command#refresh_color ()
+        p.command#refresh_color ();
 
       in
       List.iter iter_page session_notebook#pages;
@@ -2134,6 +2341,7 @@ let main files =
       "Pierre Corbineau";
       "Julien Narboux";
       "Hugo Herbelin";
+      "Enrico Tassi";
     ] in
     dialog#set_name "CoqIDE";
     dialog#set_comments "The Coq Integrated Development Environment";
@@ -2143,8 +2351,9 @@ let main files =
     dialog#set_authors authors;
     dialog#show ()
   in
-  (* Remove default pango menu for textviews *)
   w#show ();
+
+  (* Remove default pango menu for textviews *)
   ignore ((help_actions#get_action "About Coq")#connect#activate about);
 
 (* Begin Color configuration *)

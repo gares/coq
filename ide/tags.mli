@@ -6,16 +6,25 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
+val default_bg_color         : string
+val default_processed_color  : string
+val default_processing_color : string
+
 module Script :
 sig
   val table : GText.tag_table
-  val comment_sentence : GText.tag
-  val error : GText.tag
-  val to_process : GText.tag
-  val processed : GText.tag
-  val unjustified : GText.tag
-  val found : GText.tag
+
+  val comment : GText.tag
   val sentence : GText.tag
+  val sentence_end : GText.tag
+
+  val error : GText.tag
+  val broken : GText.tag
+  val processing : GText.tag
+  val processed : GText.tag
+  val unsafe : GText.tag
+
+  val found : GText.tag
 end
 
 module Proof :
