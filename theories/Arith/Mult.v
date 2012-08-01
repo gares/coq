@@ -247,7 +247,7 @@ Qed.
 
 (** [TailSimpl] transforms any [tail_plus] and [tail_mult] into [plus]
     and [mult] and simplify *)
-
+Join.
 Ltac tail_simpl :=
   repeat rewrite <- plus_tail_plus; repeat rewrite <- mult_tail_mult;
     simpl.

@@ -359,9 +359,9 @@ Module Type EqdepElimination.
       x = eq_rect p Q x p h.
 
 End EqdepElimination.
-
+Join.
 Module EqdepTheory (M:EqdepElimination).
-
+Join.
   Section Axioms.
 
     Variable U:Type.

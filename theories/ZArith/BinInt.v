@@ -1138,7 +1138,7 @@ Qed.
 
 (** * Proofs of morphisms, obvious since eq is Leibniz *)
 
-Local Obligation Tactic := simpl_relation.
+Obligation Tactic := simpl_relation.
 Program Definition succ_wd : Proper (eq==>eq) succ := _.
 Program Definition pred_wd : Proper (eq==>eq) pred := _.
 Program Definition opp_wd : Proper (eq==>eq) opp := _.

@@ -17,6 +17,7 @@ Local Open Scope int31_scope.
 
 Local Open Scope list_scope.
 
+Join.
 Ltac isInt31cst_lst l :=
  match l with
  | nil => constr:true
@@ -28,6 +29,7 @@ Ltac isInt31cst_lst l :=
  | _ => constr:false
  end.
 
+Join.
 Ltac isInt31cst t :=
  match t with
  | I31 ?i0 ?i1 ?i2 ?i3 ?i4 ?i5 ?i6 ?i7 ?i8 ?i9 ?i10
@@ -45,6 +47,7 @@ Ltac isInt31cst t :=
  | _ => constr:false
  end.
 
+Join.
 Ltac Int31cst t :=
  match isInt31cst t with
  | true => constr:t
@@ -89,14 +92,14 @@ Qed.
 
 Lemma eqb31_correct : forall x y, eqb31 x y = true -> x=y.
 Proof. now apply eqb31_eq. Qed.
-
+Join.
 Add Ring Int31Ring : Int31Ring
  (decidable eqb31_correct,
   constants [Int31cst]).
-
+(*
 Section TestRing.
 Let test : forall x y, 1 + x*y + x*x + 1 = 1*1 + 1 + y*x + 1*x*x.
 intros. ring.
 Qed.
 End TestRing.
-
+*)

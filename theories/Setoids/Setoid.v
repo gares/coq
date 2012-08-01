@@ -29,7 +29,7 @@ Defined.
 
 (** Some tactics for manipulating Setoid Theory not officially
     declared as Setoid. *)
-
+Join.
 Ltac trans_st x :=
   idtac "trans_st on Setoid_Theory is OBSOLETE";
   idtac "use transitivity on Equivalence instead";

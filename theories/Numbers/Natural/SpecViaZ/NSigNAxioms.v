@@ -24,7 +24,7 @@ Ltac ncongruence := unfold eq, to_N; repeat red; intros; nsimpl; congruence.
 Ltac zify := unfold eq, lt, le, to_N in *; nsimpl.
 Ltac omega_pos n := generalize (spec_pos n); omega with *.
 
-Local Obligation Tactic := ncongruence.
+Obligation Tactic := ncongruence.
 
 Instance eq_equiv : Equivalence eq.
 Proof. unfold eq. firstorder. Qed.

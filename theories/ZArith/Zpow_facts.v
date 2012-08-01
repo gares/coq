@@ -88,7 +88,7 @@ Proof.
     rewrite Pos2Z.inj_xI, Nat2Z.inj_succ, Z.pow_succ_r; omega.
   - specialize IHn with p.
     rewrite Pos2Z.inj_xO, Nat2Z.inj_succ, Z.pow_succ_r; omega.
-  - split; auto with zarith.
+  - split; auto with arith.
     intros _. apply Z.pow_gt_1. easy.
     now rewrite Nat2Z.inj_succ, Z.lt_succ_r.
 Qed.

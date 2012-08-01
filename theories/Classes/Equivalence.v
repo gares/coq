@@ -24,7 +24,7 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 
 Generalizable Variables A R eqA B S eqB.
-Local Obligation Tactic := simpl_relation.
+Obligation Tactic := simpl_relation.
 
 Local Open Scope signature_scope.
 

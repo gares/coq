@@ -235,6 +235,8 @@ Tactic Notation "destruct_call" constr(f) "as" simple_intropattern(l) "in" hyp(i
 
 Definition fix_proto {A : Type} (a : A) := a.
 
+Join.
+
 Ltac destruct_rec_calls :=
   match goal with
     | [ H : fix_proto _ |- _ ] => destruct_calls H ; clear H

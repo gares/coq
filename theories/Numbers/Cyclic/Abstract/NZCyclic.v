@@ -59,7 +59,7 @@ Proof.
 unfold eq. firstorder.
 Qed.
 
-Local Obligation Tactic := zcongruence.
+Obligation Tactic := zcongruence.
 
 Program Instance succ_wd : Proper (eq ==> eq) succ.
 Program Instance pred_wd : Proper (eq ==> eq) pred.

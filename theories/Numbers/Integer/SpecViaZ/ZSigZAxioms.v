@@ -28,7 +28,7 @@ Ltac zify := unfold eq, lt, le in *; zsimpl.
 Instance eq_equiv : Equivalence eq.
 Proof. unfold eq. firstorder. Qed.
 
-Local Obligation Tactic := zcongruence.
+Obligation Tactic := zcongruence.
 
 Program Instance succ_wd : Proper (eq ==> eq) succ.
 Program Instance pred_wd : Proper (eq ==> eq) pred.
