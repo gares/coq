@@ -205,7 +205,7 @@ kernel/copcodes.ml: kernel/byterun/coq_instruct.h
 
 .PHONY: coqbinaries coq coqlib coqlight states
 
-coqbinaries:: ${COQBINARIES} ${CSDPCERT} ${FAKEIDE}
+coqbinaries:: ${COQBINARIES} ${CSDPCERT} ${FAKEIDE} ${PIDE}
 
 coq: coqlib tools coqbinaries
 
@@ -534,9 +534,16 @@ $(COQWC): tools/coqwc$(BESTOBJ)
 	$(SHOW)'OCAMLBEST -o $@'
 	$(HIDE)$(call bestocaml,,)
 
+
 $(COQDOC): $(patsubst %.cma,%$(BESTLIB),$(COQDOCCMO:.cmo=$(BESTOBJ)))
 	$(SHOW)'OCAMLBEST -o $@'
 	$(HIDE)$(call bestocaml,,str unix)
+
+$(PIDE):  $(COQMKTOP) $(LINKCMX) $(LIBCOQRUN) tools/jedit/pide.cmx
+	$(SHOW)'COQMKTOP -o $@'	
+	$(HIDE)$(COQMKTOP) -boot -opt $(OPTFLAGS) -no-start \
+		tools/jedit/pide.cmx -o $@
+	$(STRIP) $@
 
 # fake_ide : for debugging or test-suite purpose, a fake ide simulating
 # a connection to coqtop -ideslave

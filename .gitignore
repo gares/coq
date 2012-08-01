@@ -56,6 +56,8 @@ test-suite/lia.cache
 test-suite/trace
 test-suite/misc/universes/all_stdlib.v
 test-suite/misc/universes/universes.txt
+tools/jedit/classes/
+*.jar
 
 # documentation
 

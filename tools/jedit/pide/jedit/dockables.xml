@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!DOCTYPE DOCKABLES SYSTEM "dockables.dtd">
+
+<DOCKABLES>
+	<DOCKABLE NAME="pide-session" MOVABLE="TRUE">
+		new pide.jedit.Session_Dockable(view, position);
+	</DOCKABLE>
+	<DOCKABLE NAME="pide-output" MOVABLE="TRUE">
+		new pide.jedit.Output_Dockable(view, position);
+	</DOCKABLE>
+	<DOCKABLE NAME="pide-raw-output" MOVABLE="TRUE">
+		new pide.jedit.Raw_Output_Dockable(view, position);
+	</DOCKABLE>
+	<DOCKABLE NAME="pide-protocol" MOVABLE="TRUE">
+		new pide.jedit.Protocol_Dockable(view, position);
+	</DOCKABLE>
+</DOCKABLES>

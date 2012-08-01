@@ -92,9 +92,10 @@ COQMAKEFILE:=bin/coq_makefile$(EXE)
 GALLINA:=bin/gallina$(EXE)
 COQTEX:=bin/coq-tex$(EXE)
 COQWC:=bin/coqwc$(EXE)
+PIDE:=bin/pide$(EXE)
 COQDOC:=bin/coqdoc$(EXE)
 
-TOOLS:=$(COQDEP) $(COQMAKEFILE) $(GALLINA) $(COQTEX) $(COQWC) $(COQDOC)
+TOOLS:=$(COQDEP) $(COQMAKEFILE) $(GALLINA) $(COQTEX) $(COQWC) $(COQDOC) $(PIDE)
 
 ###########################################################################
 # Documentation
