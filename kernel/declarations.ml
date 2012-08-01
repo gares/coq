@@ -58,6 +58,8 @@ let subst_constr_subst = subst_substituted
 
 type lazy_constr = constr_substituted Lazy.t * substitution list
 
+let join_lazy_constr (c, _) = ignore(Lazy.force c)
+
 let force_lazy_constr (c,l) =
   List.fold_right subst_constr_subst l (Lazy.force c)
 
@@ -82,20 +84,29 @@ type inline = int option
 type constant_def =
   | Undef of inline
   | Def of constr_substituted
-  | OpaqueDef of lazy_constr
+  | OpaqueDef of lazy_constr Future.computation
   | OpaqueDefIdx of int (* used for marshalling only *)
 
+type constant_constraints = constraints Future.computation
+
 type constant_body = {
-    const_hyps : section_context; (* New: younger hyp at top *)
+    const_hyps : section_context; (** New: younger hyp at top *)
     const_body : constant_def;
     const_type : constant_type;
     const_body_code : Cemitcodes.to_patch_substituted;
-    const_constraints : constraints }
+    const_constraints : constant_constraints }
+
+type side_effect = private NewConstant of constant * constant_body
+type side_effects = side_effect list
+
+let string_of_side_effect = function
+  | NewConstant (c,_) -> string_of_con c
+let no_side_effects = ([] : side_effects)
 
 let body_of_constant cb = match cb.const_body with
   | Undef _ -> None
   | Def c -> Some c
-  | OpaqueDef lc -> Some (force_lazy_constr lc)
+  | OpaqueDef lc -> Some (force_lazy_constr (Future.force lc))
   | OpaqueDefIdx _ -> assert false
 
 let constant_has_body cb = match cb.const_body with
@@ -107,6 +118,12 @@ let is_opaque cb = match cb.const_body with
   | OpaqueDef _ -> true
   | Undef _ | Def _ -> false
   | OpaqueDefIdx _ -> assert false
+
+let join_constant_body cb =
+  ignore(Future.join cb.const_constraints);
+  match cb.const_body with
+  | OpaqueDef d -> join_lazy_constr (Future.join d)
+  | _ -> ()
 
 (* Substitutions of [constant_body] *)
 
@@ -129,7 +146,8 @@ let subst_const_type sub arity =
 let subst_const_def sub = function
   | Undef inl -> Undef inl
   | Def c -> Def (subst_constr_subst sub c)
-  | OpaqueDef lc -> OpaqueDef (subst_lazy_constr sub lc)
+  | OpaqueDef lc -> 
+      OpaqueDef (Future.chain ~pure:true lc (subst_lazy_constr sub))
   | OpaqueDefIdx _ -> assert false
 
 let subst_const_body sub cb = {
@@ -161,14 +179,14 @@ let hcons_const_type = function
     PolymorphicArity (hcons_rel_context ctx, hcons_polyarity s)
 
 let hcons_const_def = function
-  | Undef inl -> Undef inl
+  | Undef _ as x -> x
   | Def l_constr ->
     let constr = force l_constr in
     Def (from_val (hcons_constr constr))
   | OpaqueDef lc ->
-    if lazy_constr_is_val lc then
-      let constr = force_opaque lc in
-      OpaqueDef (opaque_from_val (hcons_constr constr))
+    if Future.is_val lc && lazy_constr_is_val (Future.force lc) then
+      let constr = force_opaque (Future.force lc) in
+      OpaqueDef (Future.from_val (opaque_from_val (hcons_constr constr)))
     else OpaqueDef lc
   | OpaqueDefIdx _ -> assert false
 
@@ -176,7 +194,10 @@ let hcons_const_body cb =
   { cb with
     const_body = hcons_const_def cb.const_body;
     const_type = hcons_const_type cb.const_type;
-    const_constraints = hcons_constraints cb.const_constraints }
+    const_constraints = 
+      if Future.is_val cb.const_constraints then
+        Future.from_val (hcons_constraints (Future.force cb.const_constraints))
+      else cb.const_constraints }
 
 
 (*s Inductive types (internal representation with redundant
@@ -414,3 +435,32 @@ and module_type_body =
       typ_expr_alg : struct_expr_body option ;
       typ_constraints : constraints;
       typ_delta :delta_resolver}
+
+let rec join_module_body mb =
+  Option.iter join_struct_expr_body mb.mod_expr;
+  Option.iter join_struct_expr_body mb.mod_type_alg;
+  join_struct_expr_body mb.mod_type
+and join_structure_body struc =
+  let join_body (l,body) = match body with
+    | SFBconst sb -> join_constant_body sb
+    | SFBmind _ -> ()
+    | SFBmodule m -> join_module_body m
+    | SFBmodtype m -> 
+         join_struct_expr_body m.typ_expr;
+         Option.iter join_struct_expr_body m.typ_expr_alg in
+  List.iter join_body struc;
+and join_struct_expr_body = function
+  | SEBfunctor (_,t,e) ->
+      join_struct_expr_body t.typ_expr;
+      Option.iter join_struct_expr_body t.typ_expr_alg;
+      join_struct_expr_body e
+  | SEBident mp -> ()
+  | SEBstruct s -> join_structure_body s
+  | SEBapply (mexpr,marg,u) ->
+       join_struct_expr_body mexpr;
+       join_struct_expr_body marg
+  | SEBwith (seb,wdcl) -> 
+       join_struct_expr_body seb;
+       match wdcl with
+       | With_module_body _ -> ()
+       | With_definition_body (_, sb) -> join_constant_body sb

@@ -224,7 +224,8 @@ let build_id_coercion idf_opt source =
   in
   let constr_entry = (* Cast is necessary to express [val_f] is identity *)
     DefinitionEntry
-      { const_entry_body = mkCast (val_f, DEFAULTcast, typ_f);
+      { const_entry_body = Future.from_val 
+          (mkCast (val_f, DEFAULTcast, typ_f),Declarations.no_side_effects);
         const_entry_secctx = None;
 	const_entry_type = Some typ_f;
         const_entry_opaque = false } in

@@ -45,6 +45,7 @@ val subst_lazy_constr : substitution -> lazy_constr -> lazy_constr
 val force_lazy_constr : lazy_constr -> constr_substituted
 val make_lazy_constr : constr_substituted Lazy.t -> lazy_constr
 val lazy_constr_is_val : lazy_constr -> bool
+val join_lazy_constr : lazy_constr -> unit
 
 val force_opaque : lazy_constr -> constr
 val opaque_from_val : constr -> lazy_constr
@@ -60,15 +61,25 @@ type inline = int option
 type constant_def =
   | Undef of inline
   | Def of constr_substituted
-  | OpaqueDef of lazy_constr
+  | OpaqueDef of lazy_constr Future.computation
   | OpaqueDefIdx of int (* used for marshalling only *)
+
+type constant_constraints = constraints Future.computation
 
 type constant_body = {
     const_hyps : section_context; (** New: younger hyp at top *)
     const_body : constant_def;
     const_type : constant_type;
     const_body_code : to_patch_substituted;
-    const_constraints : constraints }
+    const_constraints : constant_constraints }
+
+type side_effect = private NewConstant of constant * constant_body
+type side_effects = side_effect list
+
+val string_of_side_effect : side_effect -> string
+val no_side_effects : side_effects
+
+val join_constant_body : constant_body -> unit
 
 val subst_const_def : substitution -> constant_def -> constant_def
 val subst_const_body : substitution -> constant_body -> constant_body
@@ -247,3 +258,7 @@ and module_type_body =
 
 val hcons_const_body : constant_body -> constant_body
 val hcons_mind : mutual_inductive_body -> mutual_inductive_body
+
+val join_module_body : module_body -> unit
+val join_structure_body : structure_body -> unit
+val join_struct_expr_body : struct_expr_body -> unit

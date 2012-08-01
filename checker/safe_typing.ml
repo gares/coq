@@ -160,7 +160,7 @@ end = struct
 	    try table.(k)
 	    with _ -> error "Error while retrieving an opaque body"
 	  in
-	  OpaqueDef (lazy_constr_from_val body)
+	  OpaqueDef (Future.from_val (lazy_constr_from_val body))
     in
     traverse_library decode_key lightened_library
 

@@ -155,7 +155,14 @@ let libraries_loaded_list = ref []
 let libraries_imports_list = ref []
 let libraries_exports_list = ref []
 
-let freeze () =
+let freeze b =
+  if b then begin
+    let join x = Safe_typing.join_compiled_library x.library_compiled in
+    LibraryMap.iter (fun _ x -> join x) !libraries_table;
+    List.iter join !libraries_loaded_list;
+    List.iter join !libraries_imports_list;
+    List.iter join !libraries_exports_list;
+  end;
   !libraries_table,
   !libraries_loaded_list,
   !libraries_imports_list,

@@ -29,7 +29,7 @@ open Nametab
 (** Declaration of local constructions (Variable/Hypothesis/Local) *)
 
 type section_variable_entry =
-  | SectionLocalDef of constr * types option * bool (** opacity *)
+  | SectionLocalDef of definition_entry
   | SectionLocalAssum of types * bool (** Implicit status *)
 
 type variable_declaration = dir_path * section_variable_entry * logical_kind

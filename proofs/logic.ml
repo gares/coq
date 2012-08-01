@@ -559,10 +559,10 @@ let prim_refiner r sigma goal =
 				                   let (gl,ev,sig')=
 				                     Goal.V82.mk_goal sigma sign c
 						             (Goal.V82.extra sigma goal)
-						   in ((gl,ev),sig'))
+                                                   in ((gl,ev),sig',[]))
 		                              all sigma
 	in
-	let (gls_evs,sigma) =  mk_sign sign all in
+	let (gls_evs,sigma,_) =  mk_sign sign all in
 	let (gls,evs) = List.split gls_evs in
 	let ids = List.map pi1 all in
 	let evs = List.map (Term.subst_vars (List.rev ids)) evs in
@@ -602,10 +602,10 @@ let prim_refiner r sigma goal =
 				                         Goal.V82.mk_goal sigma sign c
 							   (Goal.V82.extra sigma goal)
 						       in
-				                       ((gl,ev),sigma))
+                                                       ((gl,ev),sigma,[]))
 	                                             all sigma                                      
      	in
-	let (gls_evs,sigma) =  mk_sign sign all in
+	let (gls_evs,sigma,_) =  mk_sign sign all in
 	let (gls,evs) = List.split gls_evs in
 	let (ids,types) = List.split all in
 	let evs = List.map (Term.subst_vars (List.rev ids)) evs in

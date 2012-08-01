@@ -59,10 +59,10 @@ let rec print_proof sigma osign pf =
   let hyps = Environ.named_context_of_val (Goal.V82.hyps sigma pf.goal) in
   match pf.ref with
     | None ->
-	hov 0 (pr_goal {sigma = sigma; it=pf.goal })
+        hov 0 (pr_goal {sigma = sigma; it=pf.goal; eff = [] })
     | Some(r,spfl) ->
 	hov 0
-	  (hov 0 (pr_goal {sigma = sigma; it=pf.goal }) ++
+	  (hov 0 (pr_goal {sigma = sigma; it=pf.goal; eff = [] }) ++
 	   spc () ++ str" BY " ++
 	   hov 0 (pr_rule r) ++ fnl () ++
 	   str"  " ++

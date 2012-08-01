@@ -231,9 +231,9 @@ let make_prompt () =
    "n |lem1|lem2|lem3| p < "
 *)
 let make_emacs_prompt() =
-  let statnum = string_of_int (Lib.current_command_label ()) in
-  let dpth = Pfedit.current_proof_depth() in
-  let pending = Pfedit.get_all_proof_names() in
+  let statnum = Stategraph.string_of_state_id (Stm.get_current_state ()) in
+  let dpth = Stm.current_proof_depth() in
+  let pending = Stm.get_all_proof_names() in
   let pendingprompt =
     List.fold_left
       (fun acc x -> acc ^ (if acc <> "" then "|" else "") ^ Names.string_of_id x)

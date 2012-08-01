@@ -15,23 +15,20 @@ open Environ
 open Entries
 open Typeops
 
-val translate_local_def : env -> constr * types option ->
-  constr * types * Univ.constraints
+val translate_local_def : env -> identifier -> definition_entry ->
+  constant_def * types * constant_constraints
 
 val translate_local_assum : env -> types ->
   types * Univ.constraints
 
-val infer_declaration : env -> constant_entry ->
-  constant_def * constant_type * constraints * Sign.section_context option
-
-val build_constant_declaration : env -> 'a ->
-  constant_def * constant_type * constraints * Sign.section_context option -> 
-    constant_body
+(* returns the same definition_entry but with side effects turned into
+ * let-ins or beta redexes. it is meant to get a term out of a not yet
+ * type checked proof *)
+val handle_side_effects : env -> definition_entry -> definition_entry
 
 val translate_constant : env -> constant -> constant_entry -> constant_body
 
 val translate_mind :
   env -> mutual_inductive -> mutual_inductive_entry -> mutual_inductive_body
 
-val translate_recipe :
-  env -> constant -> Cooking.recipe -> constant_body
+val translate_recipe : env -> constant -> Cooking.recipe -> constant_body

@@ -35,10 +35,10 @@ val interp_definition :
   local_binder list -> red_expr option -> constr_expr ->
   constr_expr option -> definition_entry * Evd.evar_map * Impargs.manual_implicits
 
-val declare_definition : identifier -> definition_kind ->
+val declare_definition : identifier -> locality * definition_kind ->
   definition_entry -> Impargs.manual_implicits -> 'a declaration_hook -> 'a
 
-val do_definition : identifier -> definition_kind ->
+val do_definition : identifier -> locality * definition_kind ->
   local_binder list -> red_expr option -> constr_expr ->
   constr_expr option -> unit declaration_hook -> unit
 
@@ -47,13 +47,13 @@ val do_definition : identifier -> definition_kind ->
 val interp_assumption :
   local_binder list -> constr_expr -> types * Impargs.manual_implicits
 
-val declare_assumption : coercion_flag -> assumption_kind -> types ->
+val declare_assumption : coercion_flag -> locality * assumption_kind -> types ->
   Impargs.manual_implicits ->
   bool (** implicit *) -> Entries.inline -> variable Loc.located -> unit
 
 val declare_assumptions : variable Loc.located list ->
-  coercion_flag -> assumption_kind -> types -> Impargs.manual_implicits ->
-  bool -> Entries.inline -> unit
+  coercion_flag -> locality * assumption_kind -> types -> 
+  Impargs.manual_implicits -> bool -> Entries.inline -> unit
 
 (** {6 Inductive and coinductive types} *)
 
@@ -152,4 +152,4 @@ val do_cofixpoint :
 val check_mutuality : Environ.env -> bool -> (identifier * types) list -> unit
 
 val declare_fix : definition_object_kind -> identifier ->
-  constr -> types -> Impargs.manual_implicits -> global_reference
+  proof_output -> types -> Impargs.manual_implicits -> global_reference

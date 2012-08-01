@@ -40,7 +40,8 @@ let msg_tac_debug s = Pp.ppnl s; Pp.pp_flush ()
 let db_pr_goal g =
   let env = Refiner.pf_env g in
   let penv = print_named_context env in
-  let pc = print_constr_env env (Goal.V82.concl (Refiner.project g) (Refiner.sig_it g)) in
+  let pc = print_constr_env env 
+    (Goal.V82.concl (Refiner.project g) (fst (Refiner.sig_it g))) in
   str"  " ++ hv 0 (penv ++ fnl () ++
                    str "============================" ++ fnl ()  ++
                    str" "  ++ pc) ++ fnl ()

@@ -17,91 +17,62 @@ let protocol_version = "20120710"
 open Interface
 
 type xml =
-        | Element of (string * (string * string) list * xml list)
-        | PCData of string
+  | Element of (string * (string * string) list * xml list)
+  | PCData of string
 
 (** We use phantom types and GADT to protect ourselves against wild casts *)
 
 type 'a call =
-  | Interp of raw * verbose * string
-  | Rewind of int
-  | Goal
-  | Evars
-  | Hints
-  | Status
-  | Search of search_flags
-  | GetOptions
-  | SetOptions of (option_name * option_value) list
-  | InLoadPath of string
-  | MkCases of string
-  | Quit
-  | About
-
-(** The structure that coqtop should implement *)
-
-type handler = {
-  (* spiwack: [Inl] for safe and [Inr] for unsafe. *)
-  interp : raw * verbose * string -> (string,string) Util.union;
-  rewind : int -> int;
-  goals : unit -> goals option;
-  evars : unit -> evar list option;
-  hints : unit -> (hint list * hint) option;
-  status : unit -> status;
-  search : search_flags -> search_answer list;
-  get_options : unit -> (option_name * option_state) list;
-  set_options : (option_name * option_value) list -> unit;
-  inloadpath : string -> bool;
-  mkcases : string -> string list list;
-  quit : unit -> unit;
-  about : unit -> coq_info;
-  handle_exn : exn -> location * string;
-}
+  | Interp     of interp_sty
+  | Backto     of backto_sty
+  | Goals      of goals_sty
+  | Evars      of evars_sty
+  | Hints      of hints_sty
+  | Status     of status_sty
+  | GetOptions of get_options_sty
+  | SetOptions of set_options_sty
+  | InLoadPath of inloadpath_sty
+  | MkCases    of mkcases_sty
+  | Search     of search_sty
+  | Quit       of quit_sty
+  | About      of about_sty
 
 (** The actual calls *)
 
-let interp (r,b,s) : string call = Interp (r,b,s)
-let rewind i : int call = Rewind i
-let goals : goals option call = Goal
-let evars : evar list option call = Evars
-let hints : (hint list * hint) option call = Hints
-let status : status call = Status
-let search flags : search_answer list call = Search flags
-let get_options : (option_name * option_state) list call = GetOptions
-let set_options l : unit call = SetOptions l
-let inloadpath s : bool call = InLoadPath s
-let mkcases s : string list list call = MkCases s
-let search flags : search_answer list call = Search flags
-let quit : unit call = Quit
+let interp x      : interp_rty call      = Interp x
+let backto x      : backto_rty call      = Backto x
+let goals x       : goals_rty call       = Goals x
+let evars x       : evars_rty call       = Evars x
+let hints x       : hints_rty call       = Hints x
+let status x      : status_rty call      = Status x
+let get_options x : get_options_rty call = GetOptions x
+let set_options x : set_options_rty call = SetOptions x
+let inloadpath x  : inloadpath_rty call  = InLoadPath x
+let mkcases x     : mkcases_rty call     = MkCases x
+let search x      : search_rty call      = Search x
+let quit x        : quit_rty call        = Quit x
+let about x       : about_rty call       = About x
 
 (** * Coq answers to CoqIde *)
 
 let abstract_eval_call handler c =
+  let mkGood (l,x) = Good (l, Obj.magic x) in
   try
     match c with
-      | Interp (r,b,s) ->
-          begin match handler.interp (r,b,s) with
-            | Util.Inl v -> Good (Obj.magic (v:string))
-            | Util.Inr v -> Unsafe (Obj.magic (v:string))
-          end
-      | c ->
-          let res = match c with
-            | Interp (r,b,s) -> assert false
-            | Rewind i -> Obj.magic (handler.rewind i : int)
-            | Goal -> Obj.magic (handler.goals () : goals option)
-            | Evars -> Obj.magic (handler.evars () : evar list option)
-            | Hints -> Obj.magic (handler.hints () : (hint list * hint) option)
-            | Status -> Obj.magic (handler.status () : status)
-            | Search flags -> Obj.magic (handler.search flags : search_answer list)
-            | GetOptions -> Obj.magic (handler.get_options () : (option_name * option_state) list)
-            | SetOptions opts -> Obj.magic (handler.set_options opts : unit)
-            | InLoadPath s -> Obj.magic (handler.inloadpath s : bool)
-            | MkCases s -> Obj.magic (handler.mkcases s : string list list)
-            | Quit -> Obj.magic (handler.quit () : unit)
-            | About -> Obj.magic (handler.about () : coq_info)
-          in Good res
-  with e ->
-    let (l, str) = handler.handle_exn e in
-    Fail (l,str)
+    | Interp x     -> mkGood (handler.interp x)
+    | Backto x     -> mkGood (handler.backto x)
+    | Goals x      -> mkGood (handler.goals x)
+    | Evars x      -> mkGood (handler.evars x)
+    | Hints x      -> mkGood (handler.hints x)
+    | Status x     -> mkGood (handler.status x)
+    | GetOptions x -> mkGood (handler.get_options x)
+    | SetOptions x -> mkGood (handler.set_options x)
+    | InLoadPath x -> mkGood (handler.inloadpath x)
+    | MkCases x    -> mkGood (handler.mkcases x)
+    | Search x     -> mkGood (handler.search x)
+    | Quit x       -> mkGood (handler.quit x)
+    | About x      -> mkGood (handler.about x)
+  with e -> Fail (handler.handle_exn e)
 
 (** * XML data marshalling *)
 
@@ -259,21 +230,33 @@ let to_search_answer = function
   }
 | _ -> raise Marshal_error
 
+let of_state_id x =
+  Element ("state_id", [], [PCData (Stategraph.string_of_state_id x)])
+
+let to_state_id = function
+| Element ("state_id", [], [PCData x]) ->
+    Stategraph.state_id_of_int (int_of_string x)
+| _ -> raise Marshal_error
+
 let of_value f = function
-| Good x -> Element ("value", ["val", "good"], [f x])
-| Unsafe x -> Element ("value", ["val", "unsafe"], [f x])
-| Fail (loc, msg) ->
+| Good (good_spans,x) -> 
+    Element ("value", ["val", "good"], 
+      [of_pair (of_list of_state_id) f (good_spans, x)])
+| Fail (good_spans,bad_spans,(span,loc), msg) ->
   let loc = match loc with
   | None -> []
   | Some (s, e) -> [("loc_s", string_of_int s); ("loc_e", string_of_int e)]
   in
-  Element ("value", ["val", "fail"] @ loc, [PCData msg])
+  Element ("value", 
+    ["val", "fail"] @ ["span",Stategraph.string_of_state_id span] @ loc,
+    [of_list of_state_id good_spans;
+     of_list of_state_id bad_spans ;
+     PCData msg])
 
 let to_value f = function
 | Element ("value", attrs, l) ->
   let ans = massoc "val" attrs in
-  if ans = "good" then Good (f (singleton l))
-  else if ans = "unsafe" then Unsafe (f (singleton l))
+  if ans = "good" then Good (to_pair (to_list to_state_id) f (singleton l))
   else if ans = "fail" then
     let loc =
       try
@@ -282,8 +265,14 @@ let to_value f = function
         Some (loc_s, loc_e)
       with _ -> None
     in
-    let msg = raw_string l in
-    Fail (loc, msg)
+    let state =
+      Stategraph.state_id_of_int (int_of_string (List.assoc "span" attrs)) in
+    match l with
+    | [good_spans; bad_spans; PCData msg] ->
+        let good_spans = to_list to_state_id good_spans in
+        let bad_spans = to_list to_state_id bad_spans in
+        Fail (good_spans, bad_spans, (state,loc), msg)
+    | _ -> raise Marshal_error
   else raise Marshal_error
 | _ -> raise Marshal_error
 
@@ -291,20 +280,20 @@ let of_call = function
 | Interp (raw, vrb, cmd) ->
   let flags = (bool_arg "raw" raw) @ (bool_arg "verbose" vrb) in
   Element ("call", ("val", "interp") :: flags, [PCData cmd])
-| Rewind n ->
-  Element ("call", ("val", "rewind") :: ["steps", string_of_int n], [])
-| Goal ->
+| Backto id ->
+  Element ("call", ["val", "backto"], [of_state_id id])
+| Goals () ->
   Element ("call", ["val", "goal"], [])
-| Evars ->
+| Evars () ->
   Element ("call", ["val", "evars"], [])
-| Hints ->
+| Hints () ->
   Element ("call", ["val", "hints"], [])
-| Status ->
-  Element ("call", ["val", "status"], [])
 | Search flags ->
   let args = List.map (of_pair of_search_constraint of_bool) flags in
   Element ("call", ["val", "search"], args)
-| GetOptions ->
+| Status force ->
+  Element ("call", ["val", "status"; "force", string_of_bool force], [])
+| GetOptions () ->
   Element ("call", ["val", "getoptions"], [])
 | SetOptions opts ->
   let args = List.map (of_pair (of_list of_string) of_option_value) opts in
@@ -313,9 +302,9 @@ let of_call = function
   Element ("call", ["val", "inloadpath"], [PCData file])
 | MkCases ind ->
   Element ("call", ["val", "mkcases"], [PCData ind])
-| Quit ->
+| Quit () ->
   Element ("call", ["val", "quit"], [])
-| About ->
+| About () ->
   Element ("call", ["val", "about"], [])
 
 let to_call = function
@@ -326,24 +315,24 @@ let to_call = function
     let raw = List.mem_assoc "raw" attrs in
     let vrb = List.mem_assoc "verbose" attrs in
     Interp (raw, vrb, raw_string l)
-  | "rewind" ->
-    let steps = int_of_string (massoc "steps" attrs) in
-    Rewind steps
-  | "goal" -> Goal
-  | "evars" -> Evars
-  | "status" -> Status
+  | "backto" ->
+    Backto (to_state_id (singleton l))
+  | "goal" -> Goals ()
+  | "evars" -> Evars ()
+  | "status" ->
+    let force = bool_of_string (massoc "force" attrs) in
+    Status force
   | "search" ->
     let args = List.map (to_pair to_search_constraint to_bool) l in
     Search args
-  | "getoptions" -> GetOptions
+  | "getoptions" -> GetOptions ()
   | "setoptions" ->
     let args = List.map (to_pair (to_list to_string) to_option_value) l in
     SetOptions args
   | "inloadpath" -> InLoadPath (raw_string l)
   | "mkcases" -> MkCases (raw_string l)
-  | "hints" -> Hints
-  | "quit" -> Quit
-  | "about" -> About
+  | "quit" -> Quit ()
+  | "about" -> About ()
   | _ -> raise Marshal_error
   end
 | _ -> raise Marshal_error
@@ -440,12 +429,12 @@ let to_message_level xml = do_match xml "message_level"
   | "error" -> Error
   | _ -> raise Marshal_error)
 
-let of_message msg =
+let of_oob_message msg =
   let lvl = of_message_level msg.message_level in
   let content = of_string msg.message_content in
   Element ("message", [], [lvl; content])
 
-let to_message xml = match xml with
+let to_oob_message xml = match xml with
 | Element ("message", [], [lvl; content]) ->
   { message_level = to_message_level lvl; message_content = to_string content }
 | _ -> raise Marshal_error
@@ -454,45 +443,60 @@ let of_hints =
   let of_hint = of_list (of_pair of_string of_string) in
   of_option (of_pair (of_list of_hint) of_hint)
 
-let is_message = function
+let is_oob_message = function
 | Element ("message", _, _) -> true
 | _ -> false
 
-let of_answer (q : 'a call) (r : 'a value) =
-  let convert = match q with
-  | Interp _ -> Obj.magic (of_string : string -> xml)
-  | Rewind _ -> Obj.magic (of_int : int -> xml)
-  | Goal -> Obj.magic (of_option of_goals : goals option -> xml)
-  | Evars -> Obj.magic (of_option (of_list of_evar) : evar list option -> xml)
-  | Hints -> Obj.magic (of_hints : (hint list * hint) option -> xml)
-  | Status -> Obj.magic (of_status : status -> xml)
-  | Search _ -> Obj.magic (of_list of_search_answer : search_answer list -> xml)
-  | GetOptions -> Obj.magic (of_list (of_pair (of_list of_string) of_option_state) : (option_name * option_state) list -> xml)
-  | SetOptions _ -> Obj.magic (fun _ -> Element ("unit", [], []))
-  | InLoadPath _ -> Obj.magic (of_bool : bool -> xml)
-  | MkCases _ -> Obj.magic (of_list (of_list of_string) : string list list -> xml)
-  | Quit -> Obj.magic (fun _ -> Element ("unit", [], []))
-  | About -> Obj.magic (of_coq_info : coq_info -> xml)
-  in
-  of_value convert r
+let of_unit () = Element ("unit", [], [])
+
+let of_interp_rty  : interp_rty -> xml = of_pair of_state_id of_string
+let of_backto_rty  : backto_rty -> xml = of_unit
+let of_goals_rty   : goals_rty -> xml  = of_pair (of_option of_goals) of_string
+let of_evars_rty   : evars_rty -> xml  = of_option (of_list of_evar)
+let of_hints_rty   : hints_rty -> xml  = of_hints
+let of_status_rty  : status_rty -> xml = of_pair of_status of_string
+let of_get_options_rty : get_options_rty -> xml =
+  of_list (of_pair (of_list of_string) of_option_state)
+let of_set_options_rty : set_options_rty -> xml = of_unit
+let of_inloadpath_rty : inloadpath_rty -> xml = of_bool
+let of_mkcases_rty : mkcases_rty -> xml = of_list (of_list of_string)
+let of_search_rty  : search_rty -> xml = of_list of_search_answer
+let of_about_rty   : about_rty -> xml  = of_coq_info
+let of_quit_rty    : quit_rty -> xml   = of_unit
+
+let of_answer (q : 'a call) (r : 'a value) = match q with
+  | Interp _     -> of_value of_interp_rty      (Obj.magic r)
+  | Backto _     -> of_value of_backto_rty      (Obj.magic r)
+  | Goals _      -> of_value of_goals_rty       (Obj.magic r)
+  | Evars _      -> of_value of_evars_rty       (Obj.magic r)
+  | Hints _      -> of_value of_hints_rty       (Obj.magic r)
+  | Status _     -> of_value of_status_rty      (Obj.magic r)
+  | GetOptions _ -> of_value of_get_options_rty (Obj.magic r)
+  | SetOptions _ -> of_value of_set_options_rty (Obj.magic r)
+  | InLoadPath _ -> of_value of_inloadpath_rty  (Obj.magic r)
+  | MkCases _    -> of_value of_mkcases_rty     (Obj.magic r)
+  | Search _     -> of_value of_search_rty      (Obj.magic r)
+  | Quit _       -> of_value of_quit_rty        (Obj.magic r)
+  | About _      -> of_value of_about_rty       (Obj.magic r)
 
 let to_answer xml =
   let rec convert elt = match elt with
   | Element (tpe, attrs, l) ->
     begin match tpe with
-    | "unit" -> Obj.magic ()
-    | "string" -> Obj.magic (to_string elt : string)
-    | "int" -> Obj.magic (to_int elt : int)
-    | "status" -> Obj.magic (to_status elt : status)
-    | "bool" -> Obj.magic (to_bool elt : bool)
-    | "list" -> Obj.magic (to_list convert elt : 'a list)
-    | "option" -> Obj.magic (to_option convert elt : 'a option)
-    | "pair" -> Obj.magic (to_pair convert convert elt : ('a * 'b))
-    | "goals" -> Obj.magic (to_goals elt : goals)
-    | "evar" -> Obj.magic (to_evar elt : evar)
-    | "option_value" -> Obj.magic (to_option_value elt : option_value)
-    | "option_state" -> Obj.magic (to_option_state elt : option_state)
-    | "coq_info" -> Obj.magic (to_coq_info elt : coq_info)
+    | "unit"          -> Obj.magic ()
+    | "string"        -> Obj.magic (to_string elt : string)
+    | "int"           -> Obj.magic (to_int elt : int)
+    | "status"        -> Obj.magic (to_status elt : status)
+    | "bool"          -> Obj.magic (to_bool elt : bool)
+    | "list"          -> Obj.magic (to_list convert elt : 'a list)
+    | "option"        -> Obj.magic (to_option convert elt : 'a option)
+    | "pair"          -> Obj.magic (to_pair convert convert elt : ('a * 'b))
+    | "goals"         -> Obj.magic (to_goals elt : goals)
+    | "evar"          -> Obj.magic (to_evar elt : evar)
+    | "state_id"      -> Obj.magic (to_state_id elt : Stategraph.state_id)
+    | "option_value"  -> Obj.magic (to_option_value elt : option_value)
+    | "option_state"  -> Obj.magic (to_option_state elt : option_state)
+    | "coq_info"      -> Obj.magic (to_coq_info elt : coq_info)
     | "search_answer" -> Obj.magic (to_search_answer elt : search_answer)
     | _ -> raise Marshal_error
     end
@@ -528,28 +532,34 @@ let pr_call = function
     let raw = if r then "RAW" else "" in
     let verb = if b then "" else "SILENT" in
     "INTERP"^raw^verb^" ["^s^"]"
-  | Rewind i -> "REWIND "^(string_of_int i)
-  | Goal -> "GOALS"
-  | Evars -> "EVARS"
-  | Hints -> "HINTS"
-  | Status -> "STATUS"
+  | Backto id -> "BACKTO "^(Stategraph.string_of_state_id id)
+  | Goals () -> "GOALS"
+  | Evars () -> "EVARS"
+  | Hints () -> "HINTS"
   | Search _ -> "SEARCH"
-  | GetOptions -> "GETOPTIONS"
+  | Status force -> "STATUS " ^ string_of_bool force
+  | GetOptions () -> "GETOPTIONS"
   | SetOptions l -> "SETOPTIONS" ^ " [" ^ pr_setoptions l ^ "]"
   | InLoadPath s -> "INLOADPATH "^s
   | MkCases s -> "MKCASES "^s
-  | Quit -> "QUIT"
-  | About -> "ABOUT"
+  | Quit () -> "QUIT"
+  | About () -> "ABOUT"
 
 let pr_value_gen pr = function
-  | Good v -> "GOOD " ^ pr v
-  | Unsafe v -> "UNSAFE" ^ pr v
-  | Fail (_,str) -> "FAIL ["^str^"]"
+  | Good (l,v) -> "GOOD " ^ pr v ^ 
+      " ["^String.concat ";" (List.map Stategraph.string_of_state_id l)^"]"
+  | Fail (good_ids, bad_ids,(id,_),str) -> "FAIL (["^
+      String.concat ";" (List.map Stategraph.string_of_state_id good_ids)^"],["^
+      String.concat ";" (List.map Stategraph.string_of_state_id bad_ids) ^"],"^ 
+      Stategraph.string_of_state_id id  ^") ["^str^"]"
 
 let pr_value v = pr_value_gen (fun _ -> "") v
 
 let pr_string s = "["^s^"]"
 let pr_bool b = if b then "true" else "false"
+let pr_unit () = "()"
+
+let pr_state_id id = "(" ^ Stategraph.string_of_state_id id ^ ")"
 
 let pr_status s =
   let path =
@@ -594,19 +604,28 @@ let pr_evars = function
 | None -> "No proof in progress."
 | Some evars -> String.concat " " (List.map pr_evar evars)
 
-let pr_full_value call value =
-  match call with
-    | Interp _ -> pr_value_gen pr_string (Obj.magic value : string value)
-    | Rewind i -> pr_value_gen string_of_int (Obj.magic value : int value)
-    | Goal -> pr_value_gen pr_goals (Obj.magic value : goals option value)
-    | Evars -> pr_value_gen pr_evars (Obj.magic value : evar list option value)
-    | Hints -> pr_value value
-    | Status -> pr_value_gen pr_status (Obj.magic value : status value)
-    | Search _ -> pr_value value
-    | GetOptions -> pr_value_gen pr_getoptions (Obj.magic value : (option_name * option_state) list value)
-    | SetOptions _ -> pr_value value
-    | InLoadPath s -> pr_value_gen pr_bool (Obj.magic value : bool value)
-    | MkCases s -> pr_value_gen pr_mkcases (Obj.magic value : string list list value)
-    | Quit -> pr_value value
-    | About -> pr_value value
+let pr_pair f g (a,b) = f a ^ " " ^ g b
 
+let pr_full_value call value = match call with
+  | Interp _ -> 
+      pr_value_gen (pr_pair pr_state_id pr_string)
+        (Obj.magic value : interp_rty value)
+  | Backto _ -> 
+      pr_value_gen pr_unit (Obj.magic value : backto_rty value)
+  | Goals _ -> 
+      pr_value_gen (pr_pair pr_goals pr_string)
+        (Obj.magic value : goals_rty value)
+  | Evars _ -> pr_value_gen pr_evars (Obj.magic value : evars_rty value)
+  | Hints _ -> pr_value value
+  | Status _ -> 
+      pr_value_gen (pr_pair pr_status pr_string)
+        (Obj.magic value : status_rty value)
+  | GetOptions _ ->
+      pr_value_gen pr_getoptions (Obj.magic value : get_options_rty value)
+  | SetOptions _ -> pr_value value
+  | InLoadPath s ->
+      pr_value_gen pr_bool (Obj.magic value : inloadpath_rty value)
+  | MkCases _ -> pr_value_gen pr_mkcases (Obj.magic value : mkcases_rty value)
+  | Search _ -> pr_value value
+  | Quit _ -> pr_value_gen pr_unit (Obj.magic value : quit_rty value)
+  | About _ -> pr_value value

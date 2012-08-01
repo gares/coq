@@ -967,7 +967,7 @@ let pr_applicable_hint () =
   match glss.Evd.it with
   | [] -> Errors.error "No focused goal."
   | g::_ ->
-    let gl = { Evd.it = g; sigma = glss.Evd.sigma } in
+    let gl = { Evd.it = g; sigma = glss.Evd.sigma; eff = [] } in
     pr_hint_term (pf_concl gl)
 
 (* displays the whole hint database db *)

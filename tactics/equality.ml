@@ -263,12 +263,12 @@ let find_elim hdcncl lft2rgt dep cls args gl =
 	  begin 
 	    try 
 	      let _ = Global.lookup_constant c1' in
-	      mkConst c1'
+              mkConst c1', gl
 	    with Not_found -> 
 	      let rwr_thm = string_of_label l' in 
 	      error ("Cannot find rewrite principle "^rwr_thm^".")
 	  end
-	else pr1 
+        else pr1, gl
       | _ -> 
 	  (* cannot occur since we checked that we are in presence of 
 	     Logic.eq or Jmeq just before *)
@@ -287,7 +287,10 @@ let find_elim hdcncl lft2rgt dep cls args gl =
     | true, _, false -> rew_r2l_forward_dep_scheme_kind
   in
   match kind_of_term hdcncl with
-  | Ind ind -> mkConst (find_scheme scheme_name ind)
+  | Ind ind -> 
+      let c, eff = find_scheme scheme_name ind in 
+      let gl = {gl with eff = eff @ gl.eff } in
+      mkConst c, gl
   | _ -> assert false
 
 let type_of_clause gl = function
@@ -298,7 +301,7 @@ let leibniz_rewrite_ebindings_clause cls lft2rgt tac sigma c t l with_evars frze
   let isatomic = isProd (whd_zeta hdcncl) in
   let dep_fun = if isatomic then dependent else dependent_no_evar in
   let dep = dep_proof_ok && dep_fun c (type_of_clause gl cls) in
-  let elim = find_elim hdcncl lft2rgt dep cls (snd (decompose_app t)) gl in
+  let elim, gl = find_elim hdcncl lft2rgt dep cls (snd (decompose_app t)) gl in
   general_elim_clause with_evars frzevars tac cls sigma c t l
     (match lft2rgt with None -> false | Some b -> b)
     {elimindex = None; elimbody = (elim,NoBindings)} gl
@@ -752,14 +755,16 @@ let ind_scheme_of_eq lbeq =
   let kind =
     if kind = InProp then Elimschemes.ind_scheme_kind_from_prop
     else Elimschemes.ind_scheme_kind_from_type in
-  mkConst (find_scheme kind (destInd lbeq.eq))
+  let c, eff = find_scheme kind (destInd lbeq.eq) in
+  mkConst c, eff
 
 
 let discrimination_pf e (t,t1,t2) discriminator lbeq =
-  let i           = build_coq_I () in
-  let absurd_term = build_coq_False () in
-  let eq_elim     = ind_scheme_of_eq lbeq in
-  (applist (eq_elim, [t;t1;mkNamedLambda e t discriminator;i;t2]), absurd_term)
+  let i            = build_coq_I () in
+  let absurd_term  = build_coq_False () in
+  let eq_elim, eff = ind_scheme_of_eq lbeq in
+  (applist (eq_elim, [t;t1;mkNamedLambda e t discriminator;i;t2]), absurd_term),
+  eff
 
 exception NotDiscriminable
 
@@ -774,17 +779,19 @@ let apply_on_clause (f,t) clause =
      | _  -> errorlabstrm "" (str "Ill-formed clause applicator.")) in
   clenv_fchain argmv f_clause clause
 
-let discr_positions env sigma (lbeq,eqn,(t,t1,t2)) eq_clause cpath dirn sort =
+let discr_positions env sigma (lbeq,eqn,(t,t1,t2)) eq_clause cpath dirn sort gl=
   let e = next_ident_away eq_baseid (ids_of_context env) in
   let e_env = push_named (e,None,t) env in
   let discriminator =
     build_discriminator sigma e_env dirn (mkVar e) sort cpath in
-  let (pf, absurd_term) = discrimination_pf e (t,t1,t2) discriminator lbeq in
+  let (pf, absurd_term), eff =
+    discrimination_pf e (t,t1,t2) discriminator lbeq in
   let pf_ty = mkArrow eqn absurd_term in
   let absurd_clause = apply_on_clause (pf,pf_ty) eq_clause in
   let pf = clenv_value_cast_meta absurd_clause in
+  let gl = {gl with eff = eff @ gl.eff } in
   tclTHENS (cut_intro absurd_term)
-    [onLastHypId gen_absurdity; refine pf]
+    [onLastHypId gen_absurdity; refine pf] gl
 
 let discrEq (lbeq,_,(t,t1,t2) as u) eq_clause gls =
   let sigma = eq_clause.evd in
@@ -1110,7 +1117,7 @@ exception Not_dep_pair
 let eq_dec_scheme_kind_name = ref (fun _ -> failwith "eq_dec_scheme undefined")
 let set_eq_dec_scheme_kind k = eq_dec_scheme_kind_name := (fun _ -> k)
 
-let injEq ipats (eq,_,(t,t1,t2) as u) eq_clause =
+let injEq ipats (eq,_,(t,t1,t2) as u) eq_clause gl =
   let sigma = eq_clause.evd in
   let env = eq_clause.env in
   match find_positions env sigma t1 t2 with
@@ -1150,18 +1157,20 @@ let injEq ipats (eq,_,(t,t1,t2) as u) eq_clause =
                 (Ident (Loc.ghost,id_of_string "Eqdep_dec")) in
               Library.require_library [qidl] (Some false);
 (* cut with the good equality and prove the requested goal *)
+              let c, eff = find_scheme (!eq_dec_scheme_kind_name()) ind in
+              let gl = {gl with eff = eff @ gl.eff } in
               tclTHENS (cut (mkApp (ceq,new_eq_args)) )
                [tclIDTAC; tclTHEN (apply (
                   mkApp(inj2,
-                        [|ar1.(0);mkConst (find_scheme (!eq_dec_scheme_kind_name()) ind);
+                        [|ar1.(0);mkConst c;
                           ar1.(1);ar1.(2);ar1.(3);ar2.(3)|])
                   )) (Auto.trivial [] [])
-                ]
+                ] gl
 (* not a dep eq or no decidable type found *)
             ) else (raise Not_dep_pair)
         ) with _ ->
 	  inject_at_positions env sigma u eq_clause posns
-	    (fun _ -> intros_pattern MoveLast ipats)
+	    (fun _ -> intros_pattern MoveLast ipats) gl
 
 let inj ipats with_evars = onEquality with_evars (injEq ipats)
 
@@ -1210,7 +1219,7 @@ let swapEquandsInConcl gls =
 
 let bareRevSubstInConcl lbeq body (t,e1,e2) gls =
   (* find substitution scheme *)
-  let eq_elim = find_elim lbeq.eq (Some false) false None [e1;e2] gls in
+  let eq_elim, gls = find_elim lbeq.eq (Some false) false None [e1;e2] gls in
   (* build substitution predicate *)
   let p = lambda_create (pf_env gls) (t,body) in
   (* apply substitution scheme *)

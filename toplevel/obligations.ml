@@ -342,6 +342,7 @@ type program_info = {
   prg_implicits : (Constrexpr.explicitation * (bool * bool * bool)) list;
   prg_notations : notations ;
   prg_kind : definition_kind;
+  prg_local : locality;
   prg_reduce : constr -> constr;
   prg_hook : unit Tacexpr.declaration_hook;
 }
@@ -527,13 +528,14 @@ let subst_body expand prg =
 let declare_definition prg =
   let body, typ = subst_body true prg in
   let ce =
-    { const_entry_body = body;
+    { const_entry_body = Future.from_val (body,Declarations.no_side_effects);
       const_entry_secctx = None;
       const_entry_type = Some typ;
       const_entry_opaque = false }
   in
     progmap_remove prg;
-    !declare_definition_ref prg.prg_name prg.prg_kind ce prg.prg_implicits
+    !declare_definition_ref prg.prg_name 
+     (prg.prg_local,prg.prg_kind) ce prg.prg_implicits
       (fun local gr -> prg.prg_hook local gr; gr)
 
 open Pp
@@ -574,28 +576,34 @@ let declare_mutual_definition l =
   let fixkind = Option.get first.prg_fixkind in
   let arrrec, recvec = Array.of_list fixtypes, Array.of_list fixdefs in
   let fixdecls = (Array.of_list (List.map (fun x -> Name x.prg_name) l), arrrec, recvec) in
-  let (local,kind) = first.prg_kind in
   let fixnames = first.prg_deps in
   let kind = if fixkind <> IsCoFixpoint then Fixpoint else CoFixpoint in
   let indexes, fixdecls =
     match fixkind with
       | IsFixpoint wfl ->
 	  let possible_indexes =
-	    list_map3 compute_possible_guardness_evidences wfl fixdefs fixtypes in
-	  let indexes = Pretyping.search_guard Loc.ghost (Global.env ()) possible_indexes fixdecls in
-	    Some indexes, list_map_i (fun i _ -> mkFix ((indexes,i),fixdecls)) 0 l
+	    list_map3 compute_possible_guardness_evidences
+              wfl fixdefs fixtypes in
+	  let indexes = 
+            Pretyping.search_guard Loc.ghost (Global.env())
+              possible_indexes fixdecls in
+          Some indexes, 
+          list_map_i (fun i _ ->
+            mkFix ((indexes,i),fixdecls),Declarations.no_side_effects) 0 l
       | IsCoFixpoint ->
-	  None, list_map_i (fun i _ -> mkCoFix (i,fixdecls)) 0 l
+          None,
+          list_map_i (fun i _ ->
+            mkCoFix (i,fixdecls),Declarations.no_side_effects) 0 l
   in
   (* Declare the recursive definitions *)
   let kns = list_map4 (!declare_fix_ref kind) fixnames fixdecls fixtypes fiximps in
-    (* Declare notations *)
-    List.iter Metasyntax.add_notation_interpretation first.prg_notations;
-    Declare.recursive_message (fixkind<>IsCoFixpoint) indexes fixnames;
-    let gr = List.hd kns in
-    let kn = match gr with ConstRef kn -> kn | _ -> assert false in
-      first.prg_hook local gr;
-      List.iter progmap_remove l; kn
+  (* Declare notations *)
+  List.iter Metasyntax.add_notation_interpretation first.prg_notations;
+  Declare.recursive_message (fixkind<>IsCoFixpoint) indexes fixnames;
+  let gr = List.hd kns in
+  let kn = match gr with ConstRef kn -> kn | _ -> assert false in
+  first.prg_hook first.prg_local gr;
+  List.iter progmap_remove l; kn
       
 let declare_obligation prg obl body =
   let body = prg.prg_reduce body in
@@ -605,7 +613,7 @@ let declare_obligation prg obl body =
   | Evar_kinds.Define opaque ->
       let opaque = if get_proofs_transparency () then false else opaque in
       let ce = 
-	{ const_entry_body = body;
+        { const_entry_body = Future.from_val(body,Declarations.no_side_effects);
           const_entry_secctx = None;
 	  const_entry_type = Some ty;
 	  const_entry_opaque = opaque }
@@ -619,7 +627,7 @@ let declare_obligation prg obl body =
 	definition_message obl.obl_name;
 	{ obl with obl_body = Some (mkConst constant) }
 
-let init_prog_info n b t deps fixkind notations obls impls kind reduce hook =
+let init_prog_info n b t deps fixkind notations obls impls (l,k) reduce hook =
   let obls', b = 
     match b with
     | None ->
@@ -641,7 +649,8 @@ let init_prog_info n b t deps fixkind notations obls impls kind reduce hook =
     { prg_name = n ; prg_body = b; prg_type = reduce t; 
       prg_obligations = (obls', Array.length obls');
       prg_deps = deps; prg_fixkind = fixkind ; prg_notations = notations ;
-      prg_implicits = impls; prg_kind = kind; prg_reduce = reduce; prg_hook = hook; }
+      prg_implicits = impls; prg_kind = k; prg_reduce = reduce; 
+      prg_local = l; prg_hook = hook; }
 
 let get_prog name =
   let prg_infos = !from_prg in
@@ -654,7 +663,11 @@ let get_prog name =
 	     match n with
 		 0 -> raise (NoObligations None)
 	       | 1 -> map_first prg_infos
-	       | _ -> error "More than one program with unsolved obligations")
+	       | _ -> 
+                   error ("More than one program with unsolved obligations: "^
+                    String.concat ", " 
+                     (List.map string_of_id
+                      (ProgMap.fold (fun k _ s -> k::s) prg_infos []))))
 
 let get_prog_err n =
   try get_prog n with NoObligations id -> pperror (explain_no_obligations id)
@@ -742,18 +755,14 @@ let rec string_of_list sep f = function
 (* Solve an obligation using tactics, return the corresponding proof term *)
 let solve_by_tac evi t =
   let id = id_of_string "H" in
-  try
-    Pfedit.start_proof id goal_kind evi.evar_hyps evi.evar_concl
-    (fun _ _ -> ());
-    Pfedit.by (tclCOMPLETE t);
-    let _,(const,_,_,_) = Pfedit.cook_proof ignore in
-      Pfedit.delete_current_proof (); 
-      Inductiveops.control_only_guard (Global.env ())
-	const.Entries.const_entry_body;
-      const.Entries.const_entry_body
-  with e ->
-    Pfedit.delete_current_proof();
-    raise e
+  let entry = Pfedit.build_constant_by_tactic 
+    id ~goal_kind evi.evar_hyps evi.evar_concl (tclCOMPLETE t) in
+  let env = Global.env () in
+  let entry = Term_typing.handle_side_effects env entry in
+  let body, eff = Future.force entry.Entries.const_entry_body in
+  assert(eff = Declarations.no_side_effects);
+  Inductiveops.control_only_guard (Global.env ()) body;
+  body
 
 let rec solve_obligation prg num tac =
   let user_num = succ num in

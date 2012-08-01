@@ -491,6 +491,7 @@ let subst_lazy_constr = subst_substituted
 let force_lazy_constr = force_constr
 let lazy_constr_from_val c = c
 let val_lazy_constr = val_cstr_subst
+let val_future_lazy_constr = val_future val_cstr_subst
 
 (** Inlining level of parameters at functor applications.
     This is ignored by the checker. *)
@@ -503,44 +504,54 @@ type inline = int option
 type constant_def =
   | Undef of inline
   | Def of constr_substituted
-  | OpaqueDef of lazy_constr
+  | OpaqueDef of lazy_constr Future.computation
   | OpaqueDefIdx of int (* used for marshalling only *)
 
 let val_cst_def =
   val_sum "constant_def" 0
-    [|[|val_opt val_int|]; [|val_cstr_subst|]; [|val_lazy_constr|]|]
+    [|[|val_opt val_int|]; [|val_cstr_subst|];
+      [|val_future_lazy_constr|]; [|err_val"OpaqueDefIdx"|]|]
 
 let subst_constant_def sub = function
   | Undef inl -> Undef inl
   | Def c -> Def (subst_constr_subst sub c)
-  | OpaqueDef lc -> OpaqueDef (subst_lazy_constr sub lc)
+  | OpaqueDef lc ->
+      OpaqueDef (Future.from_val (subst_lazy_constr sub (Future.join lc)))
+  | OpaqueDefIdx _ -> assert false
+
+type constant_constraints = Univ.constraints Future.computation
 
 type constant_body = {
     const_hyps : section_context; (* New: younger hyp at top *)
     const_body : constant_def;
     const_type : constant_type;
     const_body_code : to_patch_substituted;
-    const_constraints : Univ.constraints }
+    const_constraints : constant_constraints }
 
 let body_of_constant cb = match cb.const_body with
   | Undef _ -> None
   | Def c -> Some c
-  | OpaqueDef c -> Some c
+  | OpaqueDef c -> Some (Future.join c)
+  | OpaqueDefIdx _ -> assert false
 
 let constant_has_body cb = match cb.const_body with
   | Undef _ -> false
   | Def _ | OpaqueDef _ -> true
+  | OpaqueDefIdx _ -> assert false
 
 let is_opaque cb = match cb.const_body with
   | OpaqueDef _ -> true
   | Def _ | Undef _ -> false
+  | OpaqueDefIdx _ -> assert false
+
+let val_future_cstrs = val_future val_cstrs
 
 let val_cb = val_tuple ~name:"constant_body"
   [|val_nctxt;
     val_cst_def;
     val_cst_type;
     no_val;
-    val_cstrs|]
+    val_future_cstrs|]
 
 let subst_rel_declaration sub (id,copt,t as x) =
   let copt' = Option.smartmap (subst_mps sub) copt in

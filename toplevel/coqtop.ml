@@ -148,7 +148,6 @@ let usage () =
 
 let warning s = msg_warning (strbrk s)
 
-let ide_slave = ref false
 let filter_opts = ref false
 
 let verb_compat_ntn = ref false
@@ -192,8 +191,7 @@ let parse_args arglist =
     | "-batch" :: rem -> set_batch_mode (); parse rem
     | "-boot" :: rem -> boot := true; no_load_rc (); parse rem
     | "-quality" :: rem -> term_quality := true; no_load_rc (); parse rem
-    | "-outputstate" :: s :: rem ->
-      Flags.load_proofs := Flags.Force; set_outputstate s; parse rem
+    | "-outputstate" :: s :: rem -> set_outputstate s; parse rem
     | "-outputstate" :: []       -> usage ()
 
     | "-nois" :: rem -> set_inputstate ""; parse rem
@@ -299,7 +297,7 @@ let parse_args arglist =
 
     | "-no-hash-consing" :: rem -> Flags.hash_cons_proofs := false; parse rem
 
-    | "-ideslave" :: rem -> ide_slave := true; parse rem
+    | "-ideslave" :: rem -> Flags.ide_slave_mode := true; parse rem
 
     | "-filteropts" :: rem -> filter_opts := true; parse rem
 
@@ -332,7 +330,7 @@ let init arglist =
       let foreign_args = parse_args arglist in
       if !filter_opts then
         (print_string (String.concat "\n" foreign_args); exit 0);
-      if !ide_slave then begin
+      if !Flags.ide_slave_mode then begin
         Flags.make_silent true;
         Ide_slave.init_stdout ()
       end;
@@ -366,9 +364,7 @@ let init arglist =
      if !output_context then
        Pp.ppnl (with_option raw_print Prettyp.print_full_pure_context ());
      Profile.print_profile ();
-     exit 0);
-  (* We initialize the command history stack with a first entry *)
-  Backtrack.mark_command Vernacexpr.VernacNop
+     exit 0)
 
 let init_toplevel = init
 
@@ -379,7 +375,7 @@ let start () =
   let () = if Dumpglob.dump () then
     let () = if_verbose warning "Dumpglob cannot be used in interactive mode." in
     Dumpglob.noglob () in
-  if !ide_slave then
+  if !Flags.ide_slave_mode then
     Ide_slave.loop ()
   else
     Toplevel.loop();

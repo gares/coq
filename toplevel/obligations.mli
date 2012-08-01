@@ -22,7 +22,7 @@ open Tacexpr
 
 (** Forward declaration. *)
 val declare_fix_ref : (definition_object_kind -> identifier ->
-  constr -> types -> Impargs.manual_implicits -> global_reference) ref
+  Entries.proof_output -> types -> Impargs.manual_implicits -> global_reference) ref
 
 val declare_definition_ref :
   (identifier -> locality * definition_object_kind ->
@@ -71,7 +71,7 @@ val get_proofs_transparency : unit -> bool
 
 val add_definition : Names.identifier -> ?term:Term.constr -> Term.types -> 
   ?implicits:(Constrexpr.explicitation * (bool * bool * bool)) list ->
-  ?kind:Decl_kinds.definition_kind ->
+  ?kind:(Decl_kinds.locality * Decl_kinds.definition_kind) ->
   ?tactic:Proof_type.tactic ->
   ?reduce:(Term.constr -> Term.constr) ->
   ?hook:(unit Tacexpr.declaration_hook) -> obligation_info -> progress
@@ -87,7 +87,7 @@ val add_mutual_definitions :
   (Names.identifier * Term.constr * Term.types *
       (Constrexpr.explicitation * (bool * bool * bool)) list * obligation_info) list ->
   ?tactic:Proof_type.tactic ->
-  ?kind:Decl_kinds.definition_kind ->
+  ?kind:(Decl_kinds.locality * Decl_kinds.definition_kind) ->
   ?reduce:(Term.constr -> Term.constr) ->
   ?hook:unit Tacexpr.declaration_hook ->
   notations ->

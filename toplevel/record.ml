@@ -204,7 +204,8 @@ let declare_projections indsp ?(kind=StructureComponent) ?name coers fieldimpls 
 	      let kn =
 	        try
 		  let cie = {
-		    const_entry_body = proj;
+                    const_entry_body =
+                      Future.from_val (proj,Declarations.no_side_effects);
                     const_entry_secctx = None;
                     const_entry_type = Some projtyp;
                     const_entry_opaque = false } in
@@ -314,7 +315,8 @@ let declare_class finite def infer id idbuild paramimpls params arity fieldimpls
 	let class_body = it_mkLambda_or_LetIn field params in
 	let class_type = Option.map (fun ar -> it_mkProd_or_LetIn ar params) arity in
 	let class_entry =
-	  { const_entry_body = class_body;
+          { const_entry_body =
+              Future.from_val (class_body,Declarations.no_side_effects);
             const_entry_secctx = None;
 	    const_entry_type = class_type;
 	    const_entry_opaque = false }
@@ -326,7 +328,8 @@ let declare_class finite def infer id idbuild paramimpls params arity fieldimpls
 	let proj_type = it_mkProd_or_LetIn (mkProd(Name (snd id), inst_type, lift 1 field)) params in
 	let proj_body = it_mkLambda_or_LetIn (mkLambda (Name (snd id), inst_type, mkRel 1)) params in
 	let proj_entry =
-	  { const_entry_body = proj_body;
+          { const_entry_body =
+              Future.from_val (proj_body,Declarations.no_side_effects);
             const_entry_secctx = None;
 	    const_entry_type = Some proj_type;
 	    const_entry_opaque = false }

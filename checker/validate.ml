@@ -62,6 +62,9 @@ let apply debug f x =
 (* data not validated *)
 let no_val (c:error_context) (o:Obj.t) = ()
 
+let err_val s (c:error_context) (o:Obj.t) =
+  fail c o (s ^ " should not be in a vo file")
+
 (* Check that object o is a block with tag t *)
 let val_tag t ctx o =
   if Obj.is_block o && Obj.tag o = t then ()
@@ -203,3 +206,13 @@ let val_cstrs =
   val_set ~name:"Univ.constraints"
    (val_tuple ~name:"univ_constraint"
      [|val_level;val_enum "order_request" 3;val_level|])
+
+(* future *)
+let val_computation f =
+  val_sum "computation" 0
+    [| [|err_val"Closure"|];
+       [| f ; val_opt (err_val"frozen status") |];
+       [|err_val"Exn"|] |]
+
+let val_future f =
+  val_ref ~name:"future" (val_computation f)

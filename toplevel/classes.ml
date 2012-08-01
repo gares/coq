@@ -112,7 +112,7 @@ let declare_instance_constant k pri global imps ?hook id term termtype =
   let cdecl =
     let kind = IsDefinition Instance in
     let entry =
-      { const_entry_body   = term;
+      { const_entry_body   = Future.from_val term;
         const_entry_secctx = None;
 	const_entry_type   = Some termtype;
 	const_entry_opaque = false }
@@ -276,7 +276,8 @@ let new_instance ?(abstract=false) ?(global=false) ctx (instid, bk, cl) props
       let evm = Evarutil.nf_evar_map_undefined !evars in
       let evm = undefined_evars evm in
 	if Evd.is_empty evm && term <> None then
-	  declare_instance_constant k pri global imps ?hook id (Option.get term) termtype
+	  declare_instance_constant k pri global imps ?hook id 
+            (Option.get term,[]) termtype
 	else begin
 	  let kind = Decl_kinds.Global, Decl_kinds.DefinitionBody Decl_kinds.Instance in
 	    if Flags.is_program_mode () then

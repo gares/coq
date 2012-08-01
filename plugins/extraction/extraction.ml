@@ -980,7 +980,7 @@ let extract_constant env kn cb =
 	  | Def c -> mk_typ (force c)
 	  | OpaqueDef c ->
 	    add_opaque r;
-	    if access_opaque () then mk_typ (force_opaque c) else mk_typ_ax ())
+	    if access_opaque () then mk_typ (force_opaque (Future.force c)) else mk_typ_ax ())
     | (Info,Default) ->
         (match cb.const_body with
           | OpaqueDefIdx _ -> assert false
@@ -988,7 +988,7 @@ let extract_constant env kn cb =
 	  | Def c -> mk_def (force c)
 	  | OpaqueDef c ->
 	    add_opaque r;
-	    if access_opaque () then mk_def (force_opaque c) else mk_ax ())
+	    if access_opaque () then mk_def (force_opaque (Future.force c)) else mk_ax ())
 
 let extract_constant_spec env kn cb =
   let r = ConstRef kn in
@@ -1016,7 +1016,6 @@ let extract_with_type env cb =
 	let s,vl = type_sign_vl env typ in
 	let db = db_from_sign s in
 	let c = match cb.const_body with
-          | OpaqueDefIdx _ -> assert false
 	  | Def body -> force body
 	  (* A "with Definition ..." is necessarily transparent *)
 	  | Undef _ | OpaqueDef _ | OpaqueDefIdx _ -> assert false

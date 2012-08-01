@@ -356,7 +356,8 @@ let do_mutual_induction_scheme lnamedepindsort =
   let rec declare decl fi lrecref =
     let decltype = Retyping.get_type_of env0 Evd.empty decl in
     let decltype = refresh_universes decltype in
-    let cst = define fi UserVerbose decl (Some decltype) in
+    let proof_output = Future.from_val (decl,Declarations.no_side_effects) in
+    let cst = define fi UserVerbose proof_output (Some decltype) in
     ConstRef cst :: lrecref
   in
   let _ = List.fold_right2 declare listdecl lrecnames [] in
@@ -450,8 +451,10 @@ let do_combined_scheme name schemes =
                 with Not_found -> error ((string_of_qualid (snd qualid))^" is not declared."))
       schemes
   in
-  let body,typ = build_combined_scheme (Global.env ()) csts in
-  ignore (define (snd name) UserVerbose body (Some typ));
+  let env = Global.env () in
+  let body,typ = build_combined_scheme env csts in
+  let proof_output = Future.from_val (body,Declarations.no_side_effects) in
+  ignore (define (snd name) UserVerbose proof_output (Some typ));
   fixpoint_message None [snd name]
 
 (**********************************************************************)

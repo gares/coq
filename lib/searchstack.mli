@@ -6,28 +6,18 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
-open Names
-open Term
-open Declarations
-open Environ
-open Univ
+(* A stack with a decent find API *)
+type 'a t
+type ('a,'b) search = [ `Stop of 'b | `Cont of 'a ]
 
-(** {6 Cooking the constants. } *)
+val create : unit -> 'a t
+val push : 'a -> 'a t -> unit
+val find : ('c -> 'a -> ('c, 'b) search) -> 'c -> 'a t -> 'b
+val is_empty : 'a t -> bool
+val iter : ('a -> unit) -> 'a t -> unit
+val clear : 'a t -> unit
+val length : 'a t -> int
 
-type work_list = identifier array Cmap.t * identifier array Mindmap.t
-
-type recipe = {
-  d_from : constant_body;
-  d_abstract : Sign.named_context;
-  d_modlist : work_list }
-
-val cook_constant :
-  env -> recipe ->
-    constant_def * constant_type * constant_constraints * Sign.section_context
-
-(** {6 Utility functions used in module [Discharge]. } *)
-
-val expmod_constr : work_list -> constr -> constr
-
-
-
+(* may raise Stack.Empty *)
+val pop  : 'a t -> 'a
+val top  : 'a t -> 'a

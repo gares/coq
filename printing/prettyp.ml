@@ -571,7 +571,8 @@ let print_full_pure_context () =
 	      | OpaqueDef lc ->
 		str "Theorem " ++ print_basename con ++ cut () ++
 		str " : " ++ pr_ltype typ ++ str "." ++ fnl () ++
-		str "Proof " ++ pr_lconstr (Declarations.force_opaque lc)
+		str "Proof " ++ pr_lconstr 
+                  (Declarations.force_opaque (Future.force lc))
 	      | Def c ->
 		str "Definition " ++ print_basename con ++ cut () ++
 		str "  : " ++ pr_ltype typ ++ cut () ++ str " := " ++

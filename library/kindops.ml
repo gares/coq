@@ -23,8 +23,8 @@ let string_of_theorem_kind = function
   | Proposition -> "Proposition"
   | Corollary -> "Corollary"
 
-let string_of_definition_kind def =
-  match def with
+let string_of_definition_kind loc def =
+  match loc, def with
   | Local, Coercion -> "Coercion Local"
   | Global, Coercion -> "Coercion"
   | Local, Definition -> "Let"

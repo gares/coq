@@ -536,7 +536,6 @@ let close_section () =
   let newdecls = List.map discharge_item secdecls in
   Summary.unfreeze_summaries fs;
   List.iter (Option.iter (fun (id,o) -> add_discharged_leaf id o)) newdecls;
-  Cooking.clear_cooking_sharing ();
   Nametab.push_dir (Nametab.Until 1) full_olddir (DirClosedSection full_olddir)
 
 (*****************)

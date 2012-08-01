@@ -11,8 +11,8 @@
 open Interface
 
 type xml =
-        | Element of (string * (string * string) list * xml list)
-        | PCData of string
+  | Element of (string * (string * string) list * xml list)
+  | PCData of string
 
 type 'a call
 
@@ -25,73 +25,53 @@ type 'a call
     - The returned string contains the messages produced
       by this command, but not the updated goals (they are
       to be fetch by a separated [current_goals]). *)
-val interp : raw * verbose * string -> string call
+val interp : interp_sty -> interp_rty call
 
-(** Backtracking by at least a certain number of phrases.
-    No finished proofs will be re-opened. Instead,
-    we continue backtracking until before these proofs,
-    and answer the amount of extra backtracking performed.
-    Backtracking by more than the number of phrases already
-    interpreted successfully (and not yet undone) will fail. *)
-val rewind : int -> int call
+(** Backtracking to a given state *)
+val backto : backto_sty -> backto_rty call
 
 (** Fetching the list of current goals. Return [None] if no proof is in 
     progress, [Some gl] otherwise. *)
-val goals : goals option call
+val goals : goals_sty -> goals_rty call
 
 (** Retrieving the tactics applicable to the current goal. [None] if there is 
     no proof in progress. *)
-val hints : (hint list * hint) option call
+val hints : hints_sty -> hints_rty call
 
 (** The status, for instance "Ready in SomeSection, proving Foo" *)
-val status : status call
+val status : status_sty -> status_rty call
 
 (** Is a directory part of Coq's loadpath ? *)
-val inloadpath : string -> bool call
+val inloadpath : inloadpath_sty -> inloadpath_rty call
 
 (** Create a "match" template for a given inductive type.
     For each branch of the match, we list the constructor name
     followed by enough pattern variables. *)
-val mkcases : string -> string list list call
+val mkcases : mkcases_sty -> mkcases_rty call
 
 (** Retrieve the list of unintantiated evars in the current proof. [None] if no
     proof is in progress. *)
-val evars : evar list option call
+val evars : evars_sty -> evars_rty call
 
 (** Search for objects satisfying the given search flags. *)
-val search : search_flags -> search_answer list call
+val search : search_sty -> search_rty call
+
+(** About coq. *)
+val about : about_sty -> about_rty call
 
 (** Retrieve the list of options of the current toplevel, together with their 
     state. *)
-val get_options : (option_name * option_state) list call
+val get_options : get_options_sty -> get_options_rty call
 
 (** Set the options to the given value. Warning: this is not atomic, so whenever
     the call fails, the option state can be messed up... This is the caller duty
     to check that everything is correct. *)
-val set_options : (option_name * option_value) list -> unit call
+val set_options : set_options_sty -> set_options_rty call
 
 (** Quit gracefully the interpreter. *)
-val quit : unit call
+val quit : quit_sty -> quit_rty call
 
 (** The structure that coqtop should implement *)
-
-type handler = {
-  (* spiwack: [Inl] for safe and [Inr] for unsafe. *)
-  interp : raw * verbose * string -> (string,string) Util.union;
-  rewind : int -> int;
-  goals : unit -> goals option;
-  evars : unit -> evar list option;
-  hints : unit -> (hint list * hint) option;
-  status : unit -> status;
-  search : search_flags -> search_answer list;
-  get_options : unit -> (option_name * option_state) list;
-  set_options : (option_name * option_value) list -> unit;
-  inloadpath : string -> bool;
-  mkcases : string -> string list list;
-  quit : unit -> unit;
-  about : unit -> coq_info;
-  handle_exn : exn -> location * string;
-}
 
 val abstract_eval_call : handler -> 'a call -> 'a value
 
@@ -109,9 +89,10 @@ val to_value : (xml -> 'a) -> xml -> 'a value
 val of_call : 'a call -> xml
 val to_call : xml -> 'a call
 
-val of_message : message -> xml
-val to_message : xml -> message
-val is_message : xml -> bool
+(* Out Of Band message *)
+val of_oob_message : message -> xml
+val to_oob_message : xml -> message
+val is_oob_message : xml -> bool
 
 val of_answer : 'a call -> 'a value -> xml
 val to_answer : xml -> 'a value

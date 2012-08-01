@@ -1025,10 +1025,9 @@ let do_save () = Lemmas.save_named false
 *)
 
 let derive_correctness make_scheme functional_induction (funs: constant list) (graphs:inductive list) =
-  let previous_state = States.freeze () in
   let funs = Array.of_list funs and graphs = Array.of_list graphs in
   let funs_constr = Array.map mkConst funs  in
-  try
+  States.with_state_protection (fun () ->
     let graphs_constr = Array.map mkInd graphs in
     let lemmas_types_infos =
       Util.array_map2_i
@@ -1056,7 +1055,7 @@ let derive_correctness make_scheme functional_induction (funs: constant list) (g
 	  Array.of_list
 	    (List.map
 	       (fun entry ->
-		  (entry.Entries.const_entry_body, Option.get entry.Entries.const_entry_type )
+		  (fst(Future.force entry.Entries.const_entry_body), Option.get entry.Entries.const_entry_type )
 	       )
 	       (make_scheme (array_map_to_list (fun const -> const,GType None) funs))
 	    )
@@ -1134,16 +1133,8 @@ let derive_correctness make_scheme functional_induction (funs: constant list) (g
 	 let lem_cst = destConst (Constrintern.global_reference lem_id) in
 	 update_Function {finfo with completeness_lemma = Some lem_cst}
       )
-      funs;
-  with e ->
-    (* In case of problem, we reset all the lemmas *)
-    Pfedit.delete_all_proofs ();
-    States.unfreeze previous_state;
-    raise e
-
-
-
-
+      funs)
+  ()
 
 (***********************************************)
 

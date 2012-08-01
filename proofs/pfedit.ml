@@ -34,46 +34,27 @@ let delete_proof = Proof_global.discard
 let delete_current_proof = Proof_global.discard_current
 let delete_all_proofs = Proof_global.discard_all
 
-let undo n =
-  let p = Proof_global.give_me_the_proof () in
-  let d = Proof.V82.depth p in
-  if n >= d then raise Proof.EmptyUndoStack;
-  for i = 1 to n do
-    Proof.undo p
-  done
-
-let current_proof_depth () =
-  try
-    let p = Proof_global.give_me_the_proof () in
-    Proof.V82.depth p
-  with Proof_global.NoCurrentProof -> -1
-
-(* [undo_todepth n] resets the proof to its nth step (does [undo (d-n)] where d
-   is the depth of the focus stack). *)
-let undo_todepth n =
-  try
-    undo ((current_proof_depth ()) - n )
-  with Proof_global.NoCurrentProof  when n=0 -> ()
+let current_proof_depth () = 0 
 
 let set_undo _ = ()
 let get_undo _ = None
-
 
 let start_proof id str hyps c ?init_tac ?compute_guard hook = 
   let goals = [ (Global.env_of_context hyps , c) ] in
   let init_tac = Option.map Proofview.V82.tactic init_tac in
   Proof_global.start_proof id str goals ?compute_guard hook;
-  try Option.iter Proof_global.run_tactic init_tac
-  with e -> Proof_global.discard_current (); raise e
+  let env = Global.env () in
+  Proof_global.with_current_proof (fun _ p ->
+    match init_tac with
+    | None -> p
+    | Some tac -> Proof.run_tactic env tac p)
 
-let restart_proof () = undo_todepth 1
-
-let cook_proof hook =
-  let prf = Proof_global.give_me_the_proof () in
-  hook prf;
-  match Proof_global.close_proof () with
+let cook_this_proof hook p =
+  match p with
   | (i,([e],cg,str,h)) -> (i,(e,cg,str,h))
   | _ -> Errors.anomaly "Pfedit.cook_proof: more than one proof term."
+
+let cook_proof hook = cook_this_proof hook (Proof_global.close_proof ())
 
 let xml_cook_proof = ref (fun _ -> ())
 let set_xml_cook_proof f = xml_cook_proof := f
@@ -97,15 +78,15 @@ let _ = Errors.register_handler begin function
 end
 let get_nth_V82_goal i =
   let p = Proof_global.give_me_the_proof () in
-  let { it=goals ; sigma = sigma } = Proof.V82.subgoals p in
+  let { it=goals ; sigma = sigma; eff = eff } = Proof.V82.subgoals p in
   try
-    { it=(List.nth goals (i-1)) ; sigma=sigma }
+          { it=(List.nth goals (i-1)) ; sigma=sigma; eff = eff }
   with Failure _ -> raise NoSuchGoal
     
 let get_goal_context_gen i =
   try
-    let { it=goal ; sigma=sigma } =  get_nth_V82_goal i in
-    (sigma, Refiner.pf_env { it=goal ; sigma=sigma })
+let { it=goal ; sigma=sigma; eff=eff } =  get_nth_V82_goal i in
+(sigma, Refiner.pf_env { it=goal ; sigma=sigma; eff=eff })
   with Proof_global.NoCurrentProof -> Errors.error "No focused proof."
 
 let get_goal_context i =
@@ -124,26 +105,23 @@ let current_proof_statement () =
     | (id,([concl],strength,hook)) -> id,strength,concl,hook
     | _ -> Errors.anomaly "Pfedit.current_proof_statement: more than one statement"
 
-let solve_nth ?(with_end_tac=false) gi tac = 
+let solve_nth ?with_end_tac gi tac pr = 
   try 
     let tac = Proofview.V82.tactic tac in
-    let tac = if with_end_tac then 
-                Proof_global.with_end_tac tac
-              else
-		tac
-    in
-    Proof_global.run_tactic (Proofview.tclFOCUS gi gi tac) 
+    let tac = match with_end_tac with 
+      | None -> tac
+      | Some etac -> Proofview.tclTHEN tac etac in
+    Proof.run_tactic (Global.env ()) (Proofview.tclFOCUS gi gi tac) pr
   with 
     | Proof_global.NoCurrentProof  -> Errors.error "No focused proof"
     | Proofview.IndexOutOfRange | Failure "list_chop" -> 
 	let msg = str "No such goal: " ++ int gi ++ str "." in
 	Errors.errorlabstrm "" msg
 
-let by = solve_nth 1
+let by tac = Proof_global.with_current_proof (fun _ -> solve_nth 1 tac)
 
 let instantiate_nth_evar_com n com = 
-  let pf = Proof_global.give_me_the_proof () in
-  Proof.V82.instantiate_evar n com pf
+  Proof_global.with_current_proof (fun _ -> Proof.V82.instantiate_evar n com)
 
 
 (**********************************************************************)
@@ -153,8 +131,8 @@ open Decl_kinds
 
 let next = let n = ref 0 in fun () -> incr n; !n
 
-let build_constant_by_tactic id sign typ tac =
-  start_proof id (Global,Proof Theorem) sign typ (fun _ _ -> ());
+let build_constant_by_tactic id sign ?(goal_kind = Global,Proof Theorem) typ tac =
+  start_proof id goal_kind sign typ (fun _ _ -> ());
   try
     by tac;
     let _,(const,_,_,_) = cook_proof (fun _ -> ()) in
@@ -164,10 +142,20 @@ let build_constant_by_tactic id sign typ tac =
     delete_current_proof ();
     raise e
 
+let constr_of_def = function
+  | Declarations.Undef _ -> assert false
+  | Declarations.Def cs -> Declarations.force cs
+  | Declarations.OpaqueDef lc -> Declarations.force_opaque (Future.force lc)
+  | Declarations.OpaqueDefIdx _ -> assert false
+
 let build_by_tactic env typ tac =
   let id = id_of_string ("temporary_proof"^string_of_int (next())) in
   let sign = val_of_named_context (named_context env) in
-  (build_constant_by_tactic id sign typ tac).const_entry_body
+  let ce = build_constant_by_tactic id sign typ tac in
+  let ce = Term_typing.handle_side_effects env ce in
+  let cb, se = Future.force ce.const_entry_body in
+  assert(se = Declarations.no_side_effects);
+  cb
 
 (**********************************************************************)
 (* Support for resolution of evars in tactic interpretation, including

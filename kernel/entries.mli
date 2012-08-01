@@ -50,8 +50,10 @@ type mutual_inductive_entry = {
 
 (** {6 Constants (Definition/Axiom) } *)
 
+type proof_output = constr * Declarations.side_effects
+
 type definition_entry = {
-  const_entry_body   : constr;
+  const_entry_body   : proof_output Future.computation;
   const_entry_secctx : section_context option;
   const_entry_type   : types option;
   const_entry_opaque : bool }

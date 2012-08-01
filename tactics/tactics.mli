@@ -390,3 +390,5 @@ val register_general_multi_rewrite :
 
 val register_subst_one :
   (bool -> identifier -> identifier * constr * bool -> tactic) -> unit
+
+val emit_side_effects : Declarations.side_effects -> tactic

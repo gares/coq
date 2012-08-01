@@ -44,11 +44,7 @@ type my_global_reference =
   | IndRef of inductive
   | ConstructRef of constructor
 
-let cache = (Hashtbl.create 13 : (my_global_reference, constr) Hashtbl.t)
-
-let clear_cooking_sharing () = Hashtbl.clear cache
-
-let share r (cstl,knl) =
+let share cache r (cstl,knl) =
   try Hashtbl.find cache r
   with Not_found ->
   let f,l =
@@ -61,13 +57,12 @@ let share r (cstl,knl) =
 	mkConst (pop_con cst), Cmap.find cst cstl in
   let c = mkApp (f, Array.map mkVar l) in
   Hashtbl.add cache r c;
-  (* has raised Not_found if not in work_list *)
   c
 
-let update_case_info ci modlist =
+let update_case_info cache ci modlist =
   try
     let ind, n =
-      match kind_of_term (share (IndRef ci.ci_ind) modlist) with
+      match kind_of_term (share cache (IndRef ci.ci_ind) modlist) with
       | App (f,l) -> (destInd f, Array.length l)
       | Ind ind -> ind, 0
       | _ -> assert false in
@@ -77,32 +72,21 @@ let update_case_info ci modlist =
 
 let empty_modlist = (Cmap.empty, Mindmap.empty)
 
-let expmod_constr modlist c =
+let expmod_constr cache modlist c =
   let rec substrec c =
     match kind_of_term c with
-      | Case (ci,p,t,br) ->
-	  map_constr substrec (mkCase (update_case_info ci modlist,p,t,br))
-
-      | Ind ind ->
-	  (try
-	    share (IndRef ind) modlist
-	   with
-	    | Not_found -> map_constr substrec c)
-
-      | Construct cstr ->
-	  (try
-	    share (ConstructRef cstr) modlist
-	   with
-	    | Not_found -> map_constr substrec c)
-
-      | Const cst ->
-	  (try
-	    share (ConstRef cst) modlist
-	   with
-	    | Not_found -> map_constr substrec c)
-
-  | _ -> map_constr substrec c
-
+    | Case (ci,p,t,br) ->
+       map_constr substrec (mkCase (update_case_info cache ci modlist,p,t,br))
+    | Ind ind ->
+        (try share cache (IndRef ind) modlist
+         with Not_found -> map_constr substrec c)
+    | Construct cstr ->
+        (try share cache (ConstructRef cstr) modlist
+         with Not_found -> map_constr substrec c)
+    | Const cst ->
+        (try share cache (ConstRef cst) modlist
+         with Not_found -> map_constr substrec c)
+    | _ -> map_constr substrec c
   in
   if modlist = empty_modlist then c
   else substrec c
@@ -119,23 +103,26 @@ type recipe = {
   d_modlist : work_list }
 
 let on_body f = function
-  | Undef inl -> Undef inl
+  | Undef _ as x -> x
   | Def cs -> Def (Declarations.from_val (f (Declarations.force cs)))
   | OpaqueDef lc ->
-    OpaqueDef (Declarations.opaque_from_val (f (Declarations.force_opaque lc)))
+      OpaqueDef (Future.chain ~id:"Cooking.on_body" ~pure:true lc (fun lc -> 
+        (Declarations.opaque_from_val (f (Declarations.force_opaque lc)))))
   | OpaqueDefIdx _ -> assert false
 
 let constr_of_def = function
   | Undef _ -> assert false
   | Def cs -> Declarations.force cs
-  | OpaqueDef lc -> Declarations.force_opaque lc
+  | OpaqueDef lc -> Declarations.force_opaque (Future.force lc)
   | OpaqueDefIdx _ -> assert false
 
 let cook_constant env r =
+  let cache = Hashtbl.create 13 in
   let cb = r.d_from in
-  let hyps = Sign.map_named_context (expmod_constr r.d_modlist) r.d_abstract in
+  let hyps =
+    Sign.map_named_context (expmod_constr cache r.d_modlist) r.d_abstract in
   let body = on_body
-    (fun c -> abstract_constant_body (expmod_constr r.d_modlist c) hyps)
+    (fun c -> abstract_constant_body (expmod_constr cache r.d_modlist c) hyps)
     cb.const_body
   in
   let const_hyps =
@@ -144,12 +131,16 @@ let cook_constant env r =
       hyps ~init:cb.const_hyps in
   let typ = match cb.const_type with
     | NonPolymorphicType t ->
-	let typ = abstract_constant_type (expmod_constr r.d_modlist t) hyps in
+	let typ =
+          abstract_constant_type (expmod_constr cache r.d_modlist t) hyps in
 	NonPolymorphicType typ
     | PolymorphicArity (ctx,s) ->
 	let t = mkArity (ctx,Type s.poly_level) in
-	let typ = abstract_constant_type (expmod_constr r.d_modlist t) hyps in
+	let typ =
+          abstract_constant_type (expmod_constr cache r.d_modlist t) hyps in
 	let j = make_judge (constr_of_def body) typ in
 	Typeops.make_polymorphic_if_constant_for_ind env j
   in
   (body, typ, cb.const_constraints, const_hyps)
+
+let expmod_constr modlist c = expmod_constr (Hashtbl.create 13) modlist c

@@ -692,7 +692,7 @@ let reset_env env =
 let fold_match ?(force=false) env sigma c =
   let (ci, p, c, brs) = destCase c in
   let cty = Retyping.get_type_of env sigma c in
-  let dep, pred, exists, sk = 
+  let dep, pred, exists, (sk, eff) = 
     let env', ctx, body =
       let ctx, pred = decompose_lam_assum p in
       let env' = Environ.push_rel_context ctx env in
@@ -729,7 +729,7 @@ let fold_match ?(force=false) env sigma c =
     let meths = List.map (fun br -> br) (Array.to_list brs) in
       applist (mkConst sk, pars @ [pred] @ meths @ args @ [c])
   in 
-    sk, (if exists then env else reset_env env), app
+    sk, (if exists then env else reset_env env), app, eff
       
 let unfold_match env sigma sk app =
   match kind_of_term app with
@@ -906,7 +906,7 @@ let subterm all flags (s : strategy) : strategy =
 	      else
 		match try Some (fold_match env (goalevars evars) t) with Not_found -> None with
 		| None -> x
-		| Some (cst, _, t') ->
+		| Some (cst, _, t',_) -> (* eff XXX *)
 		  match aux env avoid t' ty cstr evars with
 		  | Some (Some prf) -> 
 		    Some (Some { prf with
@@ -1265,7 +1265,9 @@ let assert_replacing id newt tac =
 			  env ~init:[]
 		      in
 		      let (e, args) = destEvar ev in
-			Goal.return (mkEvar (e, Array.of_list inst)))))
+			Goal.return 
+                         (mkEvar (e, Array.of_list inst))
+                         Declarations.no_side_effects)))
        in Goal.bind reft Goal.refine)
   in Proofview.tclTHEN (Proofview.tclSENSITIVE sens) 
        (Proofview.tclFOCUS 2 2 tac)
@@ -1309,7 +1311,7 @@ let cl_rewrite_clause_newtac ?abs strat clause =
 	   try 
 	     let res = 
 	       cl_rewrite_clause_aux ?abs strat env [] sigma ty is_hyp 
-	     in return (res, is_hyp)
+	     in return (res, is_hyp) Declarations.no_side_effects
 	   with
 	   | Loc.Exc_located (_, TypeClassError (env, (UnsatisfiableConstraints _ as e)))
 	   | TypeClassError (env, (UnsatisfiableConstraints _ as e)) ->
@@ -1331,9 +1333,9 @@ let cl_rewrite_clause_new_strat ?abs strat clause =
    newfail 0 (str"setoid rewrite failed: " ++ s))
 
 let cl_rewrite_clause_newtac' l left2right occs clause =
-  Proof_global.run_tactic 
+  Proof_global.with_current_proof (fun _ -> Proof.run_tactic (Global.env ())
     (Proofview.tclFOCUS 1 1 
-       (cl_rewrite_clause_new_strat (rewrite_with rewrite_unif_flags l left2right occs) clause))
+       (cl_rewrite_clause_new_strat (rewrite_with rewrite_unif_flags l left2right occs) clause)))
 
 let cl_rewrite_clause_strat strat clause =
   tclTHEN (tactic_init_setoid ())
@@ -1598,7 +1600,7 @@ let declare_instance a aeq n s = declare_an_instance n s [a;aeq]
 
 let anew_instance global binders instance fields =
   new_instance binders instance (Some (CRecord (Loc.ghost,None,fields)))
-    ~global:(not (Locality.use_section_locality ())) ~generalize:false None
+    ~global:(not (Locality.use_section_locality None)) ~generalize:false None
 
 let declare_instance_refl global binders a aeq n lemma =
   let instance = declare_instance a aeq (add_suffix n "_Reflexive") "Coq.Classes.RelationClasses.Reflexive"
@@ -1617,7 +1619,7 @@ let declare_instance_trans global binders a aeq n lemma =
 
 let declare_relation ?(binders=[]) a aeq n refl symm trans =
   init_setoid ();
-  let global = not (Locality.use_section_locality ()) in
+  let global = not (Locality.use_section_locality None) in
   let instance = declare_instance a aeq (add_suffix n "_relation") "Coq.Classes.RelationClasses.RewriteRelation"
   in ignore(anew_instance global binders instance []);
   match (refl,symm,trans) with
@@ -1752,7 +1754,8 @@ let declare_projection n instance_id r =
   let ty = Global.type_of_global r in
   let c = constr_of_global r in
   let term = proper_projection c ty in
-  let typ = Typing.type_of (Global.env ()) Evd.empty term in
+  let env = Global.env() in
+  let typ = Typing.type_of env Evd.empty term in
   let ctx, typ = decompose_prod_assum typ in
   let typ =
     let n =
@@ -1769,12 +1772,12 @@ let declare_projection n instance_id r =
 	  | _ -> typ
       in aux init
     in
-    let ctx,ccl = Reductionops.splay_prod_n (Global.env()) Evd.empty (3 * n) typ
+    let ctx,ccl = Reductionops.splay_prod_n env Evd.empty (3 * n) typ
     in it_mkProd_or_LetIn ccl ctx
   in
   let typ = it_mkProd_or_LetIn typ ctx in
   let cst =
-    { const_entry_body = term;
+    { const_entry_body = Future.from_val (term,Declarations.no_side_effects);
       const_entry_secctx = None;
       const_entry_type = Some typ;
       const_entry_opaque = false }
@@ -1874,16 +1877,16 @@ let add_morphism glob binders m s n =
 
 VERNAC COMMAND EXTEND AddSetoid1
    [ "Add" "Setoid" constr(a) constr(aeq) constr(t) "as" ident(n) ] ->
-     [ add_setoid (not (Locality.use_section_locality ())) [] a aeq t n ]
+     [ add_setoid (not (Locality.use_section_locality None)) [] a aeq t n ]
   | [ "Add" "Parametric" "Setoid" binders(binders) ":" constr(a) constr(aeq) constr(t) "as" ident(n) ] ->
-     [	add_setoid (not (Locality.use_section_locality ())) binders a aeq t n ]
+     [	add_setoid (not (Locality.use_section_locality None)) binders a aeq t n ]
   | [ "Add" "Morphism" constr(m) ":" ident(n) ] ->
-      [ add_morphism_infer (not (Locality.use_section_locality ())) m n ]
+      [ add_morphism_infer (not (Locality.use_section_locality None)) m n ]
   | [ "Add" "Morphism" constr(m) "with" "signature" lconstr(s) "as" ident(n) ] ->
-      [ add_morphism (not (Locality.use_section_locality ())) [] m s n ]
+      [ add_morphism (not (Locality.use_section_locality None)) [] m s n ]
   | [ "Add" "Parametric" "Morphism" binders(binders) ":" constr(m)
 	"with" "signature" lconstr(s) "as" ident(n) ] ->
-      [ add_morphism (not (Locality.use_section_locality ())) binders m s n ]
+      [ add_morphism (not (Locality.use_section_locality None)) binders m s n ]
 END
 
 (** Bind to "rewrite" too *)
@@ -2078,26 +2081,30 @@ TACTIC EXTEND implify
 [ "implify" hyp(n) ] -> [ implify n ]
 END
 
-let rec fold_matches env sigma c =
+let rec fold_matches eff env sigma c =
   map_constr_with_full_binders Environ.push_rel 
     (fun env c ->
       match kind_of_term c with
       | Case _ ->
-          let cst, env, c' = fold_match ~force:true env sigma c in
-	    fold_matches env sigma c'
-      | _ -> fold_matches env sigma c)
+          let cst, env, c',eff' = fold_match ~force:true env sigma c in
+          eff := eff' @ !eff;
+          fold_matches eff env sigma c'
+      | _ -> fold_matches eff env sigma c)
     env c
 
 TACTIC EXTEND fold_match
 [ "fold_match" constr(c) ] -> [ fun gl -> 
-  let _, _, c' = fold_match ~force:true (pf_env gl) (project gl) c in
-    change (Some (snd (pattern_of_constr (project gl) c))) c' onConcl gl ]
+  let _, _, c', eff = fold_match ~force:true (pf_env gl) (project gl) c in
+   tclTHEN (Tactics.emit_side_effects eff)
+    (change (Some (snd (pattern_of_constr (project gl) c))) c' onConcl) gl ]
 END
 
 TACTIC EXTEND fold_matches
-| [ "fold_matches" constr(c) ] -> [ fun gl -> 
-  let c' = fold_matches (pf_env gl) (project gl) c in
-    change (Some (snd (pattern_of_constr (project gl) c))) c' onConcl gl ]
+| [ "fold_matches" constr(c) ] -> [ fun gl ->
+  let eff = ref [] in
+  let c' = fold_matches eff (pf_env gl) (project gl) c in
+  tclTHEN (Tactics.emit_side_effects !eff)
+    (change (Some (snd (pattern_of_constr (project gl) c))) c' onConcl) gl ]
 END
 
 TACTIC EXTEND myapply

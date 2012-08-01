@@ -190,7 +190,7 @@ let carg c = TacDynamic(Loc.ghost,Pretyping.constr_in c)
 let dummy_goal env =
   let (gl,_,sigma) = 
     Goal.V82.mk_goal Evd.empty (named_context_val env) mkProp Store.empty in
-  {Evd.it = gl;
+  {Evd.it = gl; Evd.eff=[];
    Evd.sigma = sigma}
 
 let exec_tactic env n f args =
@@ -705,8 +705,10 @@ let add_theory name rth eqth morphth cst_tac (pre,post) power sign div =
   let lemma1 = constr_of params.(3) in
   let lemma2 = constr_of params.(4) in
 
-  let lemma1 = decl_constant (string_of_id name^"_ring_lemma1") lemma1 in
-  let lemma2 = decl_constant (string_of_id name^"_ring_lemma2") lemma2 in
+  let lemma1 =
+    decl_constant (string_of_id name^"_ring_lemma1") (Future.from_val ( lemma1,Declarations.no_side_effects)) in
+  let lemma2 =
+    decl_constant (string_of_id name^"_ring_lemma2") (Future.from_val ( lemma2,Declarations.no_side_effects)) in
   let cst_tac =
     interp_cst_tac env sigma morphth kind (zero,one,add,mul,opp) cst_tac in
   let pretac =
@@ -1065,11 +1067,11 @@ let add_field_theory name fth eqth morphth cst_tac inj (pre,post) power sign odi
     match inj with
       | Some thm -> mkApp(constr_of params.(8),[|thm|])
       | None -> constr_of params.(7) in
-  let lemma1 = decl_constant (string_of_id name^"_field_lemma1") lemma1 in
-  let lemma2 = decl_constant (string_of_id name^"_field_lemma2") lemma2 in
-  let lemma3 = decl_constant (string_of_id name^"_field_lemma3") lemma3 in
-  let lemma4 = decl_constant (string_of_id name^"_field_lemma4") lemma4 in
-  let cond_lemma = decl_constant (string_of_id name^"_lemma5") cond_lemma in
+  let lemma1 = decl_constant (string_of_id name^"_field_lemma1") (Future.from_val (lemma1,Declarations.no_side_effects)) in
+  let lemma2 = decl_constant (string_of_id name^"_field_lemma2") (Future.from_val (lemma2,Declarations.no_side_effects)) in
+  let lemma3 = decl_constant (string_of_id name^"_field_lemma3") (Future.from_val (lemma3,Declarations.no_side_effects)) in
+  let lemma4 = decl_constant (string_of_id name^"_field_lemma4") (Future.from_val (lemma4,Declarations.no_side_effects)) in
+  let cond_lemma = decl_constant (string_of_id name^"_lemma5") (Future.from_val (cond_lemma,Declarations.no_side_effects)) in
   let cst_tac =
     interp_cst_tac env sigma morphth kind (zero,one,add,mul,opp) cst_tac in
   let pretac =

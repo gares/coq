@@ -21,13 +21,15 @@ open Proof_type
 open Logic
 
 
-let sig_it x = x.it
+let sig_it x = x.it, x.eff
 let project x = x.sigma
 
 (* Getting env *)
 
-let pf_env gls = Global.env_of_context (Goal.V82.hyps (project gls) (sig_it gls))
-let pf_hyps gls = named_context_of_val (Goal.V82.hyps (project gls) (sig_it gls))
+let pf_env gls = 
+  Global.env_of_context (Goal.V82.hyps (project gls) (fst (sig_it gls)))
+let pf_hyps gls = 
+  named_context_of_val (Goal.V82.hyps (project gls) (fst (sig_it gls)))
 
 let abstract_operation syntax semantics =
   semantics
@@ -47,7 +49,7 @@ let refiner = function
       let prim_fun = prim_refiner pr in
 	(fun goal_sigma ->
           let (sgl,sigma') = prim_fun goal_sigma.sigma goal_sigma.it in
-	  {it=sgl; sigma = sigma'})
+          {it=sgl; sigma = sigma';eff=goal_sigma.eff})
 
 
   | Nested (_,_) | Decl_proof _ ->
@@ -57,7 +59,7 @@ let refiner = function
 
   | Daimon ->
       fun gls ->
-	{it=[];sigma=gls.sigma}
+       {it=[];sigma=gls.sigma;eff=gls.eff}
 
 
 let norm_evar_tac gl = refiner (Prim Change_evars) gl
@@ -67,18 +69,19 @@ let norm_evar_tac gl = refiner (Prim Change_evars) gl
 (*********************)
 
 
-let unpackage glsig = (ref (glsig.sigma)),glsig.it
+let unpackage glsig = (ref (glsig.sigma)), glsig.it, (ref (glsig.eff))
 
-let repackage r v = {it=v;sigma = !r}
+let repackage e r v = {it = v; sigma = !r; eff = !e}
 
-let apply_sig_tac r tac g =
+let apply_sig_tac eff r tac g =
   check_for_interrupt (); (* Breakpoint *)
-  let glsigma = tac (repackage r g) in
+  let glsigma = tac (repackage eff r g) in
   r := glsigma.sigma;
+  eff := glsigma.eff;
   glsigma.it
 
 (* [goal_goal_list : goal sigma -> goal list sigma] *)
-let goal_goal_list gls = {it=[gls.it];sigma=gls.sigma}
+let goal_goal_list gls = {it=[gls.it]; sigma=gls.sigma; eff=gls.eff}
 
 (* forces propagation of evar constraints *)
 let tclNORMEVAR = norm_evar_tac
@@ -102,23 +105,25 @@ let tclFAIL lvl s g = raise (FailError (lvl,lazy s))
 let tclFAIL_lazy lvl s g = raise (FailError (lvl,s))
 
 let start_tac gls =
-  let (sigr,g) = unpackage gls in
-  (sigr,[g])
+  let sigr, g, eff = unpackage gls in
+  (sigr, [g], eff)
 
-let finish_tac (sigr,gl) = repackage sigr gl
+let finish_tac (sigr,gl,eff) = repackage eff sigr gl
 
 (* Apply [tacfi.(i)] on the first n subgoals, [tacli.(i)] on the last
    m subgoals, and [tac] on the others *)
-let thens3parts_tac tacfi tac tacli (sigr,gs) =
+let thens3parts_tac tacfi tac tacli (sigr,gs,eff) =
   let nf = Array.length tacfi in
   let nl = Array.length tacli in
   let ng = List.length gs in
-  if ng<nf+nl then errorlabstrm "Refiner.thensn_tac" (str "Not enough subgoals.");
-  let gll =
-      (list_map_i (fun i ->
-        apply_sig_tac sigr (if i<nf then tacfi.(i) else if i>=ng-nl then tacli.(nl-ng+i) else tac))
-	0 gs) in
-    (sigr,List.flatten gll)
+  if ng<nf+nl then
+    errorlabstrm "Refiner.thensn_tac" (str "Not enough subgoals.");
+  let gll = list_map_i (fun i ->
+    apply_sig_tac eff sigr 
+      (if i<nf then tacfi.(i) else if i>=ng-nl then tacli.(nl-ng+i) else tac))
+    0 gs
+  in
+    (sigr,List.flatten gll,eff)
 
 (* Apply [taci.(i)] on the first n subgoals and [tac] on the others *)
 let thensf_tac taci tac = thens3parts_tac taci tac [||]
@@ -127,10 +132,9 @@ let thensf_tac taci tac = thens3parts_tac taci tac [||]
 let thensl_tac tac taci = thens3parts_tac [||] tac taci
 
 (* Apply [tac i] on the ith subgoal (no subgoals number check) *)
-let thensi_tac tac (sigr,gs) =
-  let gll =
-    list_map_i (fun i -> apply_sig_tac sigr (tac i)) 1 gs in
-  (sigr, List.flatten gll)
+let thensi_tac tac (sigr,gs,eff) =
+  let gll = list_map_i (fun i -> apply_sig_tac eff sigr (tac i)) 1 gs in
+  (sigr, List.flatten gll,eff)
 
 let then_tac tac = thensf_tac [||] tac
 
@@ -140,7 +144,7 @@ let non_existent_goal n =
 
 (* Apply tac on the i-th goal (if i>0). If i<0, then start counting from
    the last goal (i=-1). *)
-let theni_tac i tac ((_,gl) as subgoals) =
+let theni_tac i tac ((_,gl,_) as subgoals) =
   let nsg = List.length gl in
   let k = if i < 0 then nsg + i + 1 else i in
   if nsg < 1 then errorlabstrm "theni_tac" (str"No more subgoals.")
@@ -271,8 +275,8 @@ let tclORELSE_THEN t1 t2then t2else gls =
   with
     | None -> t2else gls
     | Some sgl ->
-        let (sigr,gl) = unpackage sgl in
-        finish_tac (then_tac t2then  (sigr,gl))
+        let sigr, gl, eff = unpackage sgl in
+        finish_tac (then_tac t2then  (sigr,gl,eff))
 
 (* TRY f tries to apply f, and if it fails, leave the goal unchanged *)
 let tclTRY f = (tclORELSE0 f tclIDTAC)
@@ -377,23 +381,24 @@ let tclIDTAC_list gls = gls
 (* first_goal : goal list sigma -> goal sigma *)
 
 let first_goal gls =
-  let gl = gls.it and sig_0 = gls.sigma in
+  let gl = gls.it and sig_0 = gls.sigma and eff_0 = gls.eff in
   if gl = [] then error "first_goal";
-  { it = List.hd gl; sigma = sig_0 }
+  { it = List.hd gl; sigma = sig_0 ; eff = eff_0 }
 
 (* goal_goal_list : goal sigma -> goal list sigma *)
 
 let goal_goal_list gls =
-  let gl = gls.it and sig_0 = gls.sigma in { it = [gl]; sigma = sig_0 }
+  let gl = gls.it and sig_0 = gls.sigma and eff_0 = gls.eff in 
+  { it = [gl]; sigma = sig_0; eff = eff_0 }
 
 (* tactic -> tactic_list : Apply a tactic to the first goal in the list *)
 
 let apply_tac_list tac glls =
-  let (sigr,lg) = unpackage glls in
+  let (sigr,lg,eff) = unpackage glls in
   match lg with
   | (g1::rest) ->
-      let gl = apply_sig_tac sigr tac g1 in
-      repackage sigr (gl@rest)
+      let gl = apply_sig_tac eff sigr tac g1 in
+      repackage eff sigr (gl@rest)
   | _ -> error "apply_tac_list"
 
 let then_tactic_list tacl1 tacl2 glls =

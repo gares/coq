@@ -16,6 +16,7 @@
 
 open Pp
 open Names
+open Util
 
 (*** Proof Modes ***)
 
@@ -30,9 +31,8 @@ type proof_mode = {
 
 let proof_modes = Hashtbl.create 6
 let find_proof_mode n =
-  try Hashtbl.find proof_modes n
-  with Not_found ->
-    Errors.error (Format.sprintf "No proof mode named \"%s\"." n)
+ try Hashtbl.find proof_modes n
+ with Not_found -> Errors.error (Format.sprintf "No proof mode named \"%s\"." n)
 
 let register_proof_mode ({ name = n } as m) = Hashtbl.add proof_modes n m
 (* initial mode: standard mode *)
@@ -42,48 +42,41 @@ let _ = register_proof_mode standard
 (* Default proof mode, to be set at the beginning of proofs. *)
 let default_proof_mode = ref standard
 
-let _ =
-  Goptions.declare_string_option {Goptions.
-    optsync = true ;
-    optdepr = false;
-    optname = "default proof mode" ;
-    optkey = ["Default";"Proof";"Mode"] ;
-    optread = begin fun () ->
-                               let { name = name } = !default_proof_mode in name
-                     end;
-    optwrite = begin fun n ->
-                                default_proof_mode := find_proof_mode n
-                      end
-  }
+let _ = Goptions.declare_string_option { Goptions.
+ optsync = true;
+ optdepr = false;
+ optname = "default proof mode";
+ optkey = ["Default";"Proof";"Mode"];
+ optread = begin fun _ -> let { name = name } = !default_proof_mode in name end;
+ optwrite = begin fun n -> default_proof_mode := find_proof_mode n end
+}
 
 (*** Proof Global Environment ***)
 
-(* local shorthand *)
-type nproof = identifier*Proof.proof
-
-(* Extra info on proofs. *)
 type lemma_possible_guards = int list list
-type proof_info = {
-  strength : Decl_kinds.goal_kind ;
-  compute_guard :  lemma_possible_guards;
-  hook : unit Tacexpr.declaration_hook ;
-  mode : proof_mode
+
+type pstate = {
+  pid : identifier;
+  endline_tactic : unit Proofview.tactic;
+  section_vars : Sign.section_context option;
+  proof : Proof.proof;
+  strength : Decl_kinds.goal_kind;
+  compute_guard : lemma_possible_guards;
+  hook : unit Tacexpr.declaration_hook;
+  mode : proof_mode;
 }
 
-(* Invariant: the domain of proof_info is current_proof.*)
-(* The head of [!current_proof] is the actual current proof, the other ones are
+(* The head of [!pstates] is the actual current proof, the other ones are
    to be resumed when the current proof is closed or aborted. *)
-let current_proof = ref ([]:nproof list)
-let proof_info = ref (Idmap.empty : proof_info Idmap.t)
+let pstates = ref ([] : pstate list)
 
 (* Current proof_mode, for bookkeeping *)
 let current_proof_mode = ref !default_proof_mode
 
 (* combinators for proof modes *)
 let update_proof_mode () =
-  match !current_proof with
-  | (id,_)::_ ->
-      let { mode = m } = Idmap.find id !proof_info in
+  match !pstates with
+  | { mode = m } :: _ ->  
       !current_proof_mode.reset ();
       current_proof_mode := m;
       !current_proof_mode.set ()
@@ -91,65 +84,50 @@ let update_proof_mode () =
       !current_proof_mode.reset ();
       current_proof_mode := standard
 
-(* combinators for the current_proof lists *)
-let push a l = l := a::!l;
-  update_proof_mode ()
-
-exception NoSuchProof
-let _ = Errors.register_handler begin function
-  | NoSuchProof -> Errors.error "No such proof."
-  | _ -> raise Errors.Unhandled
-end
-let rec extract id l =
-  let rec aux = function
-    | ((id',_) as np)::l when id_ord id id' = 0 -> (np,l)
-    | np::l -> let (np', l) = aux l in (np' , np::l)
-    | [] -> raise NoSuchProof
-  in
-  let (np,l') = aux !l in
-  l := l';
-  update_proof_mode ();
-  np
+(* combinators for the pstates lists *)
+let push a l = l := a::!l; update_proof_mode ()
 
 exception NoCurrentProof
 let _ = Errors.register_handler begin function
-  | NoCurrentProof -> Errors.error "No focused proof (No proof-editing in progress)."
+  | NoCurrentProof ->
+      Errors.error "No focused proof (No proof-editing in progress)."
   | _ -> raise Errors.Unhandled
 end
+
 let extract_top l =
   match !l with
   | np::l' -> l := l' ; update_proof_mode (); np
-  | [] -> raise NoCurrentProof
-let find_top l =
-  match !l with
-  | np::_ -> np
   | [] -> raise NoCurrentProof
 
 let rotate_top l1 l2 =
   let np = extract_top l1 in
   push np l2
 
-let rotate_find id l1 l2 =
-  let np = extract id l1 in
-  push np l2
-
-
-(* combinators for the proof_info map *)
-let add id info m =
-  m := Idmap.add id info !m
-let remove id m =
-  m := Idmap.remove id !m
-
 (*** Proof Global manipulation ***)
 
 let get_all_proof_names () =
-    List.map fst !current_proof
+  List.map (function { pid = id } -> id) !pstates
 
-let give_me_the_proof () =
-  snd (find_top current_proof)
+let cur_pstate () =
+  match !pstates with
+  | np::_ -> np
+  | [] -> raise NoCurrentProof
 
-let get_current_proof_name () =
-  fst (find_top current_proof)
+let give_me_the_proof () = (cur_pstate ()).proof
+let get_current_proof_name () = (cur_pstate ()).pid
+
+let with_current_proof f = 
+  match !pstates with
+  | [] -> raise NoCurrentProof
+  | p :: rest -> 
+      let p = { p with proof = f p.endline_tactic p.proof } in
+      pstates := p :: rest
+
+(* Sets the tactic to be used when a tactic line is closed with [...] *)
+let set_endline_tactic tac =
+  match !pstates with
+  | [] -> raise NoCurrentProof
+  | p :: rest -> pstates := { p with endline_tactic = tac } :: rest
 
 (* spiwack: it might be considered to move error messages away.
     Or else to remove special exceptions from Proof_global.
@@ -163,11 +141,9 @@ let msg_proofs () =
     | l ->  (str"." ++ fnl () ++ str"Proofs currently edited:" ++ spc () ++
                (pr_sequence Nameops.pr_id l) ++ str".")
 
-let there_is_a_proof () = !current_proof <> []
-let there_are_pending_proofs () = there_is_a_proof ()
+let there_are_pending_proofs () = !pstates <> []
 let check_no_pending_proof () =
-  if not (there_are_pending_proofs ()) then
-    ()
+  if not (there_are_pending_proofs ()) then ()
   else begin
     Errors.error (Pp.string_of_ppcmds
       (str"Proof editing in progress" ++ msg_proofs () ++ fnl() ++
@@ -175,51 +151,40 @@ let check_no_pending_proof () =
   end
 
 let discard_gen id =
-  ignore (extract id current_proof);
-  remove id proof_info
+  pstates := List.filter (fun { pid = id' } -> id <> id') !pstates
 
 let discard (loc,id) =
-  try
-    discard_gen id
-  with NoSuchProof ->
+  let n = List.length !pstates in
+  discard_gen id;
+  if List.length !pstates = n then
     Errors.user_err_loc
       (loc,"Pfedit.delete_proof",str"No such proof" ++ msg_proofs ())
 
-let discard_current () =
-  let (id,_) = extract_top current_proof in
-  remove id proof_info
+let discard_current () = 
+  if !pstates = [] then raise NoCurrentProof else pstates := List.tl !pstates
 
-let discard_all () =
-  current_proof := [];
-  proof_info := Idmap.empty
+let discard_all () = pstates := []
 
 (* [set_proof_mode] sets the proof mode to be used after it's called. It is
     typically called by the Proof Mode command. *)
-(* Core component.
-    No undo handling.
-    Applies to proof [id], and proof mode [m]. *)
 let set_proof_mode m id =
-  let info = Idmap.find id !proof_info in
-  let info = { info with mode = m } in
-  proof_info := Idmap.add id info !proof_info;
+  pstates :=
+    List.map (function { pid = id' } as p ->
+      if id' = id then { p with mode = m } else p) !pstates;
   update_proof_mode ()
-(* Complete function.
-    Handles undo.
-    Applies to current proof, and proof mode name [mn]. *)
+
 let set_proof_mode mn =
-  let m = find_proof_mode mn in
-  let id = get_current_proof_name () in
-  let pr = give_me_the_proof () in
-  Proof.add_undo begin let curr = !current_proof_mode in fun () ->
-    set_proof_mode curr id ; update_proof_mode ()
-  end pr ;
-  set_proof_mode m id
+  set_proof_mode (find_proof_mode mn) (get_current_proof_name ())
+
+let activate_proof_mode mode = (find_proof_mode mode).set ()
+let disactivate_proof_mode mode = (find_proof_mode mode).reset ()
 
 exception AlreadyExists
 let _ = Errors.register_handler begin function
   | AlreadyExists -> Errors.error "Already editing something of that name."
   | _ -> raise Errors.Unhandled
 end
+
 (* [start_proof s str env t hook tac] starts a proof of name [s] and
     conclusion [t]; [hook] is optionally a function to be applied at
     proof end (e.g. to declare the built constructions as a coercion
@@ -228,83 +193,55 @@ end
     proof of mutually dependent theorems).
     It raises exception [ProofInProgress] if there is a proof being
     currently edited. *)
-let start_proof  id str goals ?(compute_guard=[]) hook =
-  begin
-    List.iter begin fun (id_ex,_) ->
-      if Names.id_ord id id_ex = 0 then raise AlreadyExists
-    end !current_proof
-  end;
-  let p = Proof.start goals in
-  add id { strength=str ;
-	        compute_guard=compute_guard ;
-		hook=hook ;
-	        mode = ! default_proof_mode } proof_info ;
-  push (id,p) current_proof
+let start_proof id str goals ?(compute_guard=[]) hook =
+  let initial_state = { 
+    pid = id;
+    proof = Proof.start goals;
+    endline_tactic = Proofview.tclUNIT ();
+    section_vars = None;
+    strength = str ; 
+    compute_guard = compute_guard ; 
+    hook = hook ;
+    mode = ! default_proof_mode } in
+  push initial_state pstates
 
-(* arnaud: à enlever *)
-let run_tactic tac =
-  let p = give_me_the_proof () in
-  let env = Global.env () in
-  Proof.run_tactic env tac p
-
-(* Sets the tactic to be used when a tactic line is closed with [...] *)
-let set_endline_tactic tac =
-  let p = give_me_the_proof () in
-  Proof.set_endline_tactic tac p
+let get_used_variables () = (cur_pstate ()).section_vars
 
 let set_used_variables l =
-  let p = give_me_the_proof () in
   let env = Global.env () in
   let ids = List.fold_right Idset.add l Idset.empty in
   let ctx = Environ.keep_hyps env ids in
-  Proof.set_used_variables ctx p
+  match !pstates with
+  | [] -> raise NoCurrentProof
+  | p :: rest ->
+      if p.section_vars <> None then
+        Errors.error "Used section variables can be declared only once";
+      pstates := { p with section_vars = Some ctx} :: rest
 
-let get_used_variables () =
-  Proof.get_used_variables (give_me_the_proof ())
+type closed_proof =
+  Names.identifier * 
+  (Entries.definition_entry list * lemma_possible_guards * 
+    Decl_kinds.goal_kind * unit Tacexpr.declaration_hook)
 
-let with_end_tac tac =
-  let p = give_me_the_proof () in
-  Proof.with_end_tac p tac
+let close_proof ~now ps side_eff =
+  let { pid; section_vars; compute_guard; strength; hook; proof } = ps in
+  let entries = List.map (fun (c, t) -> { Entries.
+    const_entry_body = Future.chain side_eff (fun () ->
+      try Proof.return (cur_pstate ()).proof c with 
+      | Proof.UnfinishedProof ->
+          Errors.error "Attempt to save an incomplete proof"
+      | Proof.HasUnresolvedEvar ->
+          Errors.error ("Attempt to save a proof with existential "^
+            "variables still non-instantiated"));
+    const_entry_secctx = section_vars;
+    const_entry_type  = Some t;
+    const_entry_opaque = true }) (Proof.initial_goals proof) in
+  if now then 
+    List.iter (fun x -> ignore(Future.join x.Entries.const_entry_body)) entries;
+  (pid, (entries, compute_guard, strength, hook))
 
-let close_proof () =
-  (* spiwack: for now close_proof doesn't actually discard the proof, it is done
-      by [Command.save]. *)
-  try
-    let id = get_current_proof_name () in
-    let p = give_me_the_proof () in
-    let proofs_and_types = Proof.return p in
-    let section_vars = Proof.get_used_variables p in
-    let entries = List.map
-      (fun (c,t) -> { Entries.const_entry_body = c;
-                      const_entry_secctx = section_vars;
-                      const_entry_type = Some t;
-		      const_entry_opaque = true })
-      proofs_and_types
-    in
-    let { compute_guard=cg ; strength=str ; hook=hook } =
-      Idmap.find id !proof_info
-    in
-    (id, (entries,cg,str,hook))
-  with
-    |  Proof.UnfinishedProof ->
-	 Errors.error "Attempt to save an incomplete proof"
-    | Proof.HasUnresolvedEvar ->
-	Errors.error "Attempt to save a proof with existential variables still non-instantiated"
-
-
-(**********************************************************)
-(*                                                                                                  *)
-(*                              Utility functions                                          *)
-(*                                                                                                  *)
-(**********************************************************)
-
-let maximal_unfocus k p =
-  begin try while Proof.no_focused_goal p do
-    Proof.unfocus k p
-  done
-  with Proof.FullyUnfocused | Proof.CannotUnfocusThisWay -> ()
-  end
-
+let close_future_proof proof = close_proof ~now:false (cur_pstate ()) proof
+let close_proof () = close_proof ~now:true (cur_pstate ()) (Future.from_val())
 
 (**********************************************************)
 (*                                                        *)
@@ -321,7 +258,7 @@ module Bullet = struct
 
   type behavior = {
     name : string;
-    put : Proof.proof -> t -> unit
+    put : Proof.proof -> t -> Proof.proof
   }
 
   let behaviors = Hashtbl.create 4
@@ -330,18 +267,19 @@ module Bullet = struct
   (*** initial modes ***)
   let none = {
     name = "None";
-    put = fun _ _ -> ()
+    put = fun x _ -> x
   }
   let _ = register_behavior none
 
   module Strict = struct
-    (* spiwack: we need only one focus kind as we keep a stack of (distinct!) bullets *)
+    (* spiwack: we need only one focus kind as we keep a stack of (distinct!)
+     * bullets *)
     let bullet_kind = (Proof.new_focus_kind () : t list Proof.focus_kind)
     let bullet_cond = Proof.done_cond ~loose_end:true bullet_kind
 
-    (* spiwack: as it is bullets are reset (locally) by *any* non-bullet focusing command
-       experience will tell if this is the right discipline of if we want to be finer and
-       reset them only for a choice of bullets. *)
+    (* spiwack: as it is bullets are reset (locally) by *any* non-bullet
+     * focusing command experience will tell if this is the right discipline of
+     * if we want to be finer and reset them only for a choice of bullets. *)
     let get_bullets pr =
       if Proof.is_last_focus bullet_kind pr then
 	Proof.get_at_focus bullet_kind pr
@@ -360,8 +298,8 @@ module Bullet = struct
     let pop pr =
       match get_bullets pr with
       | b::_ ->
-	Proof.unfocus bullet_kind pr;
-	(*returns*) b
+         let pr = Proof.unfocus bullet_kind pr () in
+         pr, b
       | _ -> assert false
 
     let push b pr =
@@ -369,11 +307,11 @@ module Bullet = struct
 
     let put p bul =
       if has_bullet bul p then
-	Proof.transaction p begin fun () ->
-	  while bul <> pop p do () done;
-	  push bul p
-	end
-      else
+        let rec aux p =
+          let p, b = pop p in
+          if bul <> b then aux p else p in
+        push bul (aux p)
+      else 
 	push bul p
 
     let strict = {
@@ -407,11 +345,11 @@ end
 
 module V82 = struct
   let get_current_initial_conclusions () =
-    let p = give_me_the_proof () in
-    let id = get_current_proof_name () in
-    let { strength=str ; hook=hook } =
-      Idmap.find id !proof_info
-    in
-    (id,(Proof.V82.get_initial_conclusions p, str, hook))
+    let { pid; strength; hook; proof } = cur_pstate () in
+    pid, (List.map snd (Proof.initial_goals proof), strength, hook)
 end
+
+type state = pstate list
+let freeze () = !pstates
+let unfreeze s = pstates := s; update_proof_mode ()
 

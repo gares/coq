@@ -68,7 +68,8 @@ let find_reference sl s =
 
 let (declare_fun : identifier -> logical_kind -> constr -> global_reference) =
   fun f_id kind value ->
-    let ce = {const_entry_body = value;
+    let ce = {const_entry_body = Future.from_val
+                (value, Declarations.no_side_effects);
               const_entry_secctx = None;
 	      const_entry_type = None;
 	      const_entry_opaque = false } in
@@ -1554,9 +1555,6 @@ let recursive_definition is_mes function_name rec_impls type_of_f r rec_arg_num 
       (List.length res_vars)
       hook 
   with e ->
-    begin
-      (try ignore (Backtrack.backto previous_label) with _ -> ());
-      (*       anomaly "Cannot create termination Lemma" *)
-      raise e
-    end
+    Lib.reset_label previous_label;   
+    anomaly "Cannot create termination Lemma"
 

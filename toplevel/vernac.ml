@@ -98,53 +98,6 @@ let real_error = function
 
 let user_error loc s = Errors.user_err_loc (loc,"_",str s)
 
-(** Timeout handling *)
-
-(** A global default timeout, controled by option "Set Default Timeout n".
-    Use "Unset Default Timeout" to deactivate it (or set it to 0). *)
-
-let default_timeout = ref None
-
-let _ =
-  Goptions.declare_int_option
-    { Goptions.optsync  = true;
-      Goptions.optdepr  = false;
-      Goptions.optname  = "the default timeout";
-      Goptions.optkey   = ["Default";"Timeout"];
-      Goptions.optread  = (fun () -> !default_timeout);
-      Goptions.optwrite = ((:=) default_timeout) }
-
-(** When interpreting a command, the current timeout is initially
-    the default one, but may be modified locally by a Timeout command. *)
-
-let current_timeout = ref None
-
-(** Installing and de-installing a timer.
-    Note: according to ocaml documentation, Unix.alarm isn't available
-    for native win32. *)
-
-let timeout_handler _ = raise Timeout
-
-let set_timeout n =
-  let psh =
-    Sys.signal Sys.sigalrm (Sys.Signal_handle timeout_handler) in
-  ignore (Unix.alarm n);
-  Some psh
-
-let default_set_timeout () =
-  match !current_timeout with
-    | Some n -> set_timeout n
-    | None -> None
-
-let restore_timeout = function
-  | None -> ()
-  | Some psh ->
-    (* stop alarm *)
-    ignore(Unix.alarm 0);
-    (* restore handler *)
-    Sys.set_signal Sys.sigalrm psh
-
-
 (* Open an utf-8 encoded file and skip the byte-order mark if any *)
 
 let open_utf8_file_in fname =
@@ -155,7 +108,6 @@ let open_utf8_file_in fname =
   let s = "   " in
   if input in_chan s 0 3 < 3 || not (is_bom s) then seek_in in_chan 0;
   in_chan
-
 (* Opening and closing a channel. Open it twice when verbose: the first
    channel is used to read the commands, and the second one to print them.
    Note: we could use only one thanks to seek_in, but seeking on and on in
@@ -257,62 +209,21 @@ let rec vernac_com interpfun checknav (loc,com) =
           end;
 	begin
 	  try
-	    let status = read_vernac_file verbosely (CUnix.make_suffix fname ".v") in
+            read_vernac_file verbosely (CUnix.make_suffix fname ".v");
 	    restore_translator_coqdoc st;
-            status
 	  with e ->
 	    restore_translator_coqdoc st;
 	    raise e
 	end
 
-    | VernacList l ->
-        List.fold_left (fun status (_,v) -> interp v && true) true l
+    | VernacList l -> List.iter (fun (_,v) -> interp v) l
 
-    | v when !just_parsing -> true
+    | v when !just_parsing -> ()
 
-    | VernacFail v ->
-	begin try
-	  (* If the command actually works, ignore its effects on the state *)
-	  States.with_state_protection
-	    (fun v -> ignore (interp v); raise HasNotFailed) v
-	with e -> match real_error e with
-	  | HasNotFailed ->
-	      errorlabstrm "Fail" (str "The command has not failed !")
-	  | e ->
-	      (* Anomalies are re-raised by the next line *)
-	      let msg = Errors.print_no_anomaly e in
-	      if_verbose msg_info
-		(str "The command has indeed failed with message:" ++
-		 fnl () ++ str "=> " ++ hov 0 msg);
-              true
-	end
-
-    | VernacTime v ->
-	  let tstart = System.get_time() in
-          let status = interp v in
-	  let tend = get_time() in
-          msg_info (str"Finished transaction in " ++
-                   System.fmt_time_difference tstart tend);
-          status
-
-    | VernacTimeout(n,v) ->
-	  current_timeout := Some n;
-	  interp v
-
-    | v ->
-	  let psh = default_set_timeout () in
-	  try
-            let status =
-              States.with_heavy_rollback interpfun
-                Cerrors.process_vernac_interp_error v
-            in
-	    restore_timeout psh;
-            status
-	  with e -> restore_timeout psh; raise e
+    | v -> Stm.process_transaction interpfun v
   in
     try
       checknav loc com;
-      current_timeout := !default_timeout;
       if do_beautify () then pr_new_syntax loc (Some com);
       interp com
     with e ->
@@ -321,30 +232,28 @@ let rec vernac_com interpfun checknav (loc,com) =
 
 and read_vernac_file verbosely s =
   Flags.make_warn verbosely;
-  let interpfun =
-    if verbosely then Vernacentries.interp
-    else Flags.silently Vernacentries.interp
+  let interpfun ?proof e =
+    if verbosely then Vernacentries.interp ?proof e
+    else Flags.silently (Vernacentries.interp ?proof) e
   in
   let checknav loc cmd =
     if is_navigation_vernac cmd && not (is_reset cmd) then
 	user_error loc "Navigation commands forbidden in files"
   in
-  let end_inner_command cmd =
+  let end_inner_command cmd = () (* XXX
     if !atomic_load || is_reset cmd then
       Lib.mark_end_of_command () (* for Reset in coqc or coqtop -l *)
     else
-      Backtrack.mark_command cmd; (* for Show Script, cf bug #2820 *)
+      Backtrack.mark_command cmd; (* for Show Script, cf bug #2820 *) *)
   in
   let (in_chan, fname, input) =
     open_file_twice_if verbosely s in
-  let status = ref true in
   try
     (* we go out of the following infinite loop when a End_of_input is
      * raised, which means that we raised the end of the file being loaded *)
     while true do
       let loc_ast = parse_sentence input in
-      let command_status = vernac_com interpfun checknav loc_ast in
-      status := !status && command_status;
+      vernac_com interpfun checknav loc_ast;
       end_inner_command (snd loc_ast);
       pp_flush ()
     done;
@@ -354,8 +263,10 @@ and read_vernac_file verbosely s =
     close_input in_chan input;    (* we must close the file first *)
     match real_error e with
       | End_of_input ->
-          if do_beautify () then pr_new_syntax (Loc.make_loc (max_int,max_int)) None;
-          !status
+          Stm.finish interpfun;
+          Stm.join ();
+          if do_beautify () then
+            pr_new_syntax (Loc.make_loc (max_int,max_int)) None
       | _ -> raise_with_file fname e
 
 (** [eval_expr : ?preserving:bool -> Loc.t * Vernacexpr.vernac_expr -> unit]
@@ -369,11 +280,9 @@ let checknav loc ast =
   if is_deep_navigation_vernac ast then
     user_error loc "Navigation commands forbidden in nested commands"
 
-let eval_expr ?(preserving=false) loc_ast =
-  let status = vernac_com Vernacentries.interp checknav loc_ast in
-  if not preserving && not (is_navigation_vernac (snd loc_ast)) then
-    Backtrack.mark_command (snd loc_ast);
-  status
+let eval_expr loc_ast =
+  vernac_com (fun ?proof x -> Vernacentries.interp ?proof x) 
+    (fun _ _ -> ()) loc_ast
 
 (* raw_do_vernac : Pcoq.Gram.parsable -> unit
  * vernac_step . parse_sentence *)
@@ -410,3 +319,9 @@ let compile verbosely f =
   if !Flags.xml_export then !xml_end_library ();
   Library.save_library_to ldir (long_f_dot_v ^ "o");
   Dumpglob.end_dump_glob ()
+
+let observe id =
+  if id = max_int then
+    Stm.finish Vernacentries.interp
+  else
+    Stm.observe Vernacentries.interp (Stategraph.state_id_of_int id)

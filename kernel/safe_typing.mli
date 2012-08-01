@@ -26,6 +26,15 @@ type safe_environment
 
 val env_of_safe_env : safe_environment -> Environ.env
 
+val sideff_of_con : safe_environment -> constant -> side_effect 
+
+val is_curmod_library : safe_environment -> bool
+
+
+(* safe_environment has functional data affected by lazy computations,
+ * thus this function returns a new safe_environment *)
+val join_safe_environment : safe_environment -> safe_environment
+
 val empty_environment : safe_environment
 val is_empty : safe_environment -> bool
 
@@ -34,7 +43,7 @@ val push_named_assum :
   identifier * types -> safe_environment ->
     Univ.constraints * safe_environment
 val push_named_def :
-  identifier * constr * types option -> safe_environment ->
+  identifier * definition_entry -> safe_environment ->
     Univ.constraints * safe_environment
 
 (** Adding global axioms or definitions *)
@@ -100,6 +109,8 @@ val delta_of_senv : safe_environment -> delta_resolver*delta_resolver
 
 (** exporting and importing modules *)
 type compiled_library
+
+val join_compiled_library : compiled_library -> unit
 
 val start_library : dir_path -> safe_environment
       -> module_path * safe_environment

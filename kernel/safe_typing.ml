@@ -106,6 +106,7 @@ type safe_environment =
       objlabels : Labset.t;
       revstruct : structure_body;
       univ : Univ.constraints;
+      future_cst : Univ.constraints Future.computation list;
       engagement : engagement option;
       imports : library_info list;
       loads : (module_path * module_body) list;
@@ -113,6 +114,36 @@ type safe_environment =
 
 let exists_modlabel l senv = Labset.mem l senv.modlabels
 let exists_objlabel l senv = Labset.mem l senv.objlabels
+
+(* type to be maintained isomorphic to Entries.side_effects *)
+(* XXX ideally this function obtains a valid side effect that 
+ * can be pushed into another (safe) environment without re-typechecking *)
+type side_effect = NewConstant of constant * Declarations.constant_body
+let sideff_of_con env c = 
+  Obj.magic (NewConstant (c, Environ.lookup_constant c env.env))
+
+let env_of_safe_env senv = senv.env
+let env_of_senv = env_of_safe_env
+
+type constraints_addition =
+  Now of Univ.constraints | Later of Univ.constraints Future.computation
+
+let add_constraints cst senv =
+  match cst with
+  | Later fc -> {senv with future_cst = fc :: senv.future_cst}
+  | Now cst ->
+  { senv with
+    env = Environ.add_constraints cst senv.env;
+    univ = Univ.union_constraints cst senv.univ }
+
+let is_curmod_library senv = 
+  match senv.modinfo.variant with LIBRARY _ -> true | _ -> false
+
+let rec join_safe_environment e =
+  join_structure_body e.revstruct;
+  List.fold_left 
+    (fun e fc -> add_constraints (Now (Future.join fc)) e)
+    {e with future_cst = []} e.future_cst
 
 let check_modlabel l senv =
   if exists_modlabel l senv then error_existing_label l
@@ -148,25 +179,21 @@ let rec empty_environment =
     modlabels = Labset.empty;
     objlabels = Labset.empty;
     revstruct = [];
+    future_cst = [];
     univ = Univ.empty_constraint;
     engagement = None;
     imports = [];
     loads = [];
     local_retroknowledge = [] }
 
-let env_of_safe_env senv = senv.env
-let env_of_senv = env_of_safe_env
-
-let add_constraints cst senv =
-  { senv with
-    env = Environ.add_constraints cst senv.env;
-    univ = Univ.union_constraints cst senv.univ }
-
 let constraints_of_sfb = function
-  | SFBconst cb -> cb.const_constraints
-  | SFBmind mib -> mib.mind_constraints
-  | SFBmodtype mtb -> mtb.typ_constraints
-  | SFBmodule mb -> mb.mod_constraints
+  | SFBmind mib -> Now mib.mind_constraints
+  | SFBmodtype mtb -> Now mtb.typ_constraints
+  | SFBmodule mb -> Now mb.mod_constraints
+  | SFBconst cb -> 
+      match Future.peek_val cb.const_constraints with
+      | Some c -> Now c
+      | None -> Later cb.const_constraints
 
 (* A generic function for adding a new field in a same environment.
    It also performs the corresponding [add_constraints]. *)
@@ -252,15 +279,21 @@ let safe_push_named (id,_,_ as d) env =
     with Not_found -> () in
   Environ.push_named d env
 
-let push_named_def (id,b,topt) senv =
-  let (c,typ,cst) = translate_local_def senv.env (b,topt) in
-  let senv' = add_constraints cst senv in
+let push_named_def (id,dentry) senv =
+  let (c,typ,cst) = translate_local_def senv.env id dentry in
+  (* XXX for now we force *)
+  let c = match c with
+    | Def c -> Declarations.force c
+    | OpaqueDef c -> force_opaque (Future.join c)
+    | _ -> assert false in
+  let cst = Future.join cst in
+  let senv' = add_constraints (Now cst) senv in
   let env'' = safe_push_named (id,Some c,typ) senv'.env in
   (cst, {senv' with env=env''})
 
 let push_named_assum (id,t) senv =
   let (t,cst) = translate_local_assum senv.env t in
-  let senv' = add_constraints cst senv in
+  let senv' = add_constraints (Now cst) senv in
   let env'' = safe_push_named (id,None,t) senv'.env in
   (cst, {senv' with env=env''})
 
@@ -276,8 +309,8 @@ let add_constant dir l decl senv =
   let cb = match decl with
     | ConstantEntry ce -> translate_constant senv.env kn ce
     | GlobalRecipe r ->
-      let cb = translate_recipe senv.env kn r in
-      if dir = empty_dirpath then hcons_const_body cb else cb
+      let cb = translate_recipe senv.env kn r in 
+      (if dir = empty_dirpath then hcons_const_body cb else cb)
   in
   let senv' = add_field (l,SFBconst cb) (C kn) senv in
   let senv'' = match cb.const_body with
@@ -313,7 +346,7 @@ let add_modtype l mte inl senv =
 
 (* full_add_module adds module with universes and constraints *)
 let full_add_module mb senv =
-  let senv = add_constraints mb.mod_constraints senv in
+  let senv = add_constraints (Now mb.mod_constraints) senv in
   { senv with env = Modops.add_module mb senv.env }
 
 (* Insertion of modules *)
@@ -346,6 +379,7 @@ let start_module l senv =
 	 objlabels = Labset.empty;
 	 revstruct = [];
          univ = Univ.empty_constraint;
+         future_cst = [];
          engagement = None;
 	 imports = senv.imports;
 	 loads = [];
@@ -431,6 +465,7 @@ let end_module l restype senv =
 		  objlabels = oldsenv.objlabels;
 		  revstruct = (l,SFBmodule mb)::oldsenv.revstruct;
 		  univ = Univ.union_constraints senv'.univ oldsenv.univ;
+                  future_cst = senv'.future_cst @ oldsenv.future_cst;
 		  (* engagement is propagated to the upper level *)
 		  engagement = senv'.engagement;
 		  imports = senv'.imports;
@@ -453,14 +488,14 @@ let end_module l restype senv =
 	   senv.modinfo.modpath inl me in
        mtb.typ_expr,mtb.typ_constraints,mtb.typ_delta
    in
-   let senv = add_constraints cst senv in
+   let senv = add_constraints (Now cst) senv in
    let mp_sup = senv.modinfo.modpath in
      (* Include Self support  *)
    let rec compute_sign sign mb resolver senv = 
      match sign with
      | SEBfunctor(mbid,mtb,str) ->
 	 let cst_sub = check_subtypes senv.env mb mtb in
-	 let senv = add_constraints cst_sub senv in
+	 let senv = add_constraints (Now cst_sub) senv in
 	 let mpsup_delta =
 	   inline_delta_resolver senv.env inl mp_sup mbid mtb mb.typ_delta
 	 in
@@ -527,6 +562,7 @@ let add_module_parameter mbid mte inl senv =
 		     objlabels = senv.objlabels;
 		     revstruct = [];
 		     univ = senv.univ;
+                     future_cst = senv.future_cst;
 		     engagement = senv.engagement;
 		     imports = senv.imports;
 		     loads = [];
@@ -551,6 +587,7 @@ let start_modtype l senv =
 	objlabels = Labset.empty;
 	revstruct = [];
         univ = Univ.empty_constraint;
+        future_cst = [];
         engagement = None;
 	imports = senv.imports;
 	loads = [] ;
@@ -603,6 +640,7 @@ let end_modtype l senv =
 	  objlabels = oldsenv.objlabels;
 	  revstruct = (l,SFBmodtype mtb)::oldsenv.revstruct;
           univ = Univ.union_constraints senv.univ oldsenv.univ;
+          future_cst = senv.future_cst @ oldsenv.future_cst;
           engagement = senv.engagement;
 	  imports = senv.imports;
 	  loads = senv.loads@oldsenv.loads;
@@ -631,6 +669,8 @@ let set_engagement c senv =
 
 type compiled_library =
     dir_path * module_body * library_info list * engagement option
+
+let join_compiled_library (_,mb,_,_) = join_module_body mb
 
 (* We check that only initial state Require's were performed before
    [start_library] was called *)
@@ -663,6 +703,7 @@ let start_library dir senv =
 	objlabels = Labset.empty;
 	revstruct = [];
         univ = Univ.empty_constraint;
+        future_cst = [];
         engagement = None;
 	imports = senv.imports;
 	loads = [];
@@ -679,6 +720,9 @@ let pack_module senv =
   }
 
 let export senv dir =
+  let senv = 
+    try join_safe_environment senv
+    with e -> Errors.errorlabstrm "future" (Errors.print e) in
   let modinfo = senv.modinfo in
   begin
     match modinfo.variant with
@@ -804,10 +848,12 @@ end = struct
     and traverse_struct struc =
       let traverse_body (l,body) = (l,match body with
         | (SFBconst ({ const_body = (OpaqueDefIdx _|OpaqueDef _); _ } as cb)) ->
-          ignore(Lazy.force cb.const_constraints);
-	  SFBconst {cb with const_body = on_opaque_const_body cb.const_body}
-	| (SFBconst _ | SFBmind _ ) as x ->
-	  x
+            ignore(Future.join cb.const_constraints);
+            SFBconst {cb with const_body = on_opaque_const_body cb.const_body }
+	| SFBconst cb as x -> 
+            ignore(Future.join cb.const_constraints);
+            x
+        | SFBmind _ as x -> x
 	| SFBmodule m -> 
 	  SFBmodule (traverse_module m)
 	| SFBmodtype m -> 
@@ -847,7 +893,7 @@ end = struct
       ((* Insert inside the table. *) 
 	(fun def ->
 	  let opaque_definition = match def with
-	    | OpaqueDef lc -> force_lazy_constr lc
+	    | OpaqueDef lc -> force_lazy_constr (Future.join lc)
 	    | _ -> assert false
 	  in
 	  incr counter;
@@ -877,10 +923,10 @@ end = struct
 	  match load_proof with
 	    | Flags.Force ->
 	      let lc = Lazy.lazy_from_val (access k) in
-	      OpaqueDef (make_lazy_constr lc)
+	      OpaqueDef (Future.from_val (make_lazy_constr lc))
 	    | Flags.Lazy ->
 	      let lc = lazy (access k) in
-	      OpaqueDef (make_lazy_constr lc)
+	      OpaqueDef (Future.from_val (make_lazy_constr lc))
 	    | Flags.Dont ->
 	      Undef None
     in
@@ -896,3 +942,5 @@ let j_type j = j.uj_type
 let safe_infer senv = infer (env_of_senv senv)
 
 let typing senv = Typeops.typing (env_of_senv senv)
+let add_constraints c = add_constraints (Now c)
+

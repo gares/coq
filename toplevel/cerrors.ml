@@ -111,6 +111,8 @@ let rec process_vernac_interp_error = function
         Some (process_vernac_interp_error exc))
   | Loc.Exc_located (loc,exc) ->
       Loc.Exc_located (loc,process_vernac_interp_error exc)
+  | Stategraph.ErrorReachingState (ids,id,exc) ->
+      Stategraph.ErrorReachingState (ids,id,process_vernac_interp_error exc)
   | exc ->
       exc
 

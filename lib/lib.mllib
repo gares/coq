@@ -6,6 +6,7 @@ Compat
 Pp
 Loc
 Errors
+Searchstack
 Bigint
 Hashcons
 Dyn
@@ -24,3 +25,4 @@ Dnet
 Store
 Unionfind
 Hashtbl_alt
+Future

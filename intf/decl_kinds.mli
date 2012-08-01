@@ -45,9 +45,9 @@ type assumption_object_kind = Definitional | Logical | Conjectural
    Logical      |  Hypothesis | Axiom
 
 *)
-type assumption_kind = locality * assumption_object_kind
+type assumption_kind = assumption_object_kind
 
-type definition_kind = locality * definition_object_kind
+type definition_kind = definition_object_kind
 
 (** Kinds used in proofs *)
 

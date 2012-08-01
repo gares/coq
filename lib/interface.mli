@@ -113,9 +113,63 @@ type message = {
   message_content : string;
 }
 
-type location = (int * int) option (* start and end of the error *)
+(* span, start and end of the error *)
+type location =
+  Stategraph.state_id * (int * int) option
+
+type 'a success = Stategraph.state_id list * (* good states *)
+                  'a                         (* the result  *)
+type failure    = Stategraph.state_id list * (* good states *)
+                  Stategraph.state_id list * (* bad states  *)
+                  location * string          (* the error   *)
 
 type 'a value =
-  | Good of 'a
-  | Unsafe of 'a
-  | Fail of (location * string)
+  | Good of 'a success
+  | Fail of failure
+
+(** * The structure that coqtop should implement *)
+
+type interp_rty      = Stategraph.state_id * string
+type backto_rty      = unit
+type goals_rty       = goals option * string
+type evars_rty       = evar list option
+type hints_rty       = (hint list * hint) option
+type status_rty      = status * string
+type get_options_rty = (option_name * option_state) list
+type set_options_rty = unit
+type inloadpath_rty  = bool
+type mkcases_rty     = string list list 
+type search_rty      = search_answer list
+type quit_rty        = unit
+type about_rty       = coq_info
+
+type interp_sty      = raw * verbose * string
+type backto_sty      = Stategraph.state_id
+type goals_sty       = unit
+type evars_sty       = unit
+type hints_sty       = unit
+type status_sty      = bool
+type set_options_sty = (option_name * option_value) list
+type get_options_sty = unit
+type inloadpath_sty  = string
+type mkcases_sty     = string
+type search_sty      = (search_constraint * bool) list
+type quit_sty        = unit
+type about_sty       = unit
+
+type handler = {
+  interp      : interp_sty      ->      interp_rty success;
+  backto      : backto_sty      ->      backto_rty success;
+  goals       : goals_sty       ->       goals_rty success;
+  evars       : evars_sty       ->       evars_rty success;
+  hints       : hints_sty       ->       hints_rty success;
+  status      : status_sty      ->      status_rty success;
+  get_options : get_options_sty -> get_options_rty success;
+  set_options : set_options_sty -> set_options_rty success;
+  inloadpath  : inloadpath_sty  ->  inloadpath_rty success;
+  mkcases     : mkcases_sty     ->     mkcases_rty success;
+  search      : search_sty      ->      search_rty success;
+  quit        : quit_sty        ->        quit_rty success;
+  about       : about_sty       ->       about_rty success;
+  handle_exn  : exn             ->                 failure;
+}

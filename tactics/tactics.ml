@@ -3520,7 +3520,10 @@ let abstract_subproof id tac gl =
   let const = Pfedit.build_constant_by_tactic id secsign concl
     (tclCOMPLETE (tclTHEN (tclDO (List.length sign) intro) tac)) in
   let cd = Entries.DefinitionEntry const in
-  let lem = mkConst (Declare.declare_constant ~internal:Declare.KernelSilent id (cd,IsProof Lemma)) in
+  let clem = Declare.declare_constant 
+    ~internal:Declare.KernelSilent id (cd,IsProof Lemma) in
+  let lem = mkConst clem in
+  let gl = {gl with eff = Safe_typing.sideff_of_con (Global.safe_env()) clem :: gl.eff} in
   exact_no_check
     (applist (lem,List.rev (Array.to_list (instance_from_named_context sign))))
     gl
@@ -3546,3 +3549,8 @@ let unify ?(state=full_transparent_state) x y gl =
     let evd = w_unify (pf_env gl) (project gl) Reduction.CONV ~flags x y
     in tclEVARS evd gl
   with _ -> tclFAIL 0 (str"Not unifiable") gl
+
+let emit_side_effects eff gl = 
+  prerr_endline ("emitting: " ^ String.concat ", " 
+    (List.map Declarations.string_of_side_effect eff));
+  {gl with it = [gl.it] ; eff = eff @ gl.eff}

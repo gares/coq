@@ -25,7 +25,7 @@ open Logic
 open Refiner
 open Tacexpr
 
-let re_sig it gc = { it = it; sigma = gc }
+let re_sig (it,eff) gc = { it = it; sigma = gc; eff = eff }
 
 (**************************************************************)
 (* Operations for handling terms under a local typing context *)
@@ -43,7 +43,7 @@ let project  = Refiner.project
 let pf_env   = Refiner.pf_env
 let pf_hyps  = Refiner.pf_hyps
 
-let pf_concl gls = Goal.V82.concl (project gls) (sig_it gls)
+let pf_concl gls = Goal.V82.concl (project gls) (fst (sig_it gls))
 let pf_hyps_types gls  =
   let sign = Environ.named_context (pf_env gls) in
   List.map (fun (id,_,x) -> (id, x)) sign
@@ -206,9 +206,10 @@ let db_pr_goal sigma g =
                    str" "  ++ pc) ++ fnl ()
 
 let pr_gls gls =
-  hov 0 (pr_evar_map (Some 2) (sig_sig gls) ++ fnl () ++ db_pr_goal (project gls) (sig_it gls))
+  hov 0 (pr_evar_map (Some 2) (sig_sig gls) ++ fnl () ++ 
+         db_pr_goal (project gls) (fst (sig_it gls)))
 
 let pr_glls glls =
   hov 0 (pr_evar_map (Some 2) (sig_sig glls) ++ fnl () ++
-         prlist_with_sep fnl (db_pr_goal (project glls)) (sig_it glls))
+         prlist_with_sep fnl (db_pr_goal (project glls)) (fst (sig_it glls)))
 

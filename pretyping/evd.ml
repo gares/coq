@@ -690,10 +690,12 @@ type open_constr = evar_map * constr
   type ['a] *)
 type 'a sigma = {
   it : 'a ;
+  eff : Declarations.side_effects;
   sigma : evar_map}
 
-let sig_it x = x.it
+let sig_it x = x.it, x.eff
 let sig_sig x = x.sigma
+let emit_side_effects eff x = { x with eff = eff @ x.eff }
 
 (**********************************************************)
 (* Failure explanation *)

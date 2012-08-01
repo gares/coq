@@ -2,6 +2,10 @@ Himsg
 Cerrors
 Class
 Locality
+Vernacexpr
+Ppextra
+Ppvernac
+Stm
 Metasyntax
 Auto_ind_decl
 Libtypes
@@ -13,9 +17,6 @@ Obligations
 Command
 Classes
 Record
-Ppextra
-Ppvernac
-Backtrack
 Vernacinterp
 Mltop
 Vernacentries
