@@ -418,6 +418,7 @@ class Session(program: String,
           val previous = global_state().history.tip.version
           val version = Future.promise[Document.Version]
           val change = global_state >>> (_.continue_history(previous, edits, version))
+          java.lang.System.err.println(edits)
           change_parser ! Text_Edits(previous, edits, version)
 
           reply(())
