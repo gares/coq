@@ -99,9 +99,16 @@ object Coq_Syntax extends Prover.Syntax
 
     val (cmds1, spans1) = chop_common(cmds0, spans0)
 
+    java.lang.System.err.println("spans0 = " + spans0)
+    java.lang.System.err.println("spans1 = " + spans1)
+
+    java.lang.System.err.println("cmds1 = " + cmds1)
+
     val (rev_cmds2, rev_spans2) = chop_common(cmds1.reverse, spans1.reverse)
     val cmds2 = rev_cmds2.reverse
     val spans2 = rev_spans2.reverse
+
+    java.lang.System.err.println("cmds2 = " + cmds2)
 
     cmds2 match {
       case Nil =>
@@ -181,6 +188,8 @@ object Coq_Syntax extends Prover.Syntax
       edits: List[Document.Edit_Text])
     : (List[Document.Edit_Command], Document.Version) =
   {
+    java.lang.System.err.println("text_edits: " + edits)
+
     var nodes = previous.nodes
     val doc_edits = new mutable.ListBuffer[Document.Edit_Command]
 
@@ -202,6 +211,7 @@ object Coq_Syntax extends Prover.Syntax
         nodes += (name -> node1)
     }
 
+    java.lang.System.err.println("text_edits result: " + doc_edits.toList)
     (doc_edits.toList, Document.Version.make(syntax, nodes))
   }
 }
