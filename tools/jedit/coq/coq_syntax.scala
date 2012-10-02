@@ -4,9 +4,7 @@
 Superficial theory syntax: tokens and spans.
 */
 
-package coq
-import pide._
-import pide.jedit._
+package pide
 
 
 import scala.collection.mutable
@@ -15,69 +13,7 @@ import scala.annotation.tailrec
 
 object Coq_Syntax extends Prover.Syntax
 {
-  /** nested structure **/
-
-  object Structure
-  {
-    sealed abstract class Entry { def length: Int }
-    case class Block(val name: String, val body: List[Entry]) extends Entry
-    {
-      val length: Int = (0 /: body)(_ + _.length)
-    }
-    case class Atom(val command: Command) extends Entry
-    {
-      def length: Int = command.length
-    }
-
-    def parse(syntax: Outer_Syntax, node_name: Document.Node.Name, text: CharSequence): Entry =
-    {
-      /* stack operations */
-
-      def buffer(): mutable.ListBuffer[Entry] = new mutable.ListBuffer[Entry]
-      var stack: List[(Int, String, mutable.ListBuffer[Entry])] =
-        List((0, "theory " + node_name.theory, buffer()))
-
-      @tailrec def close(level: Int => Boolean)
-      {
-        stack match {
-          case (lev, name, body) :: (_, _, body2) :: rest if level(lev) =>
-            body2 += Block(name, body.toList)
-            stack = stack.tail
-            close(level)
-          case _ =>
-        }
-      }
-
-      def result(): Entry =
-      {
-        close(_ => true)
-        val (_, name, body) = stack.head
-        Block(name, body.toList)
-      }
-
-      def add(command: Command)
-      {
-        syntax.heading_level(command) match {
-          case Some(i) =>
-            close(_ > i)
-            stack = (i + 1, command.source, buffer()) :: stack
-          case None =>
-        }
-        stack.head._3 += Atom(command)
-      }
-
-
-      /* result structure */
-
-      val spans = parse_spans(syntax.scan(text))
-      spans.foreach(span => add(Command(Document.no_id, node_name, span)))
-      result()
-    }
-  }
-
-
-
-  /** parse spans **/
+  /** parse spans **/  // FIXME
 
   def parse_spans(toks: List[Token]): List[List[Token]] =
   {
@@ -89,7 +25,6 @@ object Coq_Syntax extends Prover.Syntax
     flush()
     result.toList
   }
-
 
 
   /** perspective **/
@@ -130,44 +65,13 @@ object Coq_Syntax extends Prover.Syntax
     edits: List[Document.Edit_Text])
     : (Outer_Syntax, List[Document.Node.Name], Document.Nodes, List[Document.Edit_Command]) =
   {
-    var rebuild_syntax = previous.is_init
-    var nodes = previous.nodes
-    val doc_edits = new mutable.ListBuffer[Document.Edit_Command]
-
-    edits foreach {
-      case (name, Document.Node.Header(header)) =>
-        val node = nodes(name)
-        val update_header =
-          (node.header, header) match {
-            case (Exn.Res(deps0), Exn.Res(deps)) => deps0 != deps
-            case _ => true
-          }
-        if (update_header) {
-          val node1 = node.update_header(header)
-          rebuild_syntax = rebuild_syntax || (node.keywords != node1.keywords)
-          nodes += (name -> node1)
-          doc_edits += (name -> Document.Node.Header(header))
-        }
-      case _ =>
-    }
-
-    val syntax =
-      if (rebuild_syntax)
-        (base_syntax /: nodes.entries)({ case (syn, (_, node)) => (syn /: node.keywords)(_ + _) })
-      else previous.syntax
-
-    val reparse =
-      if (rebuild_syntax) nodes.descendants(doc_edits.iterator.map(_._1).toList)
-      else Nil
-
-    (syntax, reparse, nodes, doc_edits.toList)
+    (base_syntax, Nil, previous.nodes, Nil)
   }
-
 
 
   /** text edits **/
 
-  /* phase 1: edit individual command source */
+  /* edit individual command source */
 
   @tailrec private def edit_text(eds: List[Text.Edit], commands: Linear_Set[Command])
       : Linear_Set[Command] =
@@ -196,61 +100,101 @@ object Coq_Syntax extends Prover.Syntax
   }
 
 
-  /* phase 2: recover command spans */
+  /* reparse range of command spans */
 
-  @tailrec private def recover_spans(
+  @tailrec private def chop_common(
+      cmds: List[Command], spans: List[List[Token]]): (List[Command], List[List[Token]]) =
+    (cmds, spans) match {
+      case (c :: cs, s :: ss) if c.span == s => chop_common(cs, ss)
+      case _ => (cmds, spans)
+    }
+
+  private def reparse_spans(
     syntax: Outer_Syntax,
-    node_name: Document.Node.Name,
-    commands: Linear_Set[Command]): Linear_Set[Command] =
+    name: Document.Node.Name,
+    commands: Linear_Set[Command],
+    first: Command, last: Command): Linear_Set[Command] =
   {
-    commands.iterator.find(cmd => !cmd.is_defined) match {
-      case Some(first_undefined) =>
-        val first =
-          commands.reverse_iterator(first_undefined).
-            dropWhile(_.newlines == 0).find(_.is_command) getOrElse commands.head
-        val last =
-          commands.iterator(first_undefined).
-            dropWhile(_.newlines == 0).find(_.is_command) getOrElse commands.last
-        val range =
-          commands.iterator(first).takeWhile(_ != last).toList ::: List(last)
+    val cmds0 = commands.iterator(first, last).toList
+    val spans0 = parse_spans(syntax.scan(cmds0.iterator.map(_.source).mkString))
 
-        val spans0 = parse_spans(syntax.scan(range.map(_.source).mkString))
+    val (cmds1, spans1) = chop_common(cmds0, spans0)
 
-        val (before_edit, spans1) =
-          if (!spans0.isEmpty && first.is_command && first.span == spans0.head)
-            (Some(first), spans0.tail)
-          else (commands.prev(first), spans0)
+    val (rev_cmds2, rev_spans2) = chop_common(cmds1.reverse, spans1.reverse)
+    val cmds2 = rev_cmds2.reverse
+    val spans2 = rev_spans2.reverse
 
-        val (after_edit, spans2) =
-          if (!spans1.isEmpty && last.is_command && last.span == spans1.last)
-            (Some(last), spans1.take(spans1.length - 1))
-          else (commands.next(last), spans1)
-
-        val inserted = spans2.map(span => Command(Document.new_id(), node_name, span))
-        val new_commands =
-          commands.delete_between(before_edit, after_edit).append_after(before_edit, inserted)
-        recover_spans(syntax, node_name, new_commands)
-
-      case None => commands
+    cmds2 match {
+      case Nil =>
+        assert(spans2.isEmpty)
+        commands
+      case cmd :: _ =>
+        val hook = commands.prev(cmd)
+        val inserted = spans2.map(span => Command(Document.new_id(), name, span))
+        (commands /: cmds2)(_ - _).append_after(hook, inserted)
     }
   }
 
 
-  /* phase 3: full reparsing after syntax change */
+  /* recover command spans after edits */
 
-  private def reparse_spans(
+  // FIXME somewhat slow
+  private def recover_spans(
     syntax: Outer_Syntax,
-    node_name: Document.Node.Name,
+    name: Document.Node.Name,
+    perspective: Command.Perspective,
     commands: Linear_Set[Command]): Linear_Set[Command] =
   {
-    val cmds = commands.toList
-    val spans1 = parse_spans(syntax.scan(cmds.map(_.source).mkString))
-    if (cmds.map(_.span) == spans1) commands
-    else Linear_Set(spans1.map(span => Command(Document.new_id(), node_name, span)): _*)
+    val visible = perspective.commands.toSet
+
+    def next_invisible_command(cmds: Linear_Set[Command], from: Command): Command =
+      cmds.iterator(from).dropWhile(cmd => !cmd.is_command || visible(cmd))
+        .find(_.is_command) getOrElse cmds.last
+
+    @tailrec def recover(cmds: Linear_Set[Command]): Linear_Set[Command] =
+      cmds.find(_.span.exists(_.is_unparsed)) match {
+        case Some(first_unparsed) =>
+          val first = next_invisible_command(cmds.reverse, first_unparsed)
+          val last = next_invisible_command(cmds, first_unparsed)
+          recover(reparse_spans(syntax, name, cmds, first, last))
+        case None => cmds
+      }
+    recover(commands)
   }
 
 
-  /* main phase 
+  /* main */
+
+  private def diff_commands(old_cmds: Linear_Set[Command], new_cmds: Linear_Set[Command])
+    : List[(Option[Command], Option[Command])] =
+  {
+    val removed = old_cmds.iterator.filter(!new_cmds.contains(_)).toList
+    val inserted = new_cmds.iterator.filter(!old_cmds.contains(_)).toList
+
+    removed.reverse.map(cmd => (old_cmds.prev(cmd), None)) :::
+    inserted.map(cmd => (new_cmds.prev(cmd), Some(cmd)))
+  }
+
+  private def text_edit(syntax: Outer_Syntax, node: Document.Node, edit: Document.Edit_Text)
+    : Document.Node =
+  {
+    edit match {
+      case (_, Document.Node.Clear()) => node.clear
+
+      case (name, Document.Node.Edits(text_edits)) =>
+        val commands0 = node.commands
+        val commands1 = edit_text(text_edits, commands0)
+        val commands2 = recover_spans(syntax, name, node.perspective, commands1)
+        node.update_commands(commands2)
+
+      case (_, Document.Node.Header(_)) => node
+
+      case (name, Document.Node.Perspective(text_perspective)) =>
+        val perspective = command_perspective(node, text_perspective)
+        if (node.perspective same perspective) node
+        else node.update_perspective(perspective)
+    }
+  }
 
   def text_edits(
       base_syntax: Outer_Syntax,
@@ -264,83 +208,29 @@ object Coq_Syntax extends Prover.Syntax
     var nodes = nodes0
     val doc_edits = new mutable.ListBuffer[Document.Edit_Command]; doc_edits ++= doc_edits0
 
-    (edits ::: reparse.map((_, Document.Node.Edits(Nil)))) foreach {
-      case (name, Document.Node.Clear()) =>
-        doc_edits += (name -> Document.Node.Clear())
-        nodes += (name -> nodes(name).clear)
+    val node_edits =
+      (edits ::: reparse.map((_, Document.Node.Edits(Nil)))).groupBy(_._1)
+        .asInstanceOf[Map[Document.Node.Name, List[Document.Edit_Text]]]  // FIXME ???
 
-      case (name, Document.Node.Edits(text_edits)) =>
+    node_edits foreach {
+      case (name, edits) =>
         val node = nodes(name)
-        val commands0 = node.commands
-        val commands1 = edit_text(text_edits, commands0)
-        val commands2 = recover_spans(syntax, name, commands1)   // FIXME somewhat slow
-        val commands3 =
-          if (reparse_set.contains(name)) reparse_spans(syntax, name, commands2)  // slow
-          else commands2
+        val commands = node.commands
 
-        val removed_commands = commands0.iterator.filter(!commands3.contains(_)).toList
-        val inserted_commands = commands3.iterator.filter(!commands0.contains(_)).toList
+        val node1 =
+          if (reparse_set(name) && !commands.isEmpty)
+            node.update_commands(reparse_spans(syntax, name, commands, commands.head, commands.last))
+          else node
+        val node2 = (node1 /: edits)(text_edit(syntax, _, _))
 
-        val cmd_edits =
-          removed_commands.reverse.map(cmd => (commands0.prev(cmd), None)) :::
-          inserted_commands.map(cmd => (commands3.prev(cmd), Some(cmd)))
+        if (!(node.perspective same node2.perspective))
+          doc_edits += (name -> Document.Node.Perspective(node2.perspective))
 
-        doc_edits += (name -> Document.Node.Edits(cmd_edits))
-        nodes += (name -> node.update_commands(commands3))
+        doc_edits += (name -> Document.Node.Edits(diff_commands(commands, node2.commands)))
 
-      case (name, Document.Node.Header(_)) =>
-
-      case (name, Document.Node.Perspective(text_perspective)) =>
-        val node = nodes(name)
-        val perspective = command_perspective(node, text_perspective)
-        if (!(node.perspective same perspective)) {
-          doc_edits += (name -> Document.Node.Perspective(perspective))
-          nodes += (name -> node.update_perspective(perspective))
-        }
+        nodes += (name -> node2)
     }
-    (doc_edits.toList, Document.Version.make(syntax, nodes))
-  }
-*/
-  def text_edits(
-      syntax: Outer_Syntax,
-      previous: Document.Version,
-      edits: List[Document.Edit_Text])
-    : (List[Document.Edit_Command], Document.Version) =
-  {
-    var nodes = previous.nodes
-    val doc_edits = new mutable.ListBuffer[Document.Edit_Command]
 
-    edits foreach {
-      case (name, Document.Node.Clear()) =>
-        doc_edits += (name -> Document.Node.Clear())
-        nodes += (name -> nodes(name).clear)
-
-      case (name, Document.Node.Edits(text_edits)) =>
-        val node = nodes(name)
-        val commands0 = node.commands
-        val commands1 = edit_text(text_edits, commands0)
-        val commands2 =
-        {
-          val text0 = commands0.iterator.map(_.source).mkString
-          val text1 = commands1.iterator.map(_.source).mkString
-          if (text0 == text1) commands0
-          else Linear_Set(Command(Document.new_id(), name, List(Token(Token.Kind.IDENT, text1))))
-        }
-
-        val removed_commands = commands0.iterator.filter(!commands2.contains(_)).toList
-        val inserted_commands = commands2.iterator.filter(!commands0.contains(_)).toList
-
-        val cmd_edits =
-          removed_commands.reverse.map(cmd => (commands0.prev(cmd), None)) :::
-          inserted_commands.map(cmd => (commands2.prev(cmd), Some(cmd)))
-
-        doc_edits += (name -> Document.Node.Edits(cmd_edits))
-        nodes += (name -> node.update_commands(commands2))
-
-      case (name, Document.Node.Header(_)) =>
-
-      case (name, Document.Node.Perspective(_)) =>
-    }
     (doc_edits.toList, Document.Version.make(syntax, nodes))
   }
 }
