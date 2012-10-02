@@ -15,16 +15,7 @@ object Coq_Syntax extends Prover.Syntax
 {
   /** parse spans **/  // FIXME
 
-  def parse_spans(toks: List[Token]): List[List[Token]] =
-  {
-    val result = new mutable.ListBuffer[List[Token]]
-    val span = new mutable.ListBuffer[Token]
-
-    def flush() { if (!span.isEmpty) { result += span.toList; span.clear } }
-    for (tok <- toks) { if (tok.is_command) flush(); span += tok }
-    flush()
-    result.toList
-  }
+  def parse_spans(toks: List[Token]): List[List[Token]] = List(toks)
 
 
   /** perspective **/
@@ -55,18 +46,6 @@ object Coq_Syntax extends Prover.Syntax
     }
   }
 
-
-
-  /** header edits: structure and outer syntax **/
-
-  private def header_edits(
-    base_syntax: Outer_Syntax,
-    previous: Document.Version,
-    edits: List[Document.Edit_Text])
-    : (Outer_Syntax, List[Document.Node.Name], Document.Nodes, List[Document.Edit_Command]) =
-  {
-    (base_syntax, Nil, previous.nodes, Nil)
-  }
 
 
   /** text edits **/
@@ -197,38 +176,30 @@ object Coq_Syntax extends Prover.Syntax
   }
 
   def text_edits(
-      base_syntax: Outer_Syntax,
+      syntax: Outer_Syntax,
       previous: Document.Version,
       edits: List[Document.Edit_Text])
     : (List[Document.Edit_Command], Document.Version) =
   {
-    val (syntax, reparse, nodes0, doc_edits0) = header_edits(base_syntax, previous, edits)
-    val reparse_set = reparse.toSet
-
-    var nodes = nodes0
-    val doc_edits = new mutable.ListBuffer[Document.Edit_Command]; doc_edits ++= doc_edits0
+    var nodes = previous.nodes
+    val doc_edits = new mutable.ListBuffer[Document.Edit_Command]
 
     val node_edits =
-      (edits ::: reparse.map((_, Document.Node.Edits(Nil)))).groupBy(_._1)
+      edits.groupBy(_._1)
         .asInstanceOf[Map[Document.Node.Name, List[Document.Edit_Text]]]  // FIXME ???
 
     node_edits foreach {
       case (name, edits) =>
         val node = nodes(name)
         val commands = node.commands
+        val node1 = (node /: edits)(text_edit(syntax, _, _))
 
-        val node1 =
-          if (reparse_set(name) && !commands.isEmpty)
-            node.update_commands(reparse_spans(syntax, name, commands, commands.head, commands.last))
-          else node
-        val node2 = (node1 /: edits)(text_edit(syntax, _, _))
+        if (!(node.perspective same node1.perspective))
+          doc_edits += (name -> Document.Node.Perspective(node1.perspective))
 
-        if (!(node.perspective same node2.perspective))
-          doc_edits += (name -> Document.Node.Perspective(node2.perspective))
+        doc_edits += (name -> Document.Node.Edits(diff_commands(commands, node1.commands)))
 
-        doc_edits += (name -> Document.Node.Edits(diff_commands(commands, node2.commands)))
-
-        nodes += (name -> node2)
+        nodes += (name -> node1)
     }
 
     (doc_edits.toList, Document.Version.make(syntax, nodes))
