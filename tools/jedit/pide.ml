@@ -1061,4 +1061,7 @@ let () =
       in state')
     | _ -> assert false)
 
+let f x = Vernacentries.interp x
+let g x = Pcoq.Gram.entry_parse Pcoq.main_entry x
+
 let () = main ()
