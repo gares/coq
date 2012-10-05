@@ -72,7 +72,8 @@ PLUGINS:=\
   omega		romega 		micromega 	quote \
   setoid_ring 	xml 		extraction 	fourier \
   cc 		funind 		firstorder 	\
-  rtauto 	nsatz           syntax          decl_mode	btauto
+  rtauto 	nsatz           syntax          decl_mode	btauto \
+  ssreflect
 
 SRCDIRS:=\
   $(CORESRCDIRS)  \
@@ -177,6 +178,7 @@ CCCMA:=plugins/cc/cc_plugin.cma
 BTAUTOCMA:=plugins/btauto/btauto_plugin.cma
 RTAUTOCMA:=plugins/rtauto/rtauto_plugin.cma
 NATSYNTAXCMA:=plugins/syntax/nat_syntax_plugin.cma
+SSREFLECTCMA:=plugins/ssreflect/ssreflect.cma
 OTHERSYNTAXCMA:=$(addprefix plugins/syntax/, \
         z_syntax_plugin.cma \
         numbers_syntax_plugin.cma \
@@ -189,7 +191,8 @@ PLUGINSCMA:=$(OMEGACMA) $(ROMEGACMA) $(MICROMEGACMA) $(DECLMODECMA) \
         $(QUOTECMA) $(RINGCMA) \
         $(FOURIERCMA) $(EXTRACTIONCMA) $(XMLCMA) \
         $(CCCMA)  $(FOCMA) $(RTAUTOCMA) $(BTAUTOCMA) \
-        $(FUNINDCMA) $(NSATZCMA) $(NATSYNTAXCMA) $(OTHERSYNTAXCMA)
+        $(FUNINDCMA) $(NSATZCMA) $(NATSYNTAXCMA) $(OTHERSYNTAXCMA) \
+	$(SSREFLECTCMA)
 
 ifneq ($(HASNATDYNLINK),false)
  STATICPLUGINS:=
@@ -308,11 +311,12 @@ RTAUTOVO:=$(call cat_vo_itarget, plugins/rtauto)
 EXTRACTIONVO:=$(call cat_vo_itarget, plugins/extraction)
 XMLVO:=
 CCVO:=
+SSREFLECTVO:=$(call cat_vo_itarget, plugins/ssreflect)
 
 PLUGINSVO:= $(OMEGAVO) $(ROMEGAVO) $(MICROMEGAVO) \
 	    $(XMLVO) $(FOURIERVO) $(CCVO) $(FUNINDVO) \
 	    $(RTAUTOVO) $(BTAUTOVO) $(RINGVO) $(QUOTEVO) \
-            $(NSATZVO) $(EXTRACTIONVO)
+            $(NSATZVO) $(EXTRACTIONVO) $(SSREFLECTVO)
 
 ALLVO:= $(THEORIESVO) $(PLUGINSVO)
 VFILES:= $(ALLVO:.vo=.v)
