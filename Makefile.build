@@ -471,6 +471,7 @@ funind: $(FUNINDCMA) $(FUNINDVO)
 cc: $(CCVO) $(CCCMA)
 rtauto: $(RTAUTOVO) $(RTAUTOCMA)
 btauto: $(BTAUTOVO) $(BTAUTOCMA)
+ssreflect: $(SSREFLECTVO) $(SSREFLECTCMA)
 
 pluginsopt: $(PLUGINSOPT)
 pluginsbyte: $(PLUGINS)

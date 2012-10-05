@@ -139,6 +139,8 @@ tools/coq_tex.ml
 toplevel/whelp.ml
 ide/coqide_main.ml
 ide/coqide_main_opt.ml
+plugins/ssreflect/ssreflect.ml
+plugins/ssreflect/ssrmatching.ml
 
 # other auto-generated files
 
