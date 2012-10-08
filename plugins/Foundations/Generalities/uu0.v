@@ -2832,13 +2832,13 @@ Proof. intros . intro y . apply ( isdecpropweqf ( weqhfibershomot f g h y ) ( is
 
 Theorem isdecinclcomp { X Y Z : UU } ( f : X -> Y ) ( g : Y -> Z ) ( isf : isdecincl f ) ( isg : isdecincl g ) : isdecincl ( fun x : X => g ( f x ) ) .
 Proof. intros. intro z .  set ( gf := fun x : X => g ( f x ) ) . assert ( wy : forall ye : hfiber g z , weq ( hfiber f ( pr1 ye ) ) ( hfiber ( hfibersgftog f g z ) ye ) ) . apply  ezweqhf .  
-assert ( ww : forall y : Y , weq ( hfiber f y ) ( hfiber gf ( g y ) ) ) . apply samehfibers . apply ( isdecincltoisincl _ isg ) .  
+assert ( ww : forall y : Y , weq ( hfiber f y ) ( hfiber gf ( g y ) ) ) . unfold gf. apply samehfibers . apply ( isdecincltoisincl _ isg ) .  
   destruct ( pr1 ( isg z ) ) as [ ye | nye ] . destruct ye as [ y e ] .  destruct e . apply ( isdecpropweqf ( ww y ) ( isf y ) ) .   assert ( wz : weq ( hfiber gf z ) ( hfiber g z ) ) . split with ( hfibersgftog f g z ) . intro ye .   destruct ( nye ye ) .  apply ( isdecpropweqb wz ( isg z ) ) .  Defined .
 
 (** The conditions of the following theorem can be weakened by assuming only that the h-fibers of g satisfy [ isdeceq ] i.e. are "sets with decidable equality". *)
 
 Theorem isdecinclf { X Y Z : UU } ( f : X -> Y ) ( g : Y -> Z ) ( isg : isincl g ) ( isgf : isdecincl ( fun x : X => g ( f x ) ) ) : isdecincl f .
-Proof. intros . intro y . set ( gf := fun x : _ => g ( f x ) )  .  assert ( ww :  weq ( hfiber f y ) ( hfiber gf ( g y ) ) ) . apply samehfibers . assumption . apply ( isdecpropweqb ww ( isgf ( g y ) ) ) . Defined . 
+Proof. intros . intro y . set ( gf := fun x : _ => g ( f x ) )  .  assert ( ww :  weq ( hfiber f y ) ( hfiber gf ( g y ) ) ) . unfold gf. apply samehfibers . assumption . apply ( isdecpropweqb ww ( isgf ( g y ) ) ) . Defined . 
 
 (** *)
 
@@ -2990,8 +2990,8 @@ apply ( iscontrretract p s eps0). assumption. Defined.
 
 
 Theorem isweqtoforallpaths { T : UU } (P:T -> UU)( f g: forall t:T, P t) : isweq (toforallpaths P f g). 
-Proof. intros. set (tmap:= fun ff: total2 (fun f0: forall t:T, P t, paths f0 g) => tpair (fun f0:forall t:T, P t => forall t:T, paths (f0 t) (g t)) (pr1  ff) (toforallpaths P (pr1  ff) g (pr2  ff))). assert (is1: iscontr (total2 (fun f0: forall t:T, P t, paths f0 g))). apply (iscontrcoconustot _ g).   assert (is2:iscontr (total2 (fun f0:forall t:T, P t => forall t:T, paths (f0 t) (g t)))). apply funextweql1.  
-assert (X: isweq tmap).  apply (isweqcontrcontr  tmap is1 is2).  apply (isweqtotaltofib (fun f0: forall t:T, P t, paths f0 g) (fun f0:forall t:T, P t => forall t:T, paths (f0 t) (g t)) (fun f0:forall t:T, P t =>  (toforallpaths P f0 g)) X f).  Defined. 
+Proof. intros. set (tmap:= fun ff: total2 (fun f0: forall t:T, P t => paths f0 g) => tpair (fun f0:forall t:T, P t => forall t:T, paths (f0 t) (g t)) (pr1  ff) (toforallpaths P (pr1  ff) g (pr2  ff))). assert (is1: iscontr (total2 (fun f0: forall t:T, P t => paths f0 g))). apply (iscontrcoconustot _ g).   assert (is2:iscontr (total2 (fun f0:forall t:T, P t => forall t:T, paths (f0 t) (g t)))). apply funextweql1.  
+assert (X: isweq tmap).  apply (isweqcontrcontr  tmap is1 is2).  apply (isweqtotaltofib (fun f0: forall t:T, P t => paths f0 g) (fun f0:forall t:T, P t => forall t:T, paths (f0 t) (g t)) (fun f0:forall t:T, P t =>  (toforallpaths P f0 g)) X f).  Defined. 
 
 
 Theorem weqtoforallpaths { T : UU } (P:T -> UU)(f g : forall t:T, P t) : weq (paths f g) (forall t:T, paths (f t) (g t)) .
@@ -3151,7 +3151,28 @@ set (map1inv :=  totalfun (fun pointover : forall x : X, P x =>
       forall x:X, paths  ((f x) (pointover x)) (s x)) (fun pointover : forall x : X, P x =>
       paths (fun x : X => f x (pointover x)) s) (fun pointover: forall x:X, P x => funextsec _  (fun x : X => f x (pointover x)) s)).
 
-assert (is1: isweq map1inv). apply (isweqfibtototal _ _ (fun pointover: forall x:X, P x => weqfunextsec _ (fun x : X => f x (pointover x)) s ) ).
+assert (is1: isweq map1inv). 
+(* TASSI *)
+pose (isweqfibtototal _ _ 
+        (fun pointover: forall x:X, P x => 
+           weqfunextsec _ (fun x : X => f x (pointover x)) s ) ) as step.
+clearbody step.
+(* DIVERGES without the right unfolding strategy... *)
+revert step.
+assert ((fun x : forall x : X, P x =>
+      pr1weq (forall t : X, paths (f t (x t)) (s t))
+        (paths (fun x0 : X => f x0 (x x0)) s)
+        (weqfunextsec Q (fun x0 : X => f x0 (x x0)) s)) 
+     = (fun x : forall x : X, P x => funextsec Q (fun x0 : X => f x0 (x x0)) s)).
+reflexivity.
+rewrite -> H. 
+(*
+unfold pr1weq. unfold pr1. (* projections *)
+unfold weqfunextsec. unfold weqpair. (* argument *)
+*)
+intro step.
+(* /TASSI *)
+apply step.
 
 apply (twooutof3c map2inv map1inv is2 is1). Defined. 
 
