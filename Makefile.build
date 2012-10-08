@@ -472,6 +472,7 @@ cc: $(CCVO) $(CCCMA)
 rtauto: $(RTAUTOVO) $(RTAUTOCMA)
 btauto: $(BTAUTOVO) $(BTAUTOCMA)
 ssreflect: $(SSREFLECTVO) $(SSREFLECTCMA)
+foundations: $(FOUNDATIONSVO)
 
 pluginsopt: $(PLUGINSOPT)
 pluginsbyte: $(PLUGINS)
