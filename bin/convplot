@@ -1,0 +1,36 @@
+#!/usr/bin/ocaml
+
+let mk_input what =
+  Sys.command ("(echo 'let data_" ^what^ " = [ ';
+    cat `find . -name '*.stats." ^what^ "'`; echo '];;' )> input." ^what)
+;;
+
+mk_input "default";;
+#use "input.default";;
+mk_input "current";;
+#use "input.current";;
+
+let data = List.combine data_default data_current;;
+
+let od = open_out "/tmp/data";;
+let i = ref 0;;
+let () =
+  List.iter (fun ((v1,l1,_,f1,_),(v2,l2,_,f2,_)) ->
+    assert(v1 = v2 && l1 = l2); (* the same problem *)
+    incr i;Printf.fprintf od "%d %.4f %4f\n" !i f1 f2)
+  data;;
+close_out od;;
+
+let oc = open_out "/tmp/plot";;
+Printf.fprintf oc "
+ set terminal png size 1600, 500
+ set output \"/tmp/plot.png\"
+ set style data points
+ plot \\
+        \"/tmp/data\" using 1:2 title \"default\", \\
+        \"/tmp/data\" using 1:3 title \"current\" \\
+
+";;
+close_out oc;;
+
+Sys.command "gnuplot /tmp/plot";;

@@ -120,7 +120,7 @@ let pose_all_metas_as_evars env evd t =
        | Some ({rebus=c},_) -> c
        | None ->
         let {rebus=ty;freemetas=mvs} = Evd.meta_ftype evd mv in
-        let ty = if mvs = Evd.Metaset.empty then ty else aux ty in
+        let ty = if mvs = Mini_evd.Metaset.empty then ty else aux ty in
         let ev = Evarutil.e_new_evar evdref env ~src:(Loc.ghost,Evar_kinds.GoalEvar) ty in
         evdref := meta_assign mv (ev,(Conv,TypeNotProcessed)) !evdref;
         ev)

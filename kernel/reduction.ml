@@ -177,7 +177,7 @@ let compare_stacks f fmind lft1 stk1 lft2 stk2 cuniv =
     and this holds whatever Set is predicative or impredicative
 *)
 
-type conv_pb =
+type conv_pb = Mini_evd.conv_pb =
   | CONV
   | CUMUL
 
@@ -428,21 +428,84 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
   let infos = trans, create_clos_infos ~evars betaiotazeta env in
   ccnv cv_pb l2r infos el_id el_id (inject t1) (inject t2) empty_constraint
 
-let trans_fconv reds cv_pb l2r evars env t1 t2 =
-  if eq_constr t1 t2 then empty_constraint
-  else clos_fconv reds cv_pb l2r evars env t1 t2
+type cpb = 
+  (string * int * int) * (Names.Idpred.t * Names.Cpred.t) * conv_pb * bool *
+   Mini_evd.EvarMap.t * Environ.env *
+   Term.constr * Term.constr * float * Univ.constraints option
 
-let trans_conv_cmp ?(l2r=false) conv reds = trans_fconv reds conv l2r (fun _->None)
-let trans_conv ?(l2r=false) ?(evars=fun _->None) reds = trans_fconv reds CONV l2r evars
-let trans_conv_leq ?(l2r=false) ?(evars=fun _->None) reds = trans_fconv reds CUMUL l2r evars
+let loc_x, loc_y = ref 0, ref 0
+let filename = ref ""
+
+let print_cpb ((s,i,_),_,_,_,_,e,x,y,t,b) =
+  Printf.sprintf "( %S , %d , %d , %3.3f , %b );" s i
+    (CObj.size_b (rel_context e,named_context e,x,y)) t (b <> None)
+
+let todump, dumping = ref ([] : cpb list), ref false
+
+let load_dump s =
+  let ic = open_in_bin s in
+  try (Marshal.from_channel ic : cpb list)
+  with End_of_file -> (prerr_endline ("Unable to load " ^ s)); []
+
+let set_dump_loc (x,y) = loc_x := x; loc_y := y
+
+let set_dump_cpbs s =
+  filename :=
+    String.concat Filename.dir_sep 
+      (Util.List.lastn 3 (Str.split (Str.regexp Filename.dir_sep) s));
+  let oc = open_out_bin s in
+  dumping := true;
+  at_exit (fun () ->
+    begin
+      try Marshal.to_channel oc !todump [Marshal.Closures]
+      with Invalid_argument _ -> prerr_endline ("Unable to marshal "^s)
+    end;
+    close_out oc)
+
+let dump reds cv_pb l2r evars env t1 t2 time rc =
+  if !dumping && time > 0.0004 then
+    todump :=
+      ((!filename,!loc_x,!loc_y), reds, cv_pb, l2r,
+      evars, env, t1, t2, time, rc) :: !todump
+
+let trans_fconv reds cv_pb l2r evars env t1 t2 time =
+  try
+    if eq_constr t1 t2 then empty_constraint
+    else 
+      let rc = clos_fconv reds cv_pb l2r evars env t1 t2 in
+      time := (Unix.times ()).Unix.tms_utime -. !time;
+      dump reds cv_pb l2r evars env t1 t2 !time (Some rc);
+      rc
+  with e ->
+    time := (Unix.times ()).Unix.tms_utime -. !time;
+    dump reds cv_pb l2r evars env t1 t2 !time None;
+    raise e
+
+let run_cpb (_,reds, cv_pb, l2r, evars, env, t1, t2, time, rc) =
+  let ntime = ref (Unix.times ()).Unix.tms_utime in
+  try
+    let u = trans_fconv reds cv_pb l2r evars env t1 t2 ntime in
+    let t = !ntime -. time in
+    match rc with
+    | None -> t, false
+    | Some rc -> t, Univ.compare_constraints rc u
+  with e -> !ntime -. time, None = rc
+
+let trans_fconv reds cv_pb l2r evars env t1 t2 =
+  let time = ref (Unix.times ()).Unix.tms_utime in
+  trans_fconv reds cv_pb l2r evars env t1 t2 time
+
+let trans_conv_cmp ?(l2r=false) conv reds = trans_fconv reds conv l2r Mini_evd.EvarMap.empty
+let trans_conv ?(l2r=false) ?(evars=Mini_evd.EvarMap.empty) reds = trans_fconv reds CONV l2r evars
+let trans_conv_leq ?(l2r=false) ?(evars=Mini_evd.EvarMap.empty) reds = trans_fconv reds CUMUL l2r evars
 
 let fconv = trans_fconv (Idpred.full, Cpred.full)
 
-let conv_cmp ?(l2r=false) cv_pb = fconv cv_pb l2r (fun _->None)
-let conv ?(l2r=false) ?(evars=fun _->None) = fconv CONV l2r evars
-let conv_leq ?(l2r=false) ?(evars=fun _->None) = fconv CUMUL l2r evars
+let conv_cmp ?(l2r=false) cv_pb = fconv cv_pb l2r Mini_evd.EvarMap.empty
+let conv ?(l2r=false) ?(evars=Mini_evd.EvarMap.empty) = fconv CONV l2r evars
+let conv_leq ?(l2r=false) ?(evars=Mini_evd.EvarMap.empty) = fconv CUMUL l2r evars
 
-let conv_leq_vecti ?(l2r=false) ?(evars=fun _->None) env v1 v2 =
+let conv_leq_vecti ?(l2r=false) ?(evars=Mini_evd.EvarMap.empty) env v1 v2 =
   Array.fold_left2_i
     (fun i c t1 t2 ->
       let c' =
@@ -455,17 +518,18 @@ let conv_leq_vecti ?(l2r=false) ?(evars=fun _->None) env v1 v2 =
 
 (* option for conversion *)
 
-let vm_conv = ref (fun cv_pb -> fconv cv_pb false (fun _->None))
+let vm_conv = ref (fun cv_pb -> fconv cv_pb false Mini_evd.EvarMap.empty)
 let set_vm_conv f = vm_conv := f
 let vm_conv cv_pb env t1 t2 =
   try
     !vm_conv cv_pb env t1 t2
   with Not_found | Invalid_argument _ ->
       (* If compilation fails, fall-back to closure conversion *)
-      fconv cv_pb false (fun _->None) env t1 t2
+      fconv cv_pb false Mini_evd.EvarMap.empty env t1 t2
 
 
-let default_conv = ref (fun cv_pb ?(l2r=false) -> fconv cv_pb l2r (fun _->None))
+let default_conv =
+  ref (fun cv_pb ?(l2r=false) -> fconv cv_pb l2r Mini_evd.EvarMap.empty)
 
 let set_default_conv f = default_conv := f
 
@@ -474,7 +538,7 @@ let default_conv cv_pb ?(l2r=false) env t1 t2 =
     !default_conv ~l2r cv_pb env t1 t2
   with Not_found | Invalid_argument _ ->
       (* If compilation fails, fall-back to closure conversion *)
-      fconv cv_pb false (fun _->None) env t1 t2
+      fconv cv_pb false Mini_evd.EvarMap.empty env t1 t2
 
 let default_conv_leq = default_conv CUMUL
 (*

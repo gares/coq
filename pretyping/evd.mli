@@ -19,17 +19,18 @@ open Termops
 (********************************************************************
    Meta map *)
 
+(*
 module Metamap : Map.S with type key = metavariable
-
 module Metaset : Set.S with type elt = metavariable
+*)
 
-val meta_exists : (metavariable -> bool) -> Metaset.t -> bool
+val meta_exists : (metavariable -> bool) -> Mini_evd.Metaset.t -> bool
 
-type 'a freelisted = {
+type 'a freelisted = 'a Mini_evd.freelisted = {
   rebus : 'a;
-  freemetas : Metaset.t }
+  freemetas : Mini_evd.Metaset.t }
 
-val metavars_of : constr -> Metaset.t
+val metavars_of : constr -> Mini_evd.Metaset.t
 val mk_freelisted : constr -> constr freelisted
 val map_fl : ('a -> 'b) -> 'a freelisted -> 'b freelisted
 
@@ -40,7 +41,7 @@ val map_fl : ('a -> 'b) -> 'a freelisted -> 'b freelisted
     (e.g. the solution [P] to [?X u v = P u v] can be eta-expanded twice)
 *)
 
-type instance_constraint = IsSuperType | IsSubType | Conv
+type instance_constraint = Mini_evd.instance_constraint = IsSuperType | IsSubType | Conv
 
 (** Status of the unification of the type of an instance against the type of
      the meta it instantiates:
@@ -55,7 +56,7 @@ type instance_constraint = IsSuperType | IsSubType | Conv
      can be substituted freely.
 *)
 
-type instance_typing_status =
+type instance_typing_status = Mini_evd.instance_typing_status =
     CoerceToType | TypeNotProcessed | TypeProcessed
 
 (** Status of an instance together with the status of its type unification *)
@@ -64,7 +65,7 @@ type instance_status = instance_constraint * instance_typing_status
 
 (** Clausal environments *)
 
-type clbinding =
+type clbinding = Mini_evd.clbinding =
   | Cltyp of name * constr freelisted
   | Clval of name * (constr freelisted * instance_status) * constr freelisted
 
@@ -88,11 +89,11 @@ type evar = existential_key
 val string_of_existential : evar -> string
 val existential_of_int : int -> evar
 
-type evar_body =
+type evar_body = Mini_evd.evar_body = 
   | Evar_empty
   | Evar_defined of constr
 
-type evar_info = {
+type evar_info = Mini_evd.evar_info = {
   evar_concl : constr;
   evar_hyps : named_context_val;
   evar_body : evar_body;
@@ -114,7 +115,7 @@ val evar_unfiltered_env :  evar_info -> env
 val evar_env :  evar_info -> env
 
 (*** Unification state ***)
-type evar_map
+type evar_map = Mini_evd.evar_map
 
 (** Unification state and existential variables *)
 
@@ -267,7 +268,7 @@ type unsolvability_explanation = SeveralInstancesFound of int
 val pr_evar_info : evar_info -> Pp.std_ppcmds
 val pr_evar_map_constraints : evar_map -> Pp.std_ppcmds
 val pr_evar_map : int option -> evar_map -> Pp.std_ppcmds
-val pr_metaset : Metaset.t -> Pp.std_ppcmds
+val pr_metaset : Mini_evd.Metaset.t -> Pp.std_ppcmds
 
 
 (*** /!\Deprecated /!\ **

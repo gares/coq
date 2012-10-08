@@ -154,3 +154,6 @@ let default_inline_level = 100
 let inline_level = ref default_inline_level
 let set_inline_level = (:=) inline_level
 let get_inline_level () = !inline_level
+
+let dump_conv_pbs = ref false
+let run_conv_pbs = ref None

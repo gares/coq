@@ -512,6 +512,7 @@ module Constraint = Set.Make(
   end)
 
 type constraints = Constraint.t
+let compare_constraints = Constraint.equal
 
 let empty_constraint = Constraint.empty
 let is_empty_constraint = Constraint.is_empty

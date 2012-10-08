@@ -65,6 +65,7 @@ ALLDEPS:=$(addsuffix .d, \
 
 # Variables meant to be modifiable via the command-line of make
 
+CONVSTRATEGY ?= current
 VERBOSE=
 NO_RECOMPILE_ML4=
 NO_RECALC_DEPS=
@@ -476,6 +477,9 @@ foundations: $(FOUNDATIONSVO)
 
 pluginsopt: $(PLUGINSOPT)
 pluginsbyte: $(PLUGINS)
+
+# CONV
+conv: $(patsubst %.vo,%.v.stats.$(CONVSTRATEGY), $(PLUGINSVO) $(THEORIESVO))
 
 ###########################################################################
 # rules to make theories and plugins
@@ -901,15 +905,21 @@ plugins/%_mod.ml: plugins/%.mllib
 	$(CAMLP4O) $(PR_O) -I $(CAMLLIB) tools/compat5.cmo $${DEPS} $(CAMLP4USE) $(CAMLP4COMPAT) -impl $< -o $@; \
 	else echo $< : Dependency $${DEPS} not ready yet; false; fi
 
-%.vo %.glob: %.v theories/Init/Prelude.vo $(VO_TOOLS_DEP) | %.v.d
+%.vo %.vc %.glob: %.v theories/Init/Prelude.vo $(VO_TOOLS_DEP) | %.v.d
 	$(SHOW)'COQC      $<'
 	$(HIDE)rm -f $*.glob 
-	$(HIDE)$(BOOTCOQC) $*
+	$(HIDE)$(BOOTCOQC) $* -dump-conv-pbs
 ifdef VALIDATE
 	$(SHOW)'COQCHK    $(call vo_to_mod,$@)'
 	$(HIDE)$(CHICKEN) -boot -silent -norec $(call vo_to_mod,$@) \
 	  || ( RV=$$?; rm -f "$@"; exit $${RV} )
 endif
+
+%.v.stats.$(CONVSTRATEGY): %.vc %.vo
+	$(SHOW)'CONV   $<'
+	$(HIDE)$(BOOTCOQC) $* -run-conv-pbs $(CONVSTRATEGY)
+
+.PRECIOUS: *.vc
 
 ###########################################################################
 # Dependencies

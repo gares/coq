@@ -122,7 +122,7 @@ let compile_files () =
 	 Lexer.restore_location_table coqdoc_init_state;
 	 if Flags.do_beautify () then
 	   with_option beautify_file (Vernac.compile v) f
-	 else
+         else
 	   Vernac.compile v f)
       (List.rev !compile_list)
 
@@ -295,6 +295,11 @@ let parse_args arglist =
     | "-xml" :: rem -> Flags.xml_export := true; parse rem
 
     | "-output-context" :: rem -> output_context := true; parse rem
+    
+    | "-run-conv-pbs" :: ext :: rem -> Flags.run_conv_pbs := Some ext; parse rem
+    | "-dump-conv-pbs" :: rem ->
+         Flags.dump_conv_pbs := true;
+         Flags.load_proofs := Flags.Dont; parse rem
 
     (* Scanned in Flags. *)
     | "-v7" :: rem -> error "This version of Coq does not support v7 syntax"

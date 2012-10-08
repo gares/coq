@@ -360,5 +360,4 @@ let create_cbv_infos flgs env sigma =
   create
     (fun old_info c -> cbv_stack_term old_info TOP (subs_id 0) c)
     flgs
-    env
-    (Reductionops.safe_evar_value sigma)
+    env sigma.Mini_evd.evars

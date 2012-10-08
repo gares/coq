@@ -15,6 +15,7 @@ open Term
 open Termops
 open Namegen
 open Environ
+open Mini_evd
 open Evd
 open Reduction
 open Reductionops

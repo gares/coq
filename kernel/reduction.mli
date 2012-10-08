@@ -28,7 +28,7 @@ exception NotConvertibleVect of int
 type 'a conversion_function = env -> 'a -> 'a -> Univ.constraints
 type 'a trans_conversion_function = Names.transparent_state -> env -> 'a -> 'a -> Univ.constraints
 
-type conv_pb = CONV | CUMUL
+type conv_pb = Mini_evd.conv_pb = CONV | CUMUL
 
 val sort_cmp :
     conv_pb -> sorts -> sorts -> Univ.constraints -> Univ.constraints
@@ -38,17 +38,17 @@ val conv_sort_leq  : sorts conversion_function
 
 val trans_conv_cmp       : ?l2r:bool -> conv_pb -> constr trans_conversion_function
 val trans_conv           :
-  ?l2r:bool -> ?evars:(existential->constr option) -> constr trans_conversion_function
+  ?l2r:bool -> ?evars:Mini_evd.EvarMap.t -> constr trans_conversion_function
 val trans_conv_leq       :
-  ?l2r:bool -> ?evars:(existential->constr option) -> types trans_conversion_function
+  ?l2r:bool -> ?evars:Mini_evd.EvarMap.t -> types trans_conversion_function
 
 val conv_cmp       : ?l2r:bool -> conv_pb -> constr conversion_function
 val conv           :
-  ?l2r:bool -> ?evars:(existential->constr option) -> constr conversion_function
+  ?l2r:bool -> ?evars:Mini_evd.EvarMap.t -> constr conversion_function
 val conv_leq       :
-  ?l2r:bool -> ?evars:(existential->constr option) -> types conversion_function
+  ?l2r:bool -> ?evars:Mini_evd.EvarMap.t -> types conversion_function
 val conv_leq_vecti :
-  ?l2r:bool -> ?evars:(existential->constr option) -> types array conversion_function
+  ?l2r:bool -> ?evars:Mini_evd.EvarMap.t -> types array conversion_function
 
 (** option for conversion *)
 val set_vm_conv : (conv_pb -> types conversion_function) -> unit
@@ -80,3 +80,10 @@ exception NotArity
 
 val dest_arity : env -> types -> arity (* raises NotArity if not an arity *)
 val is_arity   : env -> types -> bool
+
+type cpb
+val set_dump_cpbs : string -> unit
+val set_dump_loc : int * int -> unit
+val load_dump : string -> cpb list
+val print_cpb : cpb -> string
+val run_cpb : cpb -> float * bool

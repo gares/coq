@@ -205,7 +205,7 @@ type 'a infos = {
   i_flags : reds;
   i_repr : 'a infos -> constr -> 'a;
   i_env : env;
-  i_sigma : existential -> constr option;
+  i_sigma : Mini_evd.EvarMap.t;
   i_rels : int * (int * constr) list;
   i_vars : (identifier * constr) list;
   i_tab : (table_key, 'a) Hashtbl.t }
@@ -233,7 +233,8 @@ let ref_value_cache info ref =
       -> None
 
 let evar_value info ev =
-  info.i_sigma ev
+  try Some (Mini_evd.EvarMap.existential_value info.i_sigma ev)
+  with Mini_evd.NotInstantiatedEvar | Not_found -> None
 
 let defined_vars flags env =
 (*  if red_local_const (snd flags) then*)
@@ -973,7 +974,7 @@ let whd_stack infos m stk =
 (* cache of constants: the body is computed only when needed. *)
 type clos_infos = fconstr infos
 
-let create_clos_infos ?(evars=fun _ -> None) flgs env =
+let create_clos_infos ?(evars=Mini_evd.EvarMap.empty) flgs env =
   create (fun _ -> inject) flgs env evars
 
 let unfold_reference = ref_value_cache

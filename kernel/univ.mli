@@ -52,6 +52,7 @@ val is_initial_universes : universes -> bool
 (** {6 Constraints. } *)
 
 type constraints
+val compare_constraints : constraints -> constraints -> bool
 
 val empty_constraint : constraints
 val union_constraints : constraints -> constraints -> constraints

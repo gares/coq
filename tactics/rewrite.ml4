@@ -1876,7 +1876,7 @@ END
 let check_evar_map_of_evars_defs evd =
  let metas = Evd.meta_list evd in
  let check_freemetas_is_empty rebus =
-  Evd.Metaset.iter
+  Mini_evd.Metaset.iter
    (fun m ->
      if Evd.meta_defined evd m then () else
       raise

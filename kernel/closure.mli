@@ -84,7 +84,7 @@ type 'a infos
 val ref_value_cache: 'a infos -> table_key -> 'a option
 val info_flags: 'a infos -> reds
 val create: ('a infos -> constr -> 'a) -> reds -> env ->
-  (existential -> constr option) -> 'a infos
+  Mini_evd.EvarMap.t -> 'a infos
 val evar_value : 'a infos -> existential -> constr option
 
 (***********************************************************************
@@ -159,7 +159,7 @@ val destFLambda :
 (** Global and local constant cache *)
 type clos_infos
 val create_clos_infos :
-  ?evars:(existential->constr option) -> reds -> env -> clos_infos
+  ?evars:Mini_evd.EvarMap.t -> reds -> env -> clos_infos
 
 (** Reduction function *)
 

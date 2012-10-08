@@ -155,3 +155,10 @@ ide/index_urls.txt
 dev/ocamldoc/html/
 dev/ocamldoc/coq.*
 dev/ocamldoc/ocamldoc.sty
+
+# Enrico
+*.vc
+*.stats.*
+*.swp
+*~
+

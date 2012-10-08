@@ -335,6 +335,7 @@ let rec vernac_com interpfun checknav (loc,com) =
       checknav loc com;
       current_timeout := !default_timeout;
       if do_beautify () then pr_new_syntax loc (Some com);
+      Reduction.set_dump_loc (Loc.unloc loc);
       if !time then display_cmd_header loc com;
       let com = if !time then VernacTime com else com in
       interp com
@@ -427,9 +428,22 @@ let compile verbosely f =
   Dumpglob.start_dump_glob long_f_dot_v;
   Dumpglob.dump_string ("F" ^ Names.string_of_dirpath ldir ^ "\n");
   if !Flags.xml_export then !xml_start_library ();
-  let _ = load_vernac verbosely long_f_dot_v in
-  if Pfedit.get_all_proof_names () <> [] then
-    (pperrnl (str "Error: There are pending proofs"); flush_all (); exit 1);
-  if !Flags.xml_export then !xml_end_library ();
-  Dumpglob.end_dump_glob ();
-  Library.save_library_to ldir (long_f_dot_v ^ "o")
+  match !Flags.run_conv_pbs with
+  | Some ext ->
+      let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
+      let stats = open_out (long_f_dot_v ^ ".stats." ^ ext) in
+      List.iter (fun x ->
+        let diff, ok = Reduction.run_cpb x in
+        Printf.fprintf stats "%s\n" (Reduction.print_cpb x);
+        if not ok then prerr_endline "ERR";
+        if diff > 0.1 then 
+          prerr_endline ("diff " ^ string_of_float diff)) pbs;
+      close_out stats;
+  | None ->
+      if !Flags.dump_conv_pbs then Reduction.set_dump_cpbs (long_f_dot_v ^ "c");
+      load_vernac verbosely long_f_dot_v;
+      if Pfedit.get_all_proof_names () <> [] then
+        (pperrnl (str "Error: There are pending proofs"); flush_all (); exit 1);
+      if !Flags.xml_export then !xml_end_library ();
+      Dumpglob.end_dump_glob ();
+      Library.save_library_to ldir (long_f_dot_v ^ "o")

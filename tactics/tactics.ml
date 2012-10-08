@@ -20,6 +20,7 @@ open Inductiveops
 open Reductionops
 open Environ
 open Globnames
+open Mini_evd
 open Evd
 open Pfedit
 open Tacred

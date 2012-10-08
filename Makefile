@@ -223,6 +223,8 @@ distclean: clean cleanconfig
 
 voclean:
 	find theories plugins test-suite -name '*.vo' -o -name '*.glob' | xargs rm -f
+	find theories plugins test-suite -name '*.vc' | xargs rm -f
+	find theories plugins test-suite -name '*.stats.*' | xargs rm -f
 
 devdocclean:
 	find . -name '*.dep.ps' -o -name '*.dot' | xargs rm -f

@@ -12,6 +12,7 @@ open Names
 open Term
 open Termops
 open Univ
+open Mini_evd
 open Evd
 open Environ
 open Closure
@@ -539,7 +540,7 @@ let nf_evar =
 let clos_norm_flags flgs env sigma t =
   try
     norm_val
-      (create_clos_infos ~evars:(safe_evar_value sigma) flgs env)
+      (create_clos_infos ~evars:sigma.evars flgs env)
       (inject t)
   with Anomaly _ -> error "Tried to normalized ill-typed term" 
 
@@ -637,9 +638,9 @@ let pb_equal = function
 
 let sort_cmp = sort_cmp
 
-let test_conversion (f: ?l2r:bool-> ?evars:'a->'b) env sigma x y =
+let test_conversion (f: ?l2r:bool-> ?evars:'a -> 'b) env sigma x y =
   try let _ =
-    f ~evars:(safe_evar_value sigma) env x y in true
+    f ~evars:sigma.evars env x y in true
   with NotConvertible -> false
     | Anomaly _ -> error "Conversion test raised an anomaly"
 
@@ -648,7 +649,7 @@ let is_conv_leq env sigma = test_conversion Reduction.conv_leq env sigma
 let is_fconv = function | CONV -> is_conv | CUMUL -> is_conv_leq
 
 let test_trans_conversion (f: ?l2r:bool-> ?evars:'a->'b) reds env sigma x y =
-  try let _ = f ~evars:(safe_evar_value sigma) reds env x y in true
+  try let _ = f ~evars:sigma.evars reds env x y in true
   with NotConvertible -> false
     | Anomaly _ -> error "Conversion test raised an anomaly"
 
