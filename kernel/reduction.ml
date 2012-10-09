@@ -24,6 +24,152 @@ open Environ
 open Closure
 open Esubst
 
+(* BEGIN PP *)
+open Pp
+
+let pr_id id = str (string_of_id id)
+
+let print_sort = function
+  | Prop Pos -> (str "Set")
+  | Prop Null -> (str "Prop")
+  | Type u -> (str "Type")
+
+let pr_sort_family = function
+  | InSet -> (str "Set")
+  | InProp -> (str "Prop")
+  | InType -> (str "Type")
+
+let pr_name = function
+  | Name id -> pr_id id
+  | Anonymous -> str "_"
+
+let pr_con sp = str(string_of_label(con_label sp))
+
+let pr_rel_name e n =
+  try let name, _, _= Environ.lookup_rel n e in pr_name name
+  with Not_found -> str"UNBOUND"
+
+let rec pr_constr h e c = if h < 0 then str"…" else match kind_of_term c with
+  | Rel n -> pr_rel_name e n (*++str"("++int n++str")"*)
+  | Meta n -> str "?m(" ++ int n ++ str ")"
+  | Var id -> pr_id id
+  | Sort s -> print_sort s
+  | Cast (c,_, t) -> hov 1
+      (str"(" ++ pr_constr (h-1) e c ++ cut() ++
+       str":" ++ pr_constr (h-1) e t ++ str")")
+  | Prod (Name(id) as n,t,c) -> hov 1
+      (str"forall " ++ pr_id id ++ str":" ++ pr_constr (h-1) e t ++ str"," ++
+       spc() ++ pr_constr (h-1) (Environ.push_rel (n,None,t) e) c)
+  | Prod (Anonymous as n,t,c) -> hov 0
+      (str"(" ++ pr_constr (h-1) e t ++ str " ->" ++ spc() ++
+       pr_constr (h-1) (Environ.push_rel (n,None,t) e) c ++ str")")
+  | Lambda (na,t,c) -> hov 1
+      (str"(fun (" ++ pr_name na ++ str":" ++
+       pr_constr (h-1) e t ++ str") =>" ++ spc() ++ pr_constr (h-1) (Environ.push_rel
+       (na,None,t) e) c ++ str")")
+  | LetIn (na,b,t,c) -> hov 0
+      (str"let " ++ pr_name na ++ str":=" ++ pr_constr (h-1) e b ++
+       str":" ++ brk(1,2) ++ pr_constr (h-1) e t ++ str" in " ++ cut() ++
+       pr_constr (h-1) (Environ.push_rel (na,Some b,t) e) c)
+  | App (c,l) ->  hov 1
+      (str"(" ++ pr_constr (h-1) e c ++ spc() ++
+       prlist_with_sep spc (pr_constr (h-1) e) (Array.to_list l) ++ str")")
+  | Evar (e,l) -> hov 1
+      (str"?e(" ++ int e ++ str")")
+(*        str"{" ++ prlist_with_sep spc pr_constr (h-1) e (Array.to_list l) ++str"}") *)
+  | Const c -> pr_con c
+  | Ind (sp,i) -> let _, _, l = repr_mind sp in
+      str(string_of_label l)++str"[" ++ int i ++ str"]"
+  | Construct ((sp,i),j) -> let _, _, l = repr_mind sp in
+      str(string_of_label l)++str"[" ++ int i ++ str "," ++ int j++ str"]"
+  | Case (ci,p,c,bl) -> v 0
+      (hv 0 (hov 0 (str"case " ++ pr_constr (h-1) e c ++spc()++
+       str"return "++pr_constr (h-1) e p++spc()++str"with ")) ++ cut() ++
+       prlist_with_sep (fun _ -> cut()) 
+         (fun t -> str"| " ++ pr_constr (h-1) e t)
+         (Array.to_list bl) ++
+      cut() ++ str"end")
+  | Fix ((t,i),(lna,tl,bl)) ->
+(*       let fixl = Array.mapi (fun i na -> (na,t.(i),tl.(i),bl.(i))) lna in *)
+      (* FIX env *)
+      hov 1
+        (str"fix " ++ int i ++ spc() (* ++  str"{" ++
+         v 0 (prlist_with_sep spc (fun (na,i,ty,bd) ->
+           pr_name na ++ str"/" ++ int i ++ str":" ++ pr_constr (h-1) e ty ++
+           cut() ++ str":=" ++ pr_constr (h-1) e bd) (Array.to_list fixl)) ++
+         str"}"*))
+  | CoFix(i,(lna,tl,bl)) ->
+      (* FIX env *)
+(*       let fixl = Array.mapi (fun i na -> (na,tl.(i),bl.(i))) lna in *)
+      hov 1
+        (str"cofix " ++ int i (* ++ spc() ++  str"{" ++
+         v 0 (prlist_with_sep spc (fun (na,ty,bd) ->
+           pr_name na ++ str":" ++ pr_constr (h-1) e ty ++
+           cut() ++ str":=" ++ pr_constr (h-1) e bd) (Array.to_list fixl)) ++
+         str"}"*))
+;;
+
+let ppctx e = 
+  let opt e = function None -> str "" | Some t -> str" := " ++ pr_constr 10 e t in
+  string_of_ppcmds (hv 1 (List.fold_left (fun acc (id,ob,t) -> 
+        pr_id id ++ opt e ob ++ str " : " ++ pr_constr 10 e t ++ spc() ++ acc)
+      (str"") (Environ.named_context e)
+      ++ str"---"++spc()++
+      Environ.fold_rel_context (fun e (id,ob,t) acc -> acc ++ spc() ++
+        pr_name id ++ opt e ob ++ str " : " ++ pr_constr 10 e t)
+      e ~init:(str"")
+      ))
+
+let ppterm ?(depth=3) e x = string_of_ppcmds (pr_constr depth e x)
+
+(* END PP *)
+
+(* BEGIN TRACING INSTRUMENTATION *)
+
+let debug = ref false
+let indent = ref "";;
+let times = ref [];;
+let last_time = ref 0.0;;
+(*D* let pp s = if !debug then Printf.eprintf "    %s%s\n" (String.make (String.length !indent) ' ') (Lazy.force s) *D*)
+let __time () = (Unix.times ()).Unix.tms_utime
+let __time () = Unix.gettimeofday ()
+let __inside s =
+ if !debug then begin
+   let time1 = __time () in
+   let c = s.[0] in
+   times := time1 :: !times;
+   Printf.eprintf "{{{ %s %s\n" !indent s;
+   indent := !indent ^ String.make 1 c;
+  end
+;;
+let __outside ?cmp_opt exc_opt =
+ if !debug then
+  begin
+   let time2 = __time () in
+   let time1 =
+     match !times with time1::tl -> times := tl; time1 | [] -> assert false in
+   let time = time2 -. time1 in
+   last_time := time;
+   Printf.eprintf "}}}\n    %s%s%s\n" (String.make (String.length !indent) ' ')
+   (match exc_opt with
+   | None ->   Printf.sprintf "returned in %.3f" time
+   | Some e -> Printf.sprintf "failed in   %.3f (%s)" time
+       (Printexc.to_string e))
+   (match cmp_opt with
+   | None -> ""
+   | Some t when abs_float (t -. time) < 0.000001 -> ""
+   | Some t ->
+      Printf.sprintf " %s %.3f" (if t > time then "FASTER" else "SLOWER") t);
+   try
+    indent := String.sub !indent 0 (String.length !indent -1)
+   with
+    Invalid_argument _ -> indent := "??"; ()
+  end
+;;
+
+(* END TRACING INSTRUMENTATION *)
+
+
 let unfold_reference ((ids, csts), infos) k =
   match k with
     | VarKey id when not (Idpred.mem id ids) -> None
@@ -244,6 +390,7 @@ let rec ccnv cv_pb l2r infos lft1 lft2 term1 term2 cuniv =
 
 (* Conversion between [lft1](hd1 v1) and [lft2](hd2 v2) *)
 and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
+(*D*   __inside "eqappr"; try let cmp_opt, __rc =  *D*)
   Util.check_for_interrupt ();
   (* First head reduce both terms *)
   let rec whd_both (t1,stk1) (t2,stk2) =
@@ -257,9 +404,13 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
   (* compute the lifts that apply to the head of the term (hd1 and hd2) *)
   let el1 = el_stack lft1 v1 in
   let el2 = el_stack lft2 v2 in
+  (*D* let env = (env_of_infos (snd infos)) in *D*)
+  (*D* pp(lazy("hd1="^ppterm env (term_of_lift_fconstr el1 hd1))); *D*)
+  (*D* pp(lazy("hd2="^ppterm env (term_of_lift_fconstr el2 hd2))); *D*)
   match (fterm_of hd1, fterm_of hd2) with
     (* case of leaves *)
     | (FAtom a1, FAtom a2) ->
+                    (*D* pp(lazy("(FAtom a1, FAtom a2)")); *D*)
 	(match kind_of_term a1, kind_of_term a2 with
 	   | (Sort s1, Sort s2) ->
 	       if not (is_empty_stack v1 && is_empty_stack v2) then
@@ -270,7 +421,8 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
 	       then convert_stacks l2r infos lft1 lft2 v1 v2 cuniv
                else raise NotConvertible
 	   | _ -> raise NotConvertible)
-    | (FEvar ((ev1,args1),env1), FEvar ((ev2,args2),env2)) ->
+    | (FEvar ((ev1,args1),env1), FEvar ((ev2,args2),env2)) -> 
+                    (*D* pp(lazy("(FEvar ((ev1,args1),env1), FEvar ((ev2,args2),env2))")); *D*)
         if ev1=ev2 then
           let u1 = convert_stacks l2r infos lft1 lft2 v1 v2 cuniv in
           convert_vect l2r infos el1 el2
@@ -279,13 +431,15 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
         else raise NotConvertible
 
     (* 2 index known to be bound to no constant *)
-    | (FRel n, FRel m) ->
+    | (FRel n, FRel m) -> 
+                    (*D* pp(lazy("(FRel n, FRel m)")); *D*)
         if reloc_rel n el1 = reloc_rel m el2
         then convert_stacks l2r infos lft1 lft2 v1 v2 cuniv
         else raise NotConvertible
 
     (* 2 constants, 2 local defined vars or 2 defined rels *)
-    | (FFlex fl1, FFlex fl2) ->
+    | (FFlex fl1, FFlex fl2) -> 
+                    (*D* pp(lazy("(FFlex fl1, FFlex fl2)")); *D*)
 	(try (* try first intensional equality *)
 	  if eq_table_key fl1 fl2
           then convert_stacks l2r infos lft1 lft2 v1 v2 cuniv
@@ -293,24 +447,34 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
         with NotConvertible ->
           (* else the oracle tells which constant is to be expanded *)
           let (app1,app2) =
+            (*D* let pr_unfold c l b = pp(lazy("unfold "^c^" =" ^ppterm ~depth:max_int env (term_of_lift_fconstr l b))) in *D*)
             if Conv_oracle.oracle_order l2r fl1 fl2 then
               match unfold_reference infos fl1 with
-                | Some def1 -> ((lft1, whd_stack (snd infos) def1 v1), appr2)
+                | Some def1 -> 
+                                (*D* pr_unfold "left" lft1 def1; *D*)
+                                ((lft1, whd_stack (snd infos) def1 v1), appr2)
                 | None ->
                     (match unfold_reference infos fl2 with
-                      | Some def2 -> (appr1, (lft2, whd_stack (snd infos) def2 v2))
+                      | Some def2 -> 
+                                (*D* pr_unfold "right" lft2 def2; *D*)
+                                      (appr1, (lft2, whd_stack (snd infos) def2 v2))
 		      | None -> raise NotConvertible)
             else
 	      match unfold_reference infos fl2 with
-                | Some def2 -> (appr1, (lft2, whd_stack (snd infos) def2 v2))
+                | Some def2 -> 
+                                (*D* pr_unfold "right" lft2 def2; *D*)
+                                (appr1, (lft2, whd_stack (snd infos) def2 v2))
                 | None ->
                     (match unfold_reference infos fl1 with
-                    | Some def1 -> ((lft1, whd_stack (snd infos) def1 v1), appr2)
+                    | Some def1 -> 
+                                (*D* pr_unfold "left" lft1 def1; *D*)
+                                    ((lft1, whd_stack (snd infos) def1 v1), appr2)
 		    | None -> raise NotConvertible) in
           eqappr cv_pb l2r infos app1 app2 cuniv)
 
     (* other constructors *)
-    | (FLambda _, FLambda _) ->
+    | (FLambda _, FLambda _) -> 
+                    (*D* pp(lazy("(FLambda _, FLambda _)")); *D*)
         (* Inconsistency: we tolerate that v1, v2 contain shift and update but
            we throw them away *)
         if not (is_empty_stack v1 && is_empty_stack v2) then
@@ -320,7 +484,8 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
         let u1 = ccnv CONV l2r infos el1 el2 ty1 ty2 cuniv in
         ccnv CONV l2r infos (el_lift el1) (el_lift el2) bd1 bd2 u1
 
-    | (FProd (_,c1,c2), FProd (_,c'1,c'2)) ->
+    | (FProd (_,c1,c2), FProd (_,c'1,c'2)) -> 
+                    (*D* pp(lazy("(FProd (_,c1,c2), FProd (_,c'1,c'2))")); *D*)
         if not (is_empty_stack v1 && is_empty_stack v2) then
 	  anomaly "conversion was given ill-typed terms (FProd)";
 	(* Luo's system *)
@@ -328,13 +493,15 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
         ccnv cv_pb l2r infos (el_lift el1) (el_lift el2) c2 c'2 u1
 
     (* Eta-expansion on the fly *)
-    | (FLambda _, _) ->
+    | (FLambda _, _) -> 
+                    (*D* pp(lazy("(FLambda _, _)")); *D*)
         if v1 <> [] then
 	  anomaly "conversion was given unreduced term (FLambda)";
         let (_,_ty1,bd1) = destFLambda mk_clos hd1 in
 	eqappr CONV l2r infos
 	  (el_lift lft1, (bd1, [])) (el_lift lft2, (hd2, eta_expand_stack v2)) cuniv
-    | (_, FLambda _) ->
+    | (_, FLambda _) -> 
+                    (*D* pp(lazy("(_, FLambda _)")); *D*)
         if v2 <> [] then
 	  anomaly "conversion was given unreduced term (FLambda)";
         let (_,_ty2,bd2) = destFLambda mk_clos hd2 in
@@ -342,12 +509,14 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
 	  (el_lift lft1, (hd1, eta_expand_stack v1)) (el_lift lft2, (bd2, [])) cuniv
 
     (* only one constant, defined var or defined rel *)
-    | (FFlex fl1, _)      ->
+    | (FFlex fl1, _)      -> 
+                    (*D* pp(lazy("(FFlex fl1, _)")); *D*)
         (match unfold_reference infos fl1 with
            | Some def1 ->
 	       eqappr cv_pb l2r infos (lft1, whd_stack (snd infos) def1 v1) appr2 cuniv
            | None -> raise NotConvertible)
-    | (_, FFlex fl2)      ->
+    | (_, FFlex fl2)      -> 
+                    (*D* pp(lazy("(_, FFlex fl2)")); *D*)
         (match unfold_reference infos fl2 with
            | Some def2 ->
 	       eqappr cv_pb l2r infos appr1 (lft2, whd_stack (snd infos) def2 v2) cuniv
@@ -355,19 +524,22 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
 
     (* Inductive types:  MutInd MutConstruct Fix Cofix *)
 
-    | (FInd ind1, FInd ind2) ->
+    | (FInd ind1, FInd ind2) -> 
+                    (*D* pp(lazy("(FInd ind1, FInd ind2)")); *D*)
         if eq_ind ind1 ind2
 	then
           convert_stacks l2r infos lft1 lft2 v1 v2 cuniv
         else raise NotConvertible
 
-    | (FConstruct (ind1,j1), FConstruct (ind2,j2)) ->
+    | (FConstruct (ind1,j1), FConstruct (ind2,j2)) -> 
+                    (*D* pp(lazy("(FConstruct (ind1,j1), FConstruct (ind2,j2))")); *D*)
 	if j1 = j2 && eq_ind ind1 ind2
 	then
           convert_stacks l2r infos lft1 lft2 v1 v2 cuniv
         else raise NotConvertible
 
-    | (FFix ((op1,(_,tys1,cl1)),e1), FFix((op2,(_,tys2,cl2)),e2)) ->
+    | (FFix ((op1,(_,tys1,cl1)),e1), FFix((op2,(_,tys2,cl2)),e2)) -> 
+                    (*D* pp(lazy("(FFix ((op1,(_,tys1,cl1)),e1), FFix((op2,(_,tys2,cl2)),e2))")); *D*)
 	if op1 = op2
 	then
 	  let n = Array.length cl1 in
@@ -382,7 +554,8 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
           convert_stacks l2r infos lft1 lft2 v1 v2 u2
         else raise NotConvertible
 
-    | (FCoFix ((op1,(_,tys1,cl1)),e1), FCoFix((op2,(_,tys2,cl2)),e2)) ->
+    | (FCoFix ((op1,(_,tys1,cl1)),e1), FCoFix((op2,(_,tys2,cl2)),e2)) -> 
+                    (*D* pp(lazy("(FCoFix ((op1,(_,tys1,cl1)),e1), FCoFix((op2,(_,tys2,cl2)),e2))")); *D*)
         if op1 = op2
         then
 	  let n = Array.length cl1 in
@@ -404,12 +577,15 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
 
      (* In all other cases, terms are not convertible *)
      | _ -> raise NotConvertible
+(*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
 
 and convert_stacks l2r infos lft1 lft2 stk1 stk2 cuniv =
+(*D*   __inside "convert_stacks"; try let __rc =  *D*)
   compare_stacks
     (fun (l1,t1) (l2,t2) c -> ccnv CONV l2r infos l1 l2 t1 t2 c)
     (eq_ind)
     lft1 stk1 lft2 stk2 cuniv
+(*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
 
 and convert_vect l2r infos lft1 lft2 v1 v2 cuniv =
   let lv1 = Array.length v1 in
@@ -425,20 +601,23 @@ and convert_vect l2r infos lft1 lft2 v1 v2 cuniv =
   else raise NotConvertible
 
 let clos_fconv trans cv_pb l2r evars env t1 t2 =
+(*D*   __inside "fconv"; try let __rc =  *D*)
+(*D*  pp(lazy(ppctx env  ^ "\n----------------------------\n"));  *D*)
+(*D*  pp(lazy(ppterm ~depth:max_int env t1 ^ " \n= " ^ ppterm ~depth:max_int env t2));  *D*)
   let infos = trans, create_clos_infos ~evars betaiotazeta env in
   ccnv cv_pb l2r infos el_id el_id (inject t1) (inject t2) empty_constraint
+(*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
 
 type cpb = 
   (string * int * int) * (Names.Idpred.t * Names.Cpred.t) * conv_pb * bool *
    Mini_evd.EvarMap.t * Environ.env *
-   Term.constr * Term.constr * float * Univ.constraints option
+   Term.constr * Term.constr * Univ.constraints option
 
 let loc_x, loc_y = ref 0, ref 0
 let filename = ref ""
 
-let print_cpb ((s,i,_),_,_,_,_,e,x,y,t,b) =
-  Printf.sprintf "( %S , %d , %d , %3.3f , %b );" s i
-    (CObj.size_b (rel_context e,named_context e,x,y)) t (b <> None)
+let print_cpb ((s,i,j),_,_,_,_,_,_,_,b) =
+  Printf.sprintf "%S , %d , %d , %b , " s i j (b <> None)
 
 let todump, dumping = ref ([] : cpb list), ref false
 
@@ -466,7 +645,7 @@ let dump reds cv_pb l2r evars env t1 t2 time rc =
   if !dumping && time > 0.0004 then
     todump :=
       ((!filename,!loc_x,!loc_y), reds, cv_pb, l2r,
-      evars, env, t1, t2, time, rc) :: !todump
+      evars, env, t1, t2, rc) :: !todump
 
 let trans_fconv reds cv_pb l2r evars env t1 t2 time =
   try
@@ -481,15 +660,14 @@ let trans_fconv reds cv_pb l2r evars env t1 t2 time =
     dump reds cv_pb l2r evars env t1 t2 !time None;
     raise e
 
-let run_cpb (_,reds, cv_pb, l2r, evars, env, t1, t2, time, rc) =
-  let ntime = ref (Unix.times ()).Unix.tms_utime in
+let run_cpb (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
+  let time = ref (Unix.times ()).Unix.tms_utime in
   try
-    let u = trans_fconv reds cv_pb l2r evars env t1 t2 ntime in
-    let t = !ntime -. time in
+    let u = trans_fconv reds cv_pb l2r evars env t1 t2 time in
     match rc with
-    | None -> t, false
-    | Some rc -> t, Univ.compare_constraints rc u
-  with e -> !ntime -. time, None = rc
+    | None -> !time, false
+    | Some rc -> !time, Univ.compare_constraints rc u
+  with e -> !time, None = rc
 
 let trans_fconv reds cv_pb l2r evars env t1 t2 =
   let time = ref (Unix.times ()).Unix.tms_utime in

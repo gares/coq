@@ -297,6 +297,8 @@ let parse_args arglist =
     | "-output-context" :: rem -> output_context := true; parse rem
     
     | "-run-conv-pbs" :: ext :: rem -> Flags.run_conv_pbs := Some ext; parse rem
+    | "-run-conv-pb" :: n :: rem ->
+         Flags.run_conv_pb := Some (int_of_string n); parse rem
     | "-dump-conv-pbs" :: rem ->
          Flags.dump_conv_pbs := true;
          Flags.load_proofs := Flags.Dont; parse rem

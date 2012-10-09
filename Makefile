@@ -105,7 +105,7 @@ include Makefile.common
 # Starting rules
 ###########################################################################
 
-NOARG: world
+NOARG: states
 
 .PHONY: NOARG help always
 
