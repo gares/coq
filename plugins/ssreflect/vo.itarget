@@ -53,7 +53,6 @@ fingroup.vo
 finmodule.vo
 finset.vo
 fintype.vo
-forms.vo
 fraction.vo
 frobenius.vo
 galgebra.vo
@@ -107,7 +106,6 @@ prime.vo
 primitive_action.vo
 qe_rcf_th.vo
 qe_rcf.vo
-quote.vo
 quotient.vo
 rat.vo
 realalg.vo
