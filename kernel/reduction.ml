@@ -399,6 +399,8 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
     (* Now, whd_stack on term2 might have modified st1 (due to sharing),
        and st1 might not be in whnf anymore. If so, we iterate ccnv. *)
     if in_whnf st1' then (st1',st2') else whd_both st1' st2' in
+  try are_machines_eq lft1 lft2 st1 st2 cuniv
+  with NotConvertible ->
   let ((hd1,v1),(hd2,v2)) = whd_both st1 st2 in
   let appr1 = (lft1,(hd1,v1)) and appr2 = (lft2,(hd2,v2)) in
   (* compute the lifts that apply to the head of the term (hd1 and hd2) *)
@@ -599,6 +601,40 @@ and convert_vect l2r infos lft1 lft2 v1 v2 cuniv =
         fold (n+1) u1 in
     fold 0 cuniv
   else raise NotConvertible
+
+and are_machines_eq l1 l2 (hd1,st1) (hd2,st2) u =
+(*D*   __inside "are_machines_eq"; try let __rc =  *D*)
+  are_stacks_eq l1 l2 st1 st2 (are_fterms_eq l1 l2 hd1 hd2 u)
+(*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
+
+and are_stacks_eq lft1 lft2 stk1 stk2 u =
+  compare_stacks
+    (fun (l1,t1) (l2,t2) c -> are_fterms_eq l1 l2 t1 t2 c)
+    (eq_ind)
+    lft1 stk1 lft2 stk2 u
+
+and are_subs_eq u = function
+  | ESID i, ESID j -> if i=j then u else raise NotConvertible
+  | CONS (a1, s1), CONS (a2, s2) ->
+      (try are_subs_eq (Array.fold_right2 (fun f1 f2 u -> 
+             are_fterms_eq el_id el_id f1 f2 u) a1 a2 u) (s1,s2)
+      with Invalid_argument _ -> raise NotConvertible)
+  | SHIFT(i,s1), SHIFT(j,s2)
+  | LIFT(i,s1), LIFT(j,s2) ->
+      if i=j then are_subs_eq u (s1,s2) else raise NotConvertible
+  | _ -> raise NotConvertible
+
+and are_fterms_eq l1 l2 hd1 hd2 u = 
+  match (fterm_of hd1, fterm_of hd2) with
+    (* 2 constants, 2 local defined vars or 2 defined rels *)
+    | (FFlex fl1, FFlex fl2) ->
+          if eq_table_key fl1 fl2 then u
+          else raise NotConvertible
+    | (FCLOS(t1, e1), FCLOS(t2,e2)) ->
+          if eq_constr t1 t2 && l1 = l2 then are_subs_eq u (e1, e2)
+          else raise NotConvertible
+    (* In all other cases, terms are not convertible *)
+    | _ -> raise NotConvertible
 
 let clos_fconv trans cv_pb l2r evars env t1 t2 =
 (*D*   __inside "fconv"; try let __rc =  *D*)
