@@ -101,6 +101,6 @@ val set_inline_level : int -> unit
 val get_inline_level : unit -> int
 val default_inline_level : int
 
-val dump_conv_pbs : bool ref
+val dump_conv_pbs : float option ref
 val run_conv_pbs : string option ref
 val run_conv_pb : int option ref

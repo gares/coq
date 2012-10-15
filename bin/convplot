@@ -1,17 +1,18 @@
 #!/usr/bin/ocaml
 
 let file = if Array.length Sys.argv > 1 then Sys.argv.(1) else "*"
+let test = if Array.length Sys.argv > 2 then Some Sys.argv.(2) else None
 
-let mk_input v what =
+let mk_input v what ?(test=what) () =
   let cmd = "(echo 'let data_" ^what^ " = [ ';
-    cat `find . -name '"^v^".v.stats."^what^"'`; echo '];;' )> input." ^what in
+    cat `find . -name '"^v^".v.stats."^test^"'`; echo '];;' )> input." ^what in
   prerr_endline cmd;
   Sys.command cmd
 ;;
 
-mk_input file "default";;
+mk_input file "default" ();;
 #use "input.default";;
-mk_input file "current";;
+mk_input file  "current" ?test ();;
 #use "input.current";;
 
 let data = List.combine data_default data_current;;

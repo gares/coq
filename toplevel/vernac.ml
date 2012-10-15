@@ -450,7 +450,9 @@ let compile verbosely f =
       Printf.eprintf "( %d , %s %.3f , %b ) ;\n" n 
         (Reduction.print_cpb p) time ok
   | None ->
-      if !Flags.dump_conv_pbs then Reduction.set_dump_cpbs (long_f_dot_v ^ "c");
+      (match !Flags.dump_conv_pbs with
+      | Some limit -> Reduction.set_dump_cpbs limit (long_f_dot_v ^ "c")
+      | None -> ());
       load_vernac verbosely long_f_dot_v;
       if Pfedit.get_all_proof_names () <> [] then
         (pperrnl (str "Error: There are pending proofs"); flush_all (); exit 1);

@@ -82,7 +82,7 @@ val dest_arity : env -> types -> arity (* raises NotArity if not an arity *)
 val is_arity   : env -> types -> bool
 
 type cpb
-val set_dump_cpbs : string -> unit
+val set_dump_cpbs : float -> string -> unit
 val set_dump_loc : int * int -> unit
 val load_dump : string -> cpb list
 val print_cpb : cpb -> string

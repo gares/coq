@@ -390,7 +390,7 @@ let rec ccnv cv_pb l2r infos lft1 lft2 term1 term2 cuniv =
 
 (* Conversion between [lft1](hd1 v1) and [lft2](hd2 v2) *)
 and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
-(*D*   __inside "eqappr"; try let cmp_opt, __rc =  *D*)
+(*D*   __inside "eqappr"; try let __rc =  *D*)
   Util.check_for_interrupt ();
   (* First head reduce both terms *)
   let rec whd_both (t1,stk1) (t2,stk2) =
@@ -619,7 +619,7 @@ let filename = ref ""
 let print_cpb ((s,i,j),_,_,_,_,_,_,_,b) =
   Printf.sprintf "%S , %d , %d , %b , " s i j (b <> None)
 
-let todump, dumping = ref ([] : cpb list), ref false
+let todump, dumping = ref ([] : cpb list), ref max_float
 
 let load_dump s =
   let ic = open_in_bin s in
@@ -628,12 +628,12 @@ let load_dump s =
 
 let set_dump_loc (x,y) = loc_x := x; loc_y := y
 
-let set_dump_cpbs s =
+let set_dump_cpbs limit s =
   filename :=
     String.concat Filename.dir_sep 
       (Util.List.lastn 3 (Str.split (Str.regexp Filename.dir_sep) s));
   let oc = open_out_bin s in
-  dumping := true;
+  dumping := limit;
   at_exit (fun () ->
     begin
       try Marshal.to_channel oc !todump [Marshal.Closures]
@@ -642,7 +642,7 @@ let set_dump_cpbs s =
     close_out oc)
 
 let dump reds cv_pb l2r evars env t1 t2 time rc =
-  if !dumping && time > 0.0004 then
+  if time >= !dumping then
     todump :=
       ((!filename,!loc_x,!loc_y), reds, cv_pb, l2r,
       evars, env, t1, t2, rc) :: !todump
@@ -652,16 +652,16 @@ let trans_fconv reds cv_pb l2r evars env t1 t2 time =
     if eq_constr t1 t2 then empty_constraint
     else 
       let rc = clos_fconv reds cv_pb l2r evars env t1 t2 in
-      time := (Unix.times ()).Unix.tms_utime -. !time;
+      time := __time () -. !time;
       dump reds cv_pb l2r evars env t1 t2 !time (Some rc);
       rc
   with e ->
-    time := (Unix.times ()).Unix.tms_utime -. !time;
+    time := __time () -. !time;
     dump reds cv_pb l2r evars env t1 t2 !time None;
     raise e
 
 let run_cpb (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
-  let time = ref (Unix.times ()).Unix.tms_utime in
+  let time = ref (__time ()) in
   try
     let u = trans_fconv reds cv_pb l2r evars env t1 t2 time in
     match rc with
@@ -670,7 +670,7 @@ let run_cpb (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
   with e -> !time, None = rc
 
 let trans_fconv reds cv_pb l2r evars env t1 t2 =
-  let time = ref (Unix.times ()).Unix.tms_utime in
+  let time = ref (__time ()) in
   trans_fconv reds cv_pb l2r evars env t1 t2 time
 
 let trans_conv_cmp ?(l2r=false) conv reds = trans_fconv reds conv l2r Mini_evd.EvarMap.empty

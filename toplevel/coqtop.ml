@@ -299,8 +299,8 @@ let parse_args arglist =
     | "-run-conv-pbs" :: ext :: rem -> Flags.run_conv_pbs := Some ext; parse rem
     | "-run-conv-pb" :: n :: rem ->
          Flags.run_conv_pb := Some (int_of_string n); parse rem
-    | "-dump-conv-pbs" :: rem ->
-         Flags.dump_conv_pbs := true;
+    | "-dump-conv-pbs" :: limit :: rem ->
+         Flags.dump_conv_pbs := Some (float_of_string limit);
          Flags.load_proofs := Flags.Dont; parse rem
 
     (* Scanned in Flags. *)
