@@ -74,39 +74,43 @@ let family_of_sort = function
 (*       Constructions as implemented                               *)
 (********************************************************************)
 
+type hash = int
+let no_hash = 0
+
 (* [constr array] is an instance matching definitional [named_context] in
    the same order (i.e. last argument first) *)
-type 'constr pexistential = existential_key * 'constr array
+type 'constr hpexistential = hash * existential_key * 'constr array
 type ('constr, 'types) prec_declaration =
     name array * 'types array * 'constr array
-type ('constr, 'types) pfixpoint =
-    (int array * int) * ('constr, 'types) prec_declaration
-type ('constr, 'types) pcofixpoint =
-    int * ('constr, 'types) prec_declaration
+type ('constr, 'types) hpfixpoint =
+    hash * (int array * int) * ('constr, 'types) prec_declaration
+type ('constr, 'types) hpcofixpoint =
+    hash * int * ('constr, 'types) prec_declaration
 
 (* [Var] is used for named variables and [Rel] for variables as
    de Bruijn indices. *)
-type ('constr, 'types) kind_of_term =
-  | Rel       of int
-  | Var       of identifier
-  | Meta      of metavariable
-  | Evar      of 'constr pexistential
-  | Sort      of sorts
-  | Cast      of 'constr * cast_kind * 'types
-  | Prod      of name * 'types * 'types
-  | Lambda    of name * 'types * 'constr
-  | LetIn     of name * 'constr * 'types * 'constr
-  | App       of 'constr * 'constr array
-  | Const     of constant
-  | Ind       of inductive
-  | Construct of constructor
-  | Case      of case_info * 'constr * 'constr * 'constr array
-  | Fix       of ('constr, 'types) pfixpoint
-  | CoFix     of ('constr, 'types) pcofixpoint
+
+type ('constr, 'types) kind_of_hterm =
+  | HRel       of int
+  | HVar       of identifier
+  | HMeta      of metavariable
+  | HEvar      of 'constr hpexistential
+  | HSort      of sorts
+  | HCast      of hash * 'constr * cast_kind * 'types
+  | HProd      of hash * name * 'types * 'types
+  | HLambda    of hash * name * 'types * 'constr
+  | HLetIn     of hash * name * 'constr * 'types * 'constr
+  | HApp       of hash * 'constr * 'constr array
+  | HConst     of constant
+  | HInd       of inductive
+  | HConstruct of constructor
+  | HCase      of hash * case_info * 'constr * 'constr * 'constr array
+  | HFix       of ('constr, 'types) hpfixpoint
+  | HCoFix     of ('constr, 'types) hpcofixpoint
 
 (* constr is the fixpoint of the previous type. Requires option
    -rectypes of the Caml compiler to be set *)
-type constr = (constr,constr) kind_of_term
+type constr = (constr,constr) kind_of_hterm
 
 type existential = existential_key * constr array
 type rec_declaration = name array * constr array * constr array
@@ -120,35 +124,35 @@ type cofixpoint = int * rec_declaration
 
 (* Constructs a DeBrujin index with number n *)
 let rels =
-  [|Rel  1;Rel  2;Rel  3;Rel  4;Rel  5;Rel  6;Rel  7; Rel  8;
-    Rel  9;Rel 10;Rel 11;Rel 12;Rel 13;Rel 14;Rel 15; Rel 16|]
+  [|HRel  1;HRel  2;HRel  3;HRel  4;HRel  5;HRel  6;HRel  7; HRel  8;
+    HRel  9;HRel 10;HRel 11;HRel 12;HRel 13;HRel 14;HRel 15; HRel 16|]
 
-let mkRel n = if 0<n & n<=16 then rels.(n-1) else Rel n
+let mkRel n = if 0<n && n<=16 then rels.(n-1) else HRel n
 
 (* Construct a type *)
-let mkProp   = Sort prop_sort
-let mkSet    = Sort set_sort
-let mkType u = Sort (Type u)
+let mkProp   = HSort prop_sort
+let mkSet    = HSort set_sort
+let mkType u = HSort (Type u)
 let mkSort   = function
   | Prop Null -> mkProp (* Easy sharing *)
   | Prop Pos -> mkSet
-  | s -> Sort s
+  | s -> HSort s
 
 (* Constructs the term t1::t2, i.e. the term t1 casted with the type t2 *)
 (* (that means t2 is declared as the type of t1) *)
 let mkCast (t1,k2,t2) =
   match t1 with
-  | Cast (c,k1, _) when k1 = VMcast & k1 = k2 -> Cast (c,k1,t2)
-  | _ -> Cast (t1,k2,t2)
+  | HCast (_,c,k1, _) when k1 = VMcast & k1 = k2 -> HCast (no_hash,c,k1,t2)
+  | _ -> HCast (no_hash,t1,k2,t2)
 
 (* Constructs the product (x:t1)t2 *)
-let mkProd (x,t1,t2) = Prod (x,t1,t2)
+let mkProd (x,t1,t2) = HProd (no_hash,x,t1,t2)
 
 (* Constructs the abstraction [x:t1]t2 *)
-let mkLambda (x,t1,t2) = Lambda (x,t1,t2)
+let mkLambda (x,t1,t2) = HLambda (no_hash,x,t1,t2)
 
 (* Constructs [x=c_1:t]c_2 *)
-let mkLetIn (x,c1,t,c2) = LetIn (x,c1,t,c2)
+let mkLetIn (x,c1,t,c2) = HLetIn (no_hash,x,c1,t,c2)
 
 (* If lt = [t1; ...; tn], constructs the application (t1 ... tn) *)
 (* We ensure applicative terms have at least one argument and the
@@ -156,25 +160,25 @@ let mkLetIn (x,c1,t,c2) = LetIn (x,c1,t,c2)
 let mkApp (f, a) =
   if Array.length a = 0 then f else
     match f with
-      | App (g, cl) -> App (g, Array.append cl a)
-      | _ -> App (f, a)
+      | HApp (_,g, cl) -> HApp (no_hash, g, Array.append cl a)
+      | _ -> HApp (no_hash, f, a)
 
 (* Constructs a constant *)
-let mkConst c = Const c
+let mkConst c = HConst c
 
 (* Constructs an existential variable *)
-let mkEvar e = Evar e
+let mkEvar (e,v) = HEvar (no_hash, e, v)
 
 (* Constructs the ith (co)inductive type of the block named kn *)
-let mkInd m = Ind m
+let mkInd m = HInd m
 
 (* Constructs the jth constructor of the ith (co)inductive type of the
    block named kn. The array of terms correspond to the variables
    introduced in the section *)
-let mkConstruct c = Construct c
+let mkConstruct c = HConstruct c
 
 (* Constructs the term <p>Case c of c1 | c2 .. | cn end *)
-let mkCase (ci, p, c, ac) = Case (ci, p, c, ac)
+let mkCase (ci, p, c, ac) = HCase (no_hash, ci, p, c, ac)
 
 (* If recindxs = [|i1,...in|]
       funnames = [|f1,...fn|]
@@ -194,7 +198,7 @@ let mkCase (ci, p, c, ac) = Case (ci, p, c, ac)
    where the lenght of the jth context is ij.
 *)
 
-let mkFix fix = Fix fix
+let mkFix (ra,d) = HFix (no_hash,ra,d)
 
 (* If funnames = [|f1,...fn|]
       typarray = [|t1,...tn|]
@@ -210,13 +214,13 @@ let mkFix fix = Fix fix
     ...
     with       fn : tn := bn.
 *)
-let mkCoFix cofix= CoFix cofix
+let mkCoFix (i,d) = HCoFix (no_hash, i, d)
 
 (* Constructs an existential variable named "?n" *)
-let mkMeta  n =  Meta n
+let mkMeta  n =  HMeta n
 
 (* Constructs a Variable named id *)
-let mkVar id = Var id
+let mkVar id = HVar id
 
 
 (************************************************************************)
@@ -227,7 +231,47 @@ let mkVar id = Var id
    least one argument and the function is not itself an applicative
    term *)
 
-let kind_of_term c = c
+type 'constr pexistential = existential_key * 'constr array
+type ('constr, 'types) pfixpoint =
+    (int array * int) * ('constr, 'types) prec_declaration
+type ('constr, 'types) pcofixpoint =
+    int * ('constr, 'types) prec_declaration
+
+type ('constr, 'types) kind_of_term =
+  | Rel       of int
+  | Var       of identifier
+  | Meta      of metavariable
+  | Evar      of 'constr pexistential
+  | Sort      of sorts
+  | Cast      of 'constr * cast_kind * 'types
+  | Prod      of name * 'types * 'types
+  | Lambda    of name * 'types * 'constr
+  | LetIn     of name * 'constr * 'types * 'constr
+  | App       of 'constr * 'constr array
+  | Const     of constant
+  | Ind       of inductive
+  | Construct of constructor
+  | Case      of case_info * 'constr * 'constr * 'constr array
+  | Fix       of ('constr, 'types) pfixpoint
+  | CoFix     of ('constr, 'types) pcofixpoint
+
+let kind_of_term = function
+  | HRel i              -> Rel i
+  | HVar v              -> Var v
+  | HMeta m             -> Meta m
+  | HEvar (_,e,v)       -> Evar (e,v)
+  | HSort s             -> Sort s
+  | HCast (_,t,c,ty)    -> Cast (t,c,ty)
+  | HProd (_,n,ty,c)    -> Prod(n,ty,c)
+  | HLambda (_,n,ty,c)  -> Lambda(n,ty,c)
+  | HLetIn (_,n,t,ty,c) -> LetIn(n,t,ty,c)
+  | HApp (_,hd,tl)      -> App(hd,tl)
+  | HConst c            -> Const c
+  | HInd i              -> Ind i
+  | HConstruct c        -> Construct c
+  | HCase (_,i,t,rty,b) -> Case(i,t,rty,b)
+  | HFix (_,ra,d)       -> Fix(ra,d)
+  | HCoFix (_,i,d)      -> CoFix(i,d)
 
 (* Experimental, used in Presburger contrib *)
 type ('constr, 'types) kind_of_type =
@@ -238,14 +282,14 @@ type ('constr, 'types) kind_of_type =
   | AtomicType of 'constr * 'constr array
 
 let kind_of_type = function
-  | Sort s -> SortType s
-  | Cast (c,_,t) -> CastType (c, t)
-  | Prod (na,t,c) -> ProdType (na, t, c)
-  | LetIn (na,b,t,c) -> LetInType (na, b, t, c)
-  | App (c,l) -> AtomicType (c, l)
-  | (Rel _ | Meta _ | Var _ | Evar _ | Const _ | Case _ | Fix _ | CoFix _ | Ind _ as c)
+  | HSort s -> SortType s
+  | HCast (_,c,_,t) -> CastType (c, t)
+  | HProd (_,na,t,c) -> ProdType (na, t, c)
+  | HLetIn (_,na,b,t,c) -> LetInType (na, b, t, c)
+  | HApp (_,c,l) -> AtomicType (c, l)
+  | (HRel _ | HMeta _ | HVar _ | HEvar _ | HConst _ | HCase _ | HFix _ | HCoFix _ | HInd _ as c)
     -> AtomicType (c,[||])
-  | (Lambda _ | Construct _) -> failwith "Not a type"
+  | (HLambda _ | HConstruct _) -> failwith "Not a type"
 
 (**********************************************************************)
 (*          Non primitive term destructors                            *)
@@ -255,50 +299,50 @@ let kind_of_type = function
    Raise invalid_arg "dest*" if the const has not the expected form *)
 
 (* Destructs a DeBrujin index *)
-let destRel c = match kind_of_term c with
-  | Rel n -> n
+let destRel = function
+  | HRel n -> n
   | _ -> invalid_arg "destRel"
 
 (* Destructs an existential variable *)
-let destMeta c = match kind_of_term c with
-  | Meta n -> n
+let destMeta = function
+  | HMeta n -> n
   | _ -> invalid_arg "destMeta"
 
-let isMeta c = match kind_of_term c with Meta _ -> true | _ -> false
-let isMetaOf mv c = match kind_of_term c with Meta mv' -> mv = mv' | _ -> false
+let isMeta = function HMeta _ -> true | _ -> false
+let isMetaOf mv = function HMeta mv' -> mv = mv' | _ -> false
 
 (* Destructs a variable *)
-let destVar c = match kind_of_term c with
-  | Var id -> id
+let destVar = function
+  | HVar id -> id
   | _ -> invalid_arg "destVar"
 
 (* Destructs a type *)
-let isSort c = match kind_of_term c with
-  | Sort s -> true
+let isSort = function
+  | HSort s -> true
   | _ -> false
 
-let destSort c = match kind_of_term c with
-  | Sort s -> s
+let destSort = function
+  | HSort s -> s
   | _ -> invalid_arg "destSort"
 
-let rec isprop c = match kind_of_term c with
-  | Sort (Prop _) -> true
-  | Cast (c,_,_) -> isprop c
+let rec isprop = function
+  | HSort (Prop _) -> true
+  | HCast (_,c,_,_) -> isprop c
   | _ -> false
 
-let rec is_Prop c = match kind_of_term c with
-  | Sort (Prop Null) -> true
-  | Cast (c,_,_) -> is_Prop c
+let rec is_Prop = function
+  | HSort (Prop Null) -> true
+  | HCast (_,c,_,_) -> is_Prop c
   | _ -> false
 
-let rec is_Set c = match kind_of_term c with
-  | Sort (Prop Pos) -> true
-  | Cast (c,_,_) -> is_Set c
+let rec is_Set = function
+  | HSort (Prop Pos) -> true
+  | HCast (_,c,_,_) -> is_Set c
   | _ -> false
 
-let rec is_Type c = match kind_of_term c with
-  | Sort (Type _) -> true
-  | Cast (c,_,_) -> is_Type c
+let rec is_Type = function
+  | HSort (Type _) -> true
+  | HCast (_,c,_,_) -> is_Type c
   | _ -> false
 
 let is_small = function
@@ -308,141 +352,140 @@ let is_small = function
 let iskind c = isprop c or is_Type c
 
 (* Tests if an evar *)
-let isEvar c = match kind_of_term c with Evar _ -> true | _ -> false
+let isEvar = function HEvar _ -> true | _ -> false
 
-let isEvar_or_Meta c = match kind_of_term c with
-  | Evar _ | Meta _ -> true
+let isEvar_or_Meta = function
+  | HEvar _ | HMeta _ -> true
   | _ -> false
 
 (* Destructs a casted term *)
-let destCast c = match kind_of_term c with
-  | Cast (t1,k,t2) -> (t1,k,t2)
+let destCast = function
+  | HCast (_,t1,k,t2) -> (t1,k,t2)
   | _ -> invalid_arg "destCast"
 
-let isCast c = match kind_of_term c with Cast _ -> true | _ -> false
+let isCast = function HCast _ -> true | _ -> false
 
 
 (* Tests if a de Bruijn index *)
-let isRel c = match kind_of_term c with Rel _ -> true | _ -> false
-let isRelN n c = match kind_of_term c with Rel n' -> n = n' | _ -> false
+let isRel = function HRel _ -> true | _ -> false
+let isRelN n = function HRel n' -> n = n' | _ -> false
 
 (* Tests if a variable *)
-let isVar c = match kind_of_term c with Var _ -> true | _ -> false
-let isVarId id c = match kind_of_term c with Var id' -> id = id' | _ -> false
+let isVar = function HVar _ -> true | _ -> false
+let isVarId id = function HVar id' -> id = id' | _ -> false
 
 (* Tests if an inductive *)
-let isInd c = match kind_of_term c with Ind _ -> true | _ -> false
+let isInd = function HInd _ -> true | _ -> false
 
 (* Destructs the product (x:t1)t2 *)
-let destProd c = match kind_of_term c with
-  | Prod (x,t1,t2) -> (x,t1,t2)
+let destProd = function
+  | HProd (_,x,t1,t2) -> (x,t1,t2)
   | _ -> invalid_arg "destProd"
 
-let isProd c = match kind_of_term c with | Prod _ -> true | _ -> false
+let isProd = function HProd _ -> true | _ -> false
 
 (* Destructs the abstraction [x:t1]t2 *)
-let destLambda c = match kind_of_term c with
-  | Lambda (x,t1,t2) -> (x,t1,t2)
+let destLambda = function
+  | HLambda (_,x,t1,t2) -> (x,t1,t2)
   | _ -> invalid_arg "destLambda"
 
-let isLambda c = match kind_of_term c with | Lambda _ -> true | _ -> false
+let isLambda = function HLambda _ -> true | _ -> false
 
 (* Destructs the let [x:=b:t1]t2 *)
-let destLetIn c = match kind_of_term c with
-  | LetIn (x,b,t1,t2) -> (x,b,t1,t2)
+let destLetIn = function
+  | HLetIn (_,x,b,t1,t2) -> (x,b,t1,t2)
   | _ -> invalid_arg "destLetIn"
 
-let isLetIn c =  match kind_of_term c with LetIn _ -> true | _ -> false
+let isLetIn = function HLetIn _ -> true | _ -> false
 
 (* Destructs an application *)
-let destApp c = match kind_of_term c with
-  | App (f,a) -> (f, a)
+let destApp = function
+  | HApp (_,f,a) -> (f, a)
   | _ -> invalid_arg "destApplication"
 
 let destApplication = destApp
 
-let isApp c = match kind_of_term c with App _ -> true | _ -> false
+let isApp = function HApp _ -> true | _ -> false
 
 (* Destructs a constant *)
-let destConst c = match kind_of_term c with
-  | Const kn -> kn
+let destConst = function
+  | HConst kn -> kn
   | _ -> invalid_arg "destConst"
 
-let isConst c = match kind_of_term c with Const _ -> true | _ -> false
+let isConst = function HConst _ -> true | _ -> false
 
 (* Destructs an existential variable *)
-let destEvar c = match kind_of_term c with
-  | Evar (kn, a as r) -> r
+let destEvar = function
+  | HEvar (_, kn, a) -> kn, a
   | _ -> invalid_arg "destEvar"
 
 (* Destructs a (co)inductive type named kn *)
-let destInd c = match kind_of_term c with
-  | Ind (kn, a as r) -> r
+let destInd = function
+  | HInd (kn, a as r) -> r
   | _ -> invalid_arg "destInd"
 
 (* Destructs a constructor *)
-let destConstruct c = match kind_of_term c with
-  | Construct (kn, a as r) -> r
+let destConstruct = function
+  | HConstruct (kn, a as r) -> r
   | _ -> invalid_arg "dest"
 
-let isConstruct c = match kind_of_term c with Construct _ -> true | _ -> false
+let isConstruct = function HConstruct _ -> true | _ -> false
 
 (* Destructs a term <p>Case c of lc1 | lc2 .. | lcn end *)
-let destCase c = match kind_of_term c with
-  | Case (ci,p,c,v) -> (ci,p,c,v)
+let destCase = function
+  | HCase (_,ci,p,c,v) -> (ci,p,c,v)
   | _ -> anomaly "destCase"
 
-let isCase c =  match kind_of_term c with Case _ -> true | _ -> false
+let isCase = function HCase _ -> true | _ -> false
 
-let destFix c = match kind_of_term c with
-  | Fix fix -> fix
+let destFix = function
+  | HFix (_,ra,d) -> ra,d
   | _ -> invalid_arg "destFix"
 
-let isFix c =  match kind_of_term c with Fix _ -> true | _ -> false
+let isFix = function HFix _ -> true | _ -> false
 
-let destCoFix c = match kind_of_term c with
-  | CoFix cofix -> cofix
+let destCoFix = function
+  | HCoFix (_,i,d) -> i,d
   | _ -> invalid_arg "destCoFix"
 
-let isCoFix c =  match kind_of_term c with CoFix _ -> true | _ -> false
+let isCoFix = function HCoFix _ -> true | _ -> false
 
 (******************************************************************)
 (* Cast management                                                *)
 (******************************************************************)
 
-let rec strip_outer_cast c = match kind_of_term c with
-  | Cast (c,_,_) -> strip_outer_cast c
-  | _ -> c
+let rec strip_outer_cast = function
+  | HCast (_,c,_,_) -> strip_outer_cast c
+  | c -> c
 
 (* Fonction spéciale qui laisse les cast clés sous les Fix ou les Case *)
 
-let under_outer_cast f c =  match kind_of_term c with
-  | Cast (b,k,t) -> mkCast (f b, k, f t)
-  | _ -> f c
+let under_outer_cast f = function
+  | HCast (_,b,k,t) -> mkCast (f b, k, f t)
+  | c -> f c
 
-let rec under_casts f c = match kind_of_term c with
-  | Cast (c,k,t) -> mkCast (under_casts f c, k, t)
-  | _            -> f c
+let rec under_casts f = function
+  | HCast (_,c,k,t) -> mkCast (under_casts f c, k, t)
+  | c            -> f c
 
 (******************************************************************)
 (* Flattening and unflattening of embedded applications and casts *)
 (******************************************************************)
 
 (* flattens application lists throwing casts in-between *)
-let collapse_appl c = match kind_of_term c with
-  | App (f,cl) ->
+let collapse_appl = function
+  | HApp (_,f,cl) ->
       let rec collapse_rec f cl2 =
-        match kind_of_term (strip_outer_cast f) with
-	| App (g,cl1) -> collapse_rec g (Array.append cl1 cl2)
+        match strip_outer_cast f with
+	| HApp (_,g,cl1) -> collapse_rec g (Array.append cl1 cl2)
 	| _ -> mkApp (f,cl2)
       in
       collapse_rec f cl
-  | _ -> c
+  | c -> c
 
-let decompose_app c =
-  match kind_of_term c with
-    | App (f,cl) -> (f, Array.to_list cl)
-    | _ -> (c,[])
+let decompose_app = function
+    | HApp (_,f,cl) -> (f, Array.to_list cl)
+    | c -> (c,[])
 
 (****************************************************************************)
 (*              Functions to recur through subterms                         *)
@@ -452,20 +495,20 @@ let decompose_app c =
    starting from [acc] and proceeding from left to right according to
    the usual representation of the constructions; it is not recursive *)
 
-let fold_constr f acc c = match kind_of_term c with
-  | (Rel _ | Meta _ | Var _   | Sort _ | Const _ | Ind _
-    | Construct _) -> acc
-  | Cast (c,_,t) -> f (f acc c) t
-  | Prod (_,t,c) -> f (f acc t) c
-  | Lambda (_,t,c) -> f (f acc t) c
-  | LetIn (_,b,t,c) -> f (f (f acc b) t) c
-  | App (c,l) -> Array.fold_left f (f acc c) l
-  | Evar (_,l) -> Array.fold_left f acc l
-  | Case (_,p,c,bl) -> Array.fold_left f (f (f acc p) c) bl
-  | Fix (_,(lna,tl,bl)) ->
+let fold_constr f acc = function
+  | (HRel _ | HMeta _ | HVar _   | HSort _ | HConst _ | HInd _
+    | HConstruct _) -> acc
+  | HCast (_,c,_,t) -> f (f acc c) t
+  | HProd (_,_,t,c) -> f (f acc t) c
+  | HLambda (_,_,t,c) -> f (f acc t) c
+  | HLetIn (_,_,b,t,c) -> f (f (f acc b) t) c
+  | HApp (_,c,l) -> Array.fold_left f (f acc c) l
+  | HEvar (_,_,l) -> Array.fold_left f acc l
+  | HCase (_,_,p,c,bl) -> Array.fold_left f (f (f acc p) c) bl
+  | HFix (_,_,(lna,tl,bl)) ->
       let fd = Array.map3 (fun na t b -> (na,t,b)) lna tl bl in
       Array.fold_left (fun acc (na,t,b) -> f (f acc t) b) acc fd
-  | CoFix (_,(lna,tl,bl)) ->
+  | HCoFix (_,_,(lna,tl,bl)) ->
       let fd = Array.map3 (fun na t b -> (na,t,b)) lna tl bl in
       Array.fold_left (fun acc (na,t,b) -> f (f acc t) b) acc fd
 
@@ -473,18 +516,18 @@ let fold_constr f acc c = match kind_of_term c with
    not recursive and the order with which subterms are processed is
    not specified *)
 
-let iter_constr f c = match kind_of_term c with
-  | (Rel _ | Meta _ | Var _   | Sort _ | Const _ | Ind _
-    | Construct _) -> ()
-  | Cast (c,_,t) -> f c; f t
-  | Prod (_,t,c) -> f t; f c
-  | Lambda (_,t,c) -> f t; f c
-  | LetIn (_,b,t,c) -> f b; f t; f c
-  | App (c,l) -> f c; Array.iter f l
-  | Evar (_,l) -> Array.iter f l
-  | Case (_,p,c,bl) -> f p; f c; Array.iter f bl
-  | Fix (_,(_,tl,bl)) -> Array.iter f tl; Array.iter f bl
-  | CoFix (_,(_,tl,bl)) -> Array.iter f tl; Array.iter f bl
+let iter_constr f = function
+  | (HRel _ | HMeta _ | HVar _   | HSort _ | HConst _ | HInd _
+    | HConstruct _) -> ()
+  | HCast (_,c,_,t) -> f c; f t
+  | HProd (_,_,t,c) -> f t; f c
+  | HLambda (_,_,t,c) -> f t; f c
+  | HLetIn (_,_,b,t,c) -> f b; f t; f c
+  | HApp (_,c,l) -> f c; Array.iter f l
+  | HEvar (_,_,l) -> Array.iter f l
+  | HCase (_,_,p,c,bl) -> f p; f c; Array.iter f bl
+  | HFix (_,_,(_,tl,bl)) -> Array.iter f tl; Array.iter f bl
+  | HCoFix (_,_,(_,tl,bl)) -> Array.iter f tl; Array.iter f bl
 
 (* [iter_constr_with_binders g f n c] iters [f n] on the immediate
    subterms of [c]; it carries an extra data [n] (typically a lift
@@ -492,20 +535,20 @@ let iter_constr f c = match kind_of_term c with
    each binder traversal; it is not recursive and the order with which
    subterms are processed is not specified *)
 
-let iter_constr_with_binders g f n c = match kind_of_term c with
-  | (Rel _ | Meta _ | Var _   | Sort _ | Const _ | Ind _
-    | Construct _) -> ()
-  | Cast (c,_,t) -> f n c; f n t
-  | Prod (_,t,c) -> f n t; f (g n) c
-  | Lambda (_,t,c) -> f n t; f (g n) c
-  | LetIn (_,b,t,c) -> f n b; f n t; f (g n) c
-  | App (c,l) -> f n c; Array.iter (f n) l
-  | Evar (_,l) -> Array.iter (f n) l
-  | Case (_,p,c,bl) -> f n p; f n c; Array.iter (f n) bl
-  | Fix (_,(_,tl,bl)) ->
+let iter_constr_with_binders g f n = function
+  | (HRel _ | HMeta _ | HVar _   | HSort _ | HConst _ | HInd _
+    | HConstruct _) -> ()
+  | HCast (_,c,_,t) -> f n c; f n t
+  | HProd (_,_,t,c) -> f n t; f (g n) c
+  | HLambda (_,_,t,c) -> f n t; f (g n) c
+  | HLetIn (_,_,b,t,c) -> f n b; f n t; f (g n) c
+  | HApp (_,c,l) -> f n c; Array.iter (f n) l
+  | HEvar (_,_,l) -> Array.iter (f n) l
+  | HCase (_,_,p,c,bl) -> f n p; f n c; Array.iter (f n) bl
+  | HFix (_,_,(_,tl,bl)) ->
       Array.iter (f n) tl;
       Array.iter (f (iterate g (Array.length tl) n)) bl
-  | CoFix (_,(_,tl,bl)) ->
+  | HCoFix (_,_,(_,tl,bl)) ->
       Array.iter (f n) tl;
       Array.iter (f (iterate g (Array.length tl) n)) bl
 
@@ -513,19 +556,19 @@ let iter_constr_with_binders g f n c = match kind_of_term c with
    not recursive and the order with which subterms are processed is
    not specified *)
 
-let map_constr f c = match kind_of_term c with
-  | (Rel _ | Meta _ | Var _   | Sort _ | Const _ | Ind _
-    | Construct _) -> c
-  | Cast (c,k,t) -> mkCast (f c, k, f t)
-  | Prod (na,t,c) -> mkProd (na, f t, f c)
-  | Lambda (na,t,c) -> mkLambda (na, f t, f c)
-  | LetIn (na,b,t,c) -> mkLetIn (na, f b, f t, f c)
-  | App (c,l) -> mkApp (f c, Array.map f l)
-  | Evar (e,l) -> mkEvar (e, Array.map f l)
-  | Case (ci,p,c,bl) -> mkCase (ci, f p, f c, Array.map f bl)
-  | Fix (ln,(lna,tl,bl)) ->
+let map_constr f = function
+  | (HRel _ | HMeta _ | HVar _   | HSort _ | HConst _ | HInd _
+    | HConstruct _) as c -> c
+  | HCast (_,c,k,t) -> mkCast (f c, k, f t)
+  | HProd (_,na,t,c) -> mkProd (na, f t, f c)
+  | HLambda (_,na,t,c) -> mkLambda (na, f t, f c)
+  | HLetIn (_,na,b,t,c) -> mkLetIn (na, f b, f t, f c)
+  | HApp (_,c,l) -> mkApp (f c, Array.map f l)
+  | HEvar (_,e,l) -> mkEvar (e, Array.map f l)
+  | HCase (_,ci,p,c,bl) -> mkCase (ci, f p, f c, Array.map f bl)
+  | HFix (_,ln,(lna,tl,bl)) ->
       mkFix (ln,(lna,Array.map f tl,Array.map f bl))
-  | CoFix(ln,(lna,tl,bl)) ->
+  | HCoFix(_,ln,(lna,tl,bl)) ->
       mkCoFix (ln,(lna,Array.map f tl,Array.map f bl))
 
 (* [map_constr_with_binders g f n c] maps [f n] on the immediate
@@ -534,20 +577,20 @@ let map_constr f c = match kind_of_term c with
    each binder traversal; it is not recursive and the order with which
    subterms are processed is not specified *)
 
-let map_constr_with_binders g f l c = match kind_of_term c with
-  | (Rel _ | Meta _ | Var _   | Sort _ | Const _ | Ind _
-    | Construct _) -> c
-  | Cast (c,k,t) -> mkCast (f l c, k, f l t)
-  | Prod (na,t,c) -> mkProd (na, f l t, f (g l) c)
-  | Lambda (na,t,c) -> mkLambda (na, f l t, f (g l) c)
-  | LetIn (na,b,t,c) -> mkLetIn (na, f l b, f l t, f (g l) c)
-  | App (c,al) -> mkApp (f l c, Array.map (f l) al)
-  | Evar (e,al) -> mkEvar (e, Array.map (f l) al)
-  | Case (ci,p,c,bl) -> mkCase (ci, f l p, f l c, Array.map (f l) bl)
-  | Fix (ln,(lna,tl,bl)) ->
+let map_constr_with_binders g f l = function
+  | (HRel _ | HMeta _ | HVar _ | HSort _ | HConst _ | HInd _
+    | HConstruct _) as c -> c
+  | HCast (_,c,k,t) -> mkCast (f l c, k, f l t)
+  | HProd (_,na,t,c) -> mkProd (na, f l t, f (g l) c)
+  | HLambda (_,na,t,c) -> mkLambda (na, f l t, f (g l) c)
+  | HLetIn (_,na,b,t,c) -> mkLetIn (na, f l b, f l t, f (g l) c)
+  | HApp (_,c,al) -> mkApp (f l c, Array.map (f l) al)
+  | HEvar (_,e,al) -> mkEvar (e, Array.map (f l) al)
+  | HCase (_,ci,p,c,bl) -> mkCase (ci, f l p, f l c, Array.map (f l) bl)
+  | HFix (_,ln,(lna,tl,bl)) ->
       let l' = iterate g (Array.length tl) l in
       mkFix (ln,(lna,Array.map (f l) tl,Array.map (f l') bl))
-  | CoFix(ln,(lna,tl,bl)) ->
+  | HCoFix(_,ln,(lna,tl,bl)) ->
       let l' = iterate g (Array.length tl) l in
       mkCoFix (ln,(lna,Array.map (f l) tl,Array.map (f l') bl))
 
@@ -557,32 +600,33 @@ let map_constr_with_binders g f l c = match kind_of_term c with
    not taken into account *)
 
 
+
 let compare_constr f t1 t2 =
-  match kind_of_term t1, kind_of_term t2 with
-  | Rel n1, Rel n2 -> n1 = n2
-  | Meta m1, Meta m2 -> m1 = m2
-  | Var id1, Var id2 -> id1 = id2
-  | Sort s1, Sort s2 -> s1 = s2
-  | Cast (c1,_,_), _ -> f c1 t2
-  | _, Cast (c2,_,_) -> f t1 c2
-  | Prod (_,t1,c1), Prod (_,t2,c2) -> f t1 t2 & f c1 c2
-  | Lambda (_,t1,c1), Lambda (_,t2,c2) -> f t1 t2 & f c1 c2
-  | LetIn (_,b1,t1,c1), LetIn (_,b2,t2,c2) -> f b1 b2 & f t1 t2 & f c1 c2
-  | App (c1,l1), _ when isCast c1 -> f (mkApp (pi1 (destCast c1),l1)) t2
-  | _, App (c2,l2) when isCast c2 -> f t1 (mkApp (pi1 (destCast c2),l2))
-  | App (c1,l1), App (c2,l2) ->
+  match t1, t2 with
+  | HRel n1, HRel n2 -> n1 = n2
+  | HMeta m1, HMeta m2 -> m1 = m2
+  | HVar id1, HVar id2 -> id1 = id2
+  | HSort s1, HSort s2 -> s1 = s2
+  | HCast (_,c1,_,_), _ -> f c1 t2
+  | _, HCast (_,c2,_,_) -> f t1 c2
+  | HProd (_,_,t1,c1), HProd (_,_,t2,c2) -> f t1 t2 && f c1 c2
+  | HLambda (_,_,t1,c1), HLambda (_,_,t2,c2) -> f t1 t2 && f c1 c2
+  | HLetIn (_,_,b1,t1,c1),HLetIn (_,_,b2,t2,c2) -> f b1 b2 && f t1 t2 && f c1 c2
+  | HApp (_,c1,l1), _ when isCast c1 -> f (mkApp (pi1 (destCast c1),l1)) t2
+  | _, HApp (_,c2,l2) when isCast c2 -> f t1 (mkApp (pi1 (destCast c2),l2))
+  | HApp (_,c1,l1), HApp (_,c2,l2) ->
     Array.length l1 = Array.length l2 &&
       f c1 c2 && Array.for_all2 f l1 l2
-  | Evar (e1,l1), Evar (e2,l2) -> e1 = e2 & Array.for_all2 f l1 l2
-  | Const c1, Const c2 -> eq_constant c1 c2
-  | Ind c1, Ind c2 -> eq_ind c1 c2
-  | Construct c1, Construct c2 -> eq_constructor c1 c2
-  | Case (_,p1,c1,bl1), Case (_,p2,c2,bl2) ->
-      f p1 p2 & f c1 c2 & Array.for_all2 f bl1 bl2
-  | Fix (ln1,(_,tl1,bl1)), Fix (ln2,(_,tl2,bl2)) ->
-      ln1 = ln2 & Array.for_all2 f tl1 tl2 & Array.for_all2 f bl1 bl2
-  | CoFix(ln1,(_,tl1,bl1)), CoFix(ln2,(_,tl2,bl2)) ->
-      ln1 = ln2 & Array.for_all2 f tl1 tl2 & Array.for_all2 f bl1 bl2
+  | HEvar (_,e1,l1), HEvar (_,e2,l2) -> e1 = e2 && Array.for_all2 f l1 l2
+  | HConst c1, HConst c2 -> eq_constant c1 c2
+  | HInd c1, HInd c2 -> eq_ind c1 c2
+  | HConstruct c1, HConstruct c2 -> eq_constructor c1 c2
+  | HCase (_,_,p1,c1,bl1), HCase (_,_,p2,c2,bl2) ->
+      f p1 p2 && f c1 c2 && Array.for_all2 f bl1 bl2
+  | HFix (_,ln1,(_,tl1,bl1)), HFix (_,ln2,(_,tl2,bl2)) ->
+      ln1 = ln2 && Array.for_all2 f tl1 tl2 && Array.for_all2 f bl1 bl2
+  | HCoFix(_,ln1,(_,tl1,bl1)), HCoFix(_,ln2,(_,tl2,bl2)) ->
+      ln1 = ln2 && Array.for_all2 f tl1 tl2 && Array.for_all2 f bl1 bl2
   | _ -> false
 
 (*******************************)
@@ -604,36 +648,36 @@ let constr_ord_int f t1 t2 =
   let (==?) fg h i1 i2 j1 j2 k1 k2=
     let c=fg i1 i2 j1 j2 in
     if c=0 then h k1 k2 else c in
-  match kind_of_term t1, kind_of_term t2 with
-    | Rel n1, Rel n2 -> n1 - n2
-    | Meta m1, Meta m2 -> m1 - m2
-    | Var id1, Var id2 -> id_ord id1 id2
-    | Sort s1, Sort s2 -> Pervasives.compare s1 s2
-    | Cast (c1,_,_), _ -> f c1 t2
-    | _, Cast (c2,_,_) -> f t1 c2
-    | Prod (_,t1,c1), Prod (_,t2,c2)
-    | Lambda (_,t1,c1), Lambda (_,t2,c2) ->
+  match t1, t2 with
+    | HRel n1, HRel n2 -> n1 - n2
+    | HMeta m1, HMeta m2 -> m1 - m2
+    | HVar id1, HVar id2 -> id_ord id1 id2
+    | HSort s1, HSort s2 -> Pervasives.compare s1 s2
+    | HCast (_,c1,_,_), _ -> f c1 t2
+    | _, HCast (_,c2,_,_) -> f t1 c2
+    | HProd (_,_,t1,c1), HProd (_,_,t2,c2)
+    | HLambda (_,_,t1,c1), HLambda (_,_,t2,c2) ->
 	(f =? f) t1 t2 c1 c2
-    | LetIn (_,b1,t1,c1), LetIn (_,b2,t2,c2) ->
+    | HLetIn (_,_,b1,t1,c1), HLetIn (_,_,b2,t2,c2) ->
 	((f =? f) ==? f) b1 b2 t1 t2 c1 c2
-    | App (c1,l1), _ when isCast c1 -> f (mkApp (pi1 (destCast c1),l1)) t2
-    | _, App (c2,l2) when isCast c2 -> f t1 (mkApp (pi1 (destCast c2),l2))
-    | App (c1,l1), App (c2,l2) -> (f =? (Array.compare f)) c1 c2 l1 l2
-    | Evar (e1,l1), Evar (e2,l2) ->
+    | HApp (_,c1,l1), _ when isCast c1 -> f (mkApp (pi1 (destCast c1),l1)) t2
+    | _, HApp (_,c2,l2) when isCast c2 -> f t1 (mkApp (pi1 (destCast c2),l2))
+    | HApp (_,c1,l1), HApp (_,c2,l2) -> (f =? (Array.compare f)) c1 c2 l1 l2
+    | HEvar (_,e1,l1), HEvar (_,e2,l2) ->
 	((-) =? (Array.compare f)) e1 e2 l1 l2
-    | Const c1, Const c2 -> kn_ord (canonical_con c1) (canonical_con c2)
-    | Ind (spx, ix), Ind (spy, iy) ->
+    | HConst c1, HConst c2 -> kn_ord (canonical_con c1) (canonical_con c2)
+    | HInd (spx, ix), HInd (spy, iy) ->
 	let c = ix - iy in if c = 0 then kn_ord (canonical_mind spx) (canonical_mind spy) else c
-    | Construct ((spx, ix), jx), Construct ((spy, iy), jy) ->
+    | HConstruct ((spx, ix), jx), HConstruct ((spy, iy), jy) ->
 	let c = jx - jy in if c = 0 then
 	  (let c = ix - iy in if c = 0 then kn_ord (canonical_mind spx) (canonical_mind spy) else c)
 	else c
-    | Case (_,p1,c1,bl1), Case (_,p2,c2,bl2) ->
+    | HCase (_,_,p1,c1,bl1), HCase (_,_,p2,c2,bl2) ->
 	((f =? f) ==? (Array.compare f)) p1 p2 c1 c2 bl1 bl2
-    | Fix (ln1,(_,tl1,bl1)), Fix (ln2,(_,tl2,bl2)) ->
+    | HFix (_,ln1,(_,tl1,bl1)), HFix (_,ln2,(_,tl2,bl2)) ->
 	((Pervasives.compare =? (Array.compare f)) ==? (Array.compare f))
 	ln1 ln2 tl1 tl2 bl1 bl2
-    | CoFix(ln1,(_,tl1,bl1)), CoFix(ln2,(_,tl2,bl2)) ->
+    | HCoFix(_,ln1,(_,tl1,bl1)), HCoFix(_,ln2,(_,tl2,bl2)) ->
 	((Pervasives.compare =? (Array.compare f)) ==? (Array.compare f))
 	ln1 ln2 tl1 tl2 bl1 bl2
     | t1, t2 -> Pervasives.compare t1 t2
@@ -712,9 +756,9 @@ exception LocalOccur
    occurs in M, returns () otherwise *)
 
 let closedn n c =
-  let rec closed_rec n c = match kind_of_term c with
-    | Rel m -> if m>n then raise LocalOccur
-    | _ -> iter_constr_with_binders succ closed_rec n c
+  let rec closed_rec n = function
+    | HRel m -> if m>n then raise LocalOccur
+    | c -> iter_constr_with_binders succ closed_rec n c
   in
   try closed_rec n c; true with LocalOccur -> false
 
@@ -725,9 +769,9 @@ let closed0 = closedn 0
 (* (noccurn n M) returns true iff (Rel n) does NOT occur in term M  *)
 
 let noccurn n term =
-  let rec occur_rec n c = match kind_of_term c with
-    | Rel m -> if m = n then raise LocalOccur
-    | _ -> iter_constr_with_binders succ occur_rec n c
+  let rec occur_rec n = function
+    | HRel m -> if m = n then raise LocalOccur
+    | c -> iter_constr_with_binders succ occur_rec n c
   in
   try occur_rec n term; true with LocalOccur -> false
 
@@ -735,9 +779,9 @@ let noccurn n term =
   for n <= p < n+m *)
 
 let noccur_between n m term =
-  let rec occur_rec n c = match kind_of_term c with
-    | Rel(p) -> if n<=p && p<n+m then raise LocalOccur
-    | _        -> iter_constr_with_binders succ occur_rec n c
+  let rec occur_rec n = function
+    | HRel(p) -> if n<=p && p<n+m then raise LocalOccur
+    | c        -> iter_constr_with_binders succ occur_rec n c
   in
   try occur_rec n term; true with LocalOccur -> false
 
@@ -749,15 +793,15 @@ let noccur_between n m term =
  are not considered *)
 
 let noccur_with_meta n m term =
-  let rec occur_rec n c = match kind_of_term c with
-    | Rel p -> if n<=p & p<n+m then raise LocalOccur
-    | App(f,cl) ->
-	(match kind_of_term f with
-           | Cast (c,_,_) when isMeta c -> ()
-           | Meta _ -> ()
+  let rec occur_rec n = function
+    | HRel p -> if n<=p & p<n+m then raise LocalOccur
+    | HApp(_,f,cl) as c ->
+	(match f with
+           | HCast (_,c,_,_) when isMeta c -> ()
+           | HMeta _ -> ()
 	   | _ -> iter_constr_with_binders succ occur_rec n c)
-    | Evar (_, _) -> ()
-    | _ -> iter_constr_with_binders succ occur_rec n c
+    | HEvar _ -> ()
+    | c -> iter_constr_with_binders succ occur_rec n c
   in
   try (occur_rec n term; true) with LocalOccur -> false
 
@@ -767,9 +811,9 @@ let noccur_with_meta n m term =
 (*********************)
 
 (* The generic lifting function *)
-let rec exliftn el c = match kind_of_term c with
-  | Rel i -> mkRel(reloc_rel i el)
-  | _ -> map_constr_with_binders el_lift exliftn el c
+let rec exliftn el = function
+  | HRel i -> mkRel(reloc_rel i el)
+  | c -> map_constr_with_binders el_lift exliftn el c
 
 (* Lifting the binding depth across k bindings *)
 
@@ -807,12 +851,12 @@ let substn_many lamv n c =
   let lv = Array.length lamv in
   if lv = 0 then c
   else
-    let rec substrec depth c = match kind_of_term c with
-      | Rel k     ->
+    let rec substrec depth = function
+      | HRel k as c ->
           if k<=depth then c
           else if k-depth <= lv then lift_substituend depth lamv.(k-depth-1)
           else mkRel (k-lv)
-      | _ -> map_constr_with_binders succ substrec depth c in
+      | c -> map_constr_with_binders succ substrec depth c in
     substrec n c
 
 (*
@@ -844,11 +888,11 @@ let replace_vars var_alist =
   let var_alist =
     List.map (fun (str,c) -> (str,make_substituend c)) var_alist in
   let var_alist = thin_val var_alist in
-  let rec substrec n c = match kind_of_term c with
-    | Var x ->
+  let rec substrec n = function
+    | HVar x as c ->
         (try lift_substituend n (List.assoc x var_alist)
          with Not_found -> c)
-    | _ -> map_constr_with_binders succ substrec n c
+    | c -> map_constr_with_binders succ substrec n c
   in
   if var_alist = [] then (function x -> x) else substrec 0
 
@@ -950,18 +994,18 @@ let rec to_lambda n prod =
   if n = 0 then
     prod
   else
-    match kind_of_term prod with
-      | Prod (na,ty,bd) -> mkLambda (na,ty,to_lambda (n-1) bd)
-      | Cast (c,_,_) -> to_lambda n c
+    match prod with
+      | HProd (_,na,ty,bd) -> mkLambda (na,ty,to_lambda (n-1) bd)
+      | HCast (_,c,_,_) -> to_lambda n c
       | _   -> errorlabstrm "to_lambda" (mt ())
 
 let rec to_prod n lam =
   if n=0 then
     lam
   else
-    match kind_of_term lam with
-      | Lambda (na,ty,bd) -> mkProd (na,ty,to_prod (n-1) bd)
-      | Cast (c,_,_) -> to_prod n c
+    match lam with
+      | HLambda (_,na,ty,bd) -> mkProd (na,ty,to_prod (n-1) bd)
+      | HCast (_,c,_,_) -> to_prod n c
       | _   -> errorlabstrm "to_prod" (mt ())
 
 (* pseudo-reduction rule:
@@ -969,8 +1013,8 @@ let rec to_prod n lam =
  * with an strip_outer_cast on the first argument to produce a product *)
 
 let prod_app t n =
-  match kind_of_term (strip_outer_cast t) with
-    | Prod (_,_,b) -> subst1 n b
+  match strip_outer_cast t with
+    | HProd (_,_,_,b) -> subst1 n b
     | _ ->
 	errorlabstrm "prod_app"
 	  (str"Needed a product, but didn't find one" ++ fnl ())
@@ -992,20 +1036,20 @@ let it_mkLambda_or_LetIn = List.fold_left (fun c d -> mkLambda_or_LetIn d c)
 (* Transforms a product term (x1:T1)..(xn:Tn)T into the pair
    ([(xn,Tn);...;(x1,T1)],T), where T is not a product *)
 let decompose_prod =
-  let rec prodec_rec l c = match kind_of_term c with
-    | Prod (x,t,c) -> prodec_rec ((x,t)::l) c
-    | Cast (c,_,_)   -> prodec_rec l c
-    | _              -> l,c
+  let rec prodec_rec l = function
+    | HProd (_,x,t,c) -> prodec_rec ((x,t)::l) c
+    | HCast (_,c,_,_)   -> prodec_rec l c
+    | c              -> l,c
   in
   prodec_rec []
 
 (* Transforms a lambda term [x1:T1]..[xn:Tn]T into the pair
    ([(xn,Tn);...;(x1,T1)],T), where T is not a lambda *)
 let decompose_lam =
-  let rec lamdec_rec l c = match kind_of_term c with
-    | Lambda (x,t,c) -> lamdec_rec ((x,t)::l) c
-    | Cast (c,_,_)     -> lamdec_rec l c
-    | _                -> l,c
+  let rec lamdec_rec l = function
+    | HLambda (_,x,t,c) -> lamdec_rec ((x,t)::l) c
+    | HCast (_,c,_,_)     -> lamdec_rec l c
+    | c                -> l,c
   in
   lamdec_rec []
 
@@ -1015,9 +1059,9 @@ let decompose_prod_n n =
   if n < 0 then error "decompose_prod_n: integer parameter must be positive";
   let rec prodec_rec l n c =
     if n=0 then l,c
-    else match kind_of_term c with
-      | Prod (x,t,c) -> prodec_rec ((x,t)::l) (n-1) c
-      | Cast (c,_,_)   -> prodec_rec l n c
+    else match c with
+      | HProd (_,x,t,c) -> prodec_rec ((x,t)::l) (n-1) c
+      | HCast (_,c,_,_)   -> prodec_rec l n c
       | _ -> error "decompose_prod_n: not enough products"
   in
   prodec_rec [] n
@@ -1028,9 +1072,9 @@ let decompose_lam_n n =
   if n < 0 then error "decompose_lam_n: integer parameter must be positive";
   let rec lamdec_rec l n c =
     if n=0 then l,c
-    else match kind_of_term c with
-      | Lambda (x,t,c) -> lamdec_rec ((x,t)::l) (n-1) c
-      | Cast (c,_,_)     -> lamdec_rec l n c
+    else match c with
+      | HLambda (_,x,t,c) -> lamdec_rec ((x,t)::l) (n-1) c
+      | HCast (_,c,_,_)     -> lamdec_rec l n c
       | _ -> error "decompose_lam_n: not enough abstractions"
   in
   lamdec_rec [] n
@@ -1039,11 +1083,11 @@ let decompose_lam_n n =
    ([(xn,Tn);...;(x1,T1)],T), where T is not a product *)
 let decompose_prod_assum =
   let rec prodec_rec l c =
-    match kind_of_term c with
-    | Prod (x,t,c)    -> prodec_rec (add_rel_decl (x,None,t) l) c
-    | LetIn (x,b,t,c) -> prodec_rec (add_rel_decl (x,Some b,t) l) c
-    | Cast (c,_,_)      -> prodec_rec l c
-    | _               -> l,c
+    match c with
+    | HProd (_,x,t,c)    -> prodec_rec (add_rel_decl (x,None,t) l) c
+    | HLetIn (_,x,b,t,c) -> prodec_rec (add_rel_decl (x,Some b,t) l) c
+    | HCast (_,c,_,_)      -> prodec_rec l c
+    | c               -> l,c
   in
   prodec_rec empty_rel_context
 
@@ -1051,11 +1095,11 @@ let decompose_prod_assum =
    ([(xn,Tn);...;(x1,T1)],T), where T is not a lambda *)
 let decompose_lam_assum =
   let rec lamdec_rec l c =
-    match kind_of_term c with
-    | Lambda (x,t,c)  -> lamdec_rec (add_rel_decl (x,None,t) l) c
-    | LetIn (x,b,t,c) -> lamdec_rec (add_rel_decl (x,Some b,t) l) c
-    | Cast (c,_,_)      -> lamdec_rec l c
-    | _               -> l,c
+    match c with
+    | HLambda (_,x,t,c)  -> lamdec_rec (add_rel_decl (x,None,t) l) c
+    | HLetIn (_,x,b,t,c) -> lamdec_rec (add_rel_decl (x,Some b,t) l) c
+    | HCast (_,c,_,_)      -> lamdec_rec l c
+    | c               -> l,c
   in
   lamdec_rec empty_rel_context
 
@@ -1066,11 +1110,11 @@ let decompose_prod_n_assum n =
     error "decompose_prod_n_assum: integer parameter must be positive";
   let rec prodec_rec l n c =
     if n=0 then l,c
-    else match kind_of_term c with
-    | Prod (x,t,c)    -> prodec_rec (add_rel_decl (x,None,t) l) (n-1) c
-    | LetIn (x,b,t,c) -> prodec_rec (add_rel_decl (x,Some b,t) l) (n-1) c
-    | Cast (c,_,_)      -> prodec_rec l n c
-    | c -> error "decompose_prod_n_assum: not enough assumptions"
+    else match c with
+    | HProd (_,x,t,c)    -> prodec_rec (add_rel_decl (x,None,t) l) (n-1) c
+    | HLetIn (_,x,b,t,c) -> prodec_rec (add_rel_decl (x,Some b,t) l) (n-1) c
+    | HCast (_,c,_,_)      -> prodec_rec l n c
+    | _ -> error "decompose_prod_n_assum: not enough assumptions"
   in
   prodec_rec empty_rel_context n
 
@@ -1083,10 +1127,10 @@ let decompose_lam_n_assum n =
     error "decompose_lam_n_assum: integer parameter must be positive";
   let rec lamdec_rec l n c =
     if n=0 then l,c
-    else match kind_of_term c with
-    | Lambda (x,t,c)  -> lamdec_rec (add_rel_decl (x,None,t) l) (n-1) c
-    | LetIn (x,b,t,c) -> lamdec_rec (add_rel_decl (x,Some b,t) l) n c
-    | Cast (c,_,_)      -> lamdec_rec l n c
+    else match c with
+    | HLambda (_,x,t,c)  -> lamdec_rec (add_rel_decl (x,None,t) l) (n-1) c
+    | HLetIn (_,x,b,t,c) -> lamdec_rec (add_rel_decl (x,Some b,t) l) n c
+    | HCast (_,c,_,_)      -> lamdec_rec l n c
     | c -> error "decompose_lam_n_assum: not enough abstractions"
   in
   lamdec_rec empty_rel_context n
@@ -1094,18 +1138,18 @@ let decompose_lam_n_assum n =
 (* (nb_lam [na1:T1]...[nan:Tan]c) where c is not an abstraction
  * gives n (casts are ignored) *)
 let nb_lam =
-  let rec nbrec n c = match kind_of_term c with
-    | Lambda (_,_,c) -> nbrec (n+1) c
-    | Cast (c,_,_) -> nbrec n c
+  let rec nbrec n = function
+    | HLambda (_,_,_,c) -> nbrec (n+1) c
+    | HCast (_,c,_,_) -> nbrec n c
     | _ -> n
   in
   nbrec 0
 
 (* similar to nb_lam, but gives the number of products instead *)
 let nb_prod =
-  let rec nbrec n c = match kind_of_term c with
-    | Prod (_,_,c) -> nbrec (n+1) c
-    | Cast (c,_,_) -> nbrec n c
+  let rec nbrec n = function
+    | HProd (_,_,_,c) -> nbrec (n+1) c
+    | HCast (_,c,_,_) -> nbrec n c
     | _ -> n
   in
   nbrec 0
@@ -1133,24 +1177,24 @@ type arity = rel_context * sorts
 
 let destArity =
   let rec prodec_rec l c =
-    match kind_of_term c with
-    | Prod (x,t,c)    -> prodec_rec ((x,None,t)::l) c
-    | LetIn (x,b,t,c) -> prodec_rec ((x,Some b,t)::l) c
-    | Cast (c,_,_)      -> prodec_rec l c
-    | Sort s          -> l,s
-    | _               -> anomaly "destArity: not an arity"
+    match c with
+    | HProd (_,x,t,c)    -> prodec_rec ((x,None,t)::l) c
+    | HLetIn (_,x,b,t,c) -> prodec_rec ((x,Some b,t)::l) c
+    | HCast (_,c,_,_)    -> prodec_rec l c
+    | HSort s            -> l,s
+    | _                  -> anomaly "destArity: not an arity"
   in
   prodec_rec []
 
 let mkArity (sign,s) = it_mkProd_or_LetIn (mkSort s) sign
 
 let rec isArity c =
-  match kind_of_term c with
-  | Prod (_,_,c)    -> isArity c
-  | LetIn (_,b,_,c) -> isArity (subst1 b c)
-  | Cast (c,_,_)      -> isArity c
-  | Sort _          -> true
-  | _               -> false
+  match c with
+  | HProd (_,_,_,c)    -> isArity c
+  | HLetIn (_,_,b,_,c) -> isArity (subst1 b c)
+  | HCast (_,c,_,_)    -> isArity c
+  | HSort _            -> true
+  | _                  -> false
 
 (*******************)
 (*  hash-consing   *)
@@ -1194,6 +1238,7 @@ let rec isArity c =
    structure for our daily use of Coq.
 *)
 
+
 let array_eqeq t1 t2 =
   t1 == t2 ||
   (Array.length t1 = Array.length t2 &&
@@ -1203,41 +1248,46 @@ let array_eqeq t1 t2 =
 
 let equals_constr t1 t2 =
   match t1, t2 with
-    | Rel n1, Rel n2 -> n1 == n2
-    | Meta m1, Meta m2 -> m1 == m2
-    | Var id1, Var id2 -> id1 == id2
-    | Sort s1, Sort s2 -> s1 == s2
-    | Cast (c1,k1,t1), Cast (c2,k2,t2) -> c1 == c2 & k1 == k2 & t1 == t2
-    | Prod (n1,t1,c1), Prod (n2,t2,c2) -> n1 == n2 & t1 == t2 & c1 == c2
-    | Lambda (n1,t1,c1), Lambda (n2,t2,c2) -> n1 == n2 & t1 == t2 & c1 == c2
-    | LetIn (n1,b1,t1,c1), LetIn (n2,b2,t2,c2) ->
-      n1 == n2 & b1 == b2 & t1 == t2 & c1 == c2
-    | App (c1,l1), App (c2,l2) -> c1 == c2 & array_eqeq l1 l2
-    | Evar (e1,l1), Evar (e2,l2) -> e1 = e2 & array_eqeq l1 l2
-    | Const c1, Const c2 -> c1 == c2
-    | Ind (sp1,i1), Ind (sp2,i2) -> sp1 == sp2 & i1 = i2
-    | Construct ((sp1,i1),j1), Construct ((sp2,i2),j2) ->
-      sp1 == sp2 & i1 = i2 & j1 = j2
-    | Case (ci1,p1,c1,bl1), Case (ci2,p2,c2,bl2) ->
-      ci1 == ci2 & p1 == p2 & c1 == c2 & array_eqeq bl1 bl2
-    | Fix (ln1,(lna1,tl1,bl1)), Fix (ln2,(lna2,tl2,bl2)) ->
+    | HRel n1, HRel n2 -> n1 == n2
+    | HMeta m1, HMeta m2 -> m1 == m2
+    | HVar id1, HVar id2 -> id1 == id2
+    | HSort s1, HSort s2 -> s1 == s2
+    | HCast (_,c1,k1,t1), HCast (_,c2,k2,t2) -> c1 == c2 && k1 == k2 && t1 == t2
+    | HProd (_,n1,t1,c1), HProd (_,n2,t2,c2) -> n1 == n2 && t1 == t2 && c1 == c2
+    | HLambda (_,n1,t1,c1), HLambda (_,n2,t2,c2) -> n1 == n2 && t1 == t2 && c1 == c2
+    | HLetIn (_,n1,b1,t1,c1), HLetIn (_,n2,b2,t2,c2) ->
+      n1 == n2 && b1 == b2 && t1 == t2 && c1 == c2
+    | HApp (_,c1,l1), HApp (_,c2,l2) -> c1 == c2 && array_eqeq l1 l2
+    | HEvar (_,e1,l1), HEvar (_,e2,l2) -> e1 = e2 && array_eqeq l1 l2
+    | HConst c1, HConst c2 -> c1 == c2
+    | HInd (sp1,i1), HInd (sp2,i2) -> sp1 == sp2 && i1 = i2
+    | HConstruct ((sp1,i1),j1), HConstruct ((sp2,i2),j2) ->
+      sp1 == sp2 && i1 = i2 && j1 = j2
+    | HCase (_,ci1,p1,c1,bl1), HCase (_,ci2,p2,c2,bl2) ->
+      ci1 == ci2 && p1 == p2 && c1 == c2 && array_eqeq bl1 bl2
+    | HFix (_,ln1,(lna1,tl1,bl1)), HFix (_,ln2,(lna2,tl2,bl2)) ->
       ln1 = ln2
-      & array_eqeq lna1 lna2
-      & array_eqeq tl1 tl2
-      & array_eqeq bl1 bl2
-    | CoFix(ln1,(lna1,tl1,bl1)), CoFix(ln2,(lna2,tl2,bl2)) ->
+      && array_eqeq lna1 lna2
+      && array_eqeq tl1 tl2
+      && array_eqeq bl1 bl2
+    | HCoFix(_,ln1,(lna1,tl1,bl1)), HCoFix(_,ln2,(lna2,tl2,bl2)) ->
       ln1 = ln2
-      & array_eqeq lna1 lna2
-      & array_eqeq tl1 tl2
-      & array_eqeq bl1 bl2
+      && array_eqeq lna1 lna2
+      && array_eqeq tl1 tl2
+      && array_eqeq bl1 bl2
     | _ -> false
 
 (** Note that the following Make has the side effect of creating
     once and for all the table we'll use for hash-consing all constr *)
 
-module HashsetTerm = Hashset.Make(struct type t = constr let equal = equals_constr end)
+module HashsetTerm = Hashset.Make(
+  struct type t = constr let equal = equals_constr end
+)
 
-let term_table = HashsetTerm.create 19991
+let term_table = ref (HashsetTerm.create 19991)
+let reset () =
+  term_table := (HashsetTerm.create 19991)
+
 (* The associative table to hashcons terms. *)
 
 open Hashset.Combine
@@ -1260,69 +1310,69 @@ let hcons_term (sh_sort,sh_ci,sh_construct,sh_ind,sh_con,sh_na,sh_id) =
 
   and hash_term t =
     match t with
-      | Var i ->
-	(Var (sh_id i), combinesmall 1 (Hashtbl.hash i))
-      | Sort s ->
-	(Sort (sh_sort s), combinesmall 2 (Hashtbl.hash s))
-      | Cast (c, k, t) ->
+      | HVar i ->
+	(HVar (sh_id i), combinesmall 1 (Hashtbl.hash i))
+      | HSort s ->
+	(HSort (sh_sort s), combinesmall 2 (Hashtbl.hash s))
+      | HCast (_,c, k, t) ->
 	let c, hc = sh_rec c in
 	let t, ht = sh_rec t in
-	(Cast (c, k, t), combinesmall 3 (combine3 hc (Hashtbl.hash k) ht))
-      | Prod (na,t,c) ->
+	(HCast (no_hash,c, k, t), combinesmall 3 (combine3 hc (Hashtbl.hash k) ht))
+      | HProd (_,na,t,c) ->
 	let t, ht = sh_rec t
 	and c, hc = sh_rec c in
-	(Prod (sh_na na, t, c), combinesmall 4 (combine3 (Hashtbl.hash na) ht hc))
-      | Lambda (na,t,c) ->
+	(HProd (no_hash,sh_na na, t, c), combinesmall 4 (combine3 (Hashtbl.hash na) ht hc))
+      | HLambda (_,na,t,c) ->
 	let t, ht = sh_rec t
 	and c, hc = sh_rec c in
-	(Lambda (sh_na na, t, c), combinesmall 5 (combine3 (Hashtbl.hash na) ht hc))
-      | LetIn (na,b,t,c) ->
+	(HLambda (no_hash,sh_na na, t, c), combinesmall 5 (combine3 (Hashtbl.hash na) ht hc))
+      | HLetIn (_,na,b,t,c) ->
 	let b, hb = sh_rec b in
 	let t, ht = sh_rec t in
 	let c, hc = sh_rec c in
-	(LetIn (sh_na na, b, t, c), combinesmall 6 (combine4 (Hashtbl.hash na) hb ht hc))
-      | App (c,l) ->
+	(HLetIn (no_hash,sh_na na, b, t, c), combinesmall 6 (combine4 (Hashtbl.hash na) hb ht hc))
+      | HApp (_,c,l) ->
 	let c, hc = sh_rec c in
 	let hl = hash_term_array l in
-	(App (c, l), combinesmall 7 (combine hl hc))
-      | Evar (e,l) ->
+	(HApp (no_hash,c, l), combinesmall 7 (combine hl hc))
+      | HEvar (_,e,l) as t ->
 	let hl = hash_term_array l in
 	(* since the array have been hashed in place : *)
 	(t, combinesmall 8 (combine (Hashtbl.hash e) hl))
-      | Const c ->
-	(Const (sh_con c), combinesmall 9 (Hashtbl.hash c))
-      | Ind ((kn,i) as ind) ->
-	(Ind (sh_ind ind), combinesmall 9 (combine (Hashtbl.hash kn) i))
-      | Construct (((kn,i),j) as c)->
-	(Construct (sh_construct c), combinesmall 10 (combine3 (Hashtbl.hash kn) i j))
-      | Case (ci,p,c,bl) ->
+      | HConst c ->
+	(HConst (sh_con c), combinesmall 9 (Hashtbl.hash c))
+      | HInd ((kn,i) as ind) ->
+	(HInd (sh_ind ind), combinesmall 9 (combine (Hashtbl.hash kn) i))
+      | HConstruct (((kn,i),j) as c)->
+	(HConstruct (sh_construct c), combinesmall 10 (combine3 (Hashtbl.hash kn) i j))
+      | HCase (_,ci,p,c,bl) ->
 	let p, hp = sh_rec p
 	and c, hc = sh_rec c in
 	let hbl = hash_term_array bl in
 	let hbl = combine (combine hc hp) hbl in
-	(Case (sh_ci ci, p, c, bl), combinesmall 11 hbl)
-      | Fix (ln,(lna,tl,bl)) ->
+	(HCase (no_hash, sh_ci ci, p, c, bl), combinesmall 11 hbl)
+      | HFix (_,ln,(lna,tl,bl)) as t ->
 	let hbl = hash_term_array  bl in
 	let htl = hash_term_array  tl in
 	Array.iteri (fun i x -> lna.(i) <- sh_na x) lna;
 	(* since the three arrays have been hashed in place : *)
 	(t, combinesmall 13 (combine (Hashtbl.hash lna) (combine hbl htl)))
-      | CoFix(ln,(lna,tl,bl)) ->
+      | HCoFix(_,ln,(lna,tl,bl)) as t ->
 	let hbl = hash_term_array bl in
 	let htl = hash_term_array tl in
 	Array.iteri (fun i x -> lna.(i) <- sh_na x) lna;
 	(* since the three arrays have been hashed in place : *)
 	(t, combinesmall 14 (combine (Hashtbl.hash lna) (combine hbl htl)))
-      | Meta n ->
+      | HMeta n as t ->
 	(t, combinesmall 15 n)
-      | Rel n ->
+      | HRel n as t ->
 	(t, combinesmall 16 n)
 
   and sh_rec t =
     let (y, h) = hash_term t in
     (* [h] must be positive. *)
     let h = h land 0x3FFFFFFF in
-    (HashsetTerm.repr h y term_table, h)
+    (HashsetTerm.repr h y !term_table, h)
 
   in
   (* Make sure our statically allocated Rels (1 to 16) are considered
@@ -1410,6 +1460,191 @@ let hcons_constr =
      hcons_ident)
 
 let hcons_types = hcons_constr
+
+(* alpha eq aware internalized constr *)
+module H = struct
+  type hconstr = constr
+  let kind_of_term = kind_of_term
+
+let equals_constr t1 t2 =
+  match t1, t2 with
+    | HRel n1, HRel n2 -> n1 == n2
+    | HMeta m1, HMeta m2 -> m1 == m2
+    | HVar id1, HVar id2 -> id1 == id2
+    | HSort s1, HSort s2 -> s1 == s2
+    | HCast (_,c1,k1,t1), HCast (_,c2,k2,t2) -> c1 == c2 && k1 == k2 && t1 == t2
+    | HProd (_,n1,t1,c1), HProd (_,n2,t2,c2) -> n1 == n2 && t1 == t2 && c1 == c2
+    | HLambda (_,n1,t1,c1), HLambda (_,n2,t2,c2) -> n1 == n2 && t1 == t2 && c1 == c2
+    | HLetIn (_,n1,b1,t1,c1), HLetIn (_,n2,b2,t2,c2) ->
+      n1 == n2 && b1 == b2 && t1 == t2 && c1 == c2
+    | HApp (_,c1,l1), HApp (_,c2,l2) -> c1 == c2 && array_eqeq l1 l2
+    | HEvar (_,e1,l1), HEvar (_,e2,l2) -> e1 = e2 && array_eqeq l1 l2
+    | HConst c1, HConst c2 -> c1 == c2
+    | HInd (sp1,i1), HInd (sp2,i2) -> sp1 == sp2 && i1 = i2
+    | HConstruct ((sp1,i1),j1), HConstruct ((sp2,i2),j2) ->
+      sp1 == sp2 && i1 = i2 && j1 = j2
+    | HCase (_,ci1,p1,c1,bl1), HCase (_,ci2,p2,c2,bl2) ->
+      ci1 == ci2 && p1 == p2 && c1 == c2 && array_eqeq bl1 bl2
+    | HFix (_,ln1,(lna1,tl1,bl1)), HFix (_,ln2,(lna2,tl2,bl2)) ->
+      ln1 = ln2
+      && array_eqeq lna1 lna2
+      && array_eqeq tl1 tl2
+      && array_eqeq bl1 bl2
+    | HCoFix(_,ln1,(lna1,tl1,bl1)), HCoFix(_,ln2,(lna2,tl2,bl2)) ->
+      ln1 = ln2
+      && array_eqeq lna1 lna2
+      && array_eqeq tl1 tl2
+      && array_eqeq bl1 bl2
+    | _ -> false
+
+  module HashsetTerm = Hashset.Make(
+    struct type t = constr let equal = equals_constr end)
+
+  let size = 19991
+  let term_table = HashsetTerm.create size
+  let reset () = HashsetTerm.reset size term_table
+  let distribution () = HashsetTerm.distribution term_table
+
+  let alpha = 65599
+  let beta  = 7
+  let combine x y     = x * alpha + y
+  let combine3 x y z   = combine x (combine y z)
+  let combine4 x y z t = combine x (combine3 y z t)
+  let combinesmall x y =
+    let h = beta * x + y in
+    if h = no_hash then no_hash + 1 else h
+
+  let genhash = Hashtbl.hash
+
+  let hash_of_term = function
+    | HCast (n,_,_,_) | HProd (n,_,_,_) | HLambda (n,_,_,_)
+    | HLetIn (n,_,_,_,_) | HApp (n,_,_) | HEvar (n,_,_)
+    | HCase (n,_,_,_,_) | HFix (n,_,_) | HCoFix (n,_,_) -> assert (n <> 0); n
+    | HVar i -> combinesmall 1 (genhash i)
+    | HSort s -> combinesmall 2 (genhash s)
+    | HConst c -> combinesmall 9 (genhash c) (* XXX *)
+    | HInd (kn,i) -> combinesmall 9 (combine (genhash kn) i)
+    | HConstruct ((kn,i),j)-> combinesmall 10 (combine3 (genhash kn) i j)
+    | HMeta n -> combinesmall 15 n
+    | HRel n -> combinesmall 16 n
+
+  let extern x = x
+
+  let intern =
+    let (sh_sort,sh_ci,sh_construct,sh_ind,sh_con,sh_na,sh_id) =
+      (hcons_sorts, hcons_caseinfo, hcons_construct,
+       hcons_ind, hcons_con, hcons_name, hcons_ident) in
+
+    let rec hash_term_array t =
+      let accu = ref 0 in
+      for i = 0 to Array.length t - 1 do
+        let x, h = sh_rec t.(i) in
+        accu := combine !accu h;
+        t.(i) <- x
+      done;
+      !accu
+
+    and hash_term = function
+      | HVar i ->
+	(HVar (sh_id i), combinesmall 1 (genhash i))
+      | HSort s ->
+	(HSort (sh_sort s), combinesmall 2 (genhash s))
+      | HCast (h, c, k, t) as orig -> if h <> no_hash then (orig, h) else
+	let c, hc = sh_rec c in
+	let t, ht = sh_rec t in
+        let h = combinesmall 3 (combine3 hc (genhash k) ht) in
+	(HCast (h, c, k, t), h)
+      | HProd (h, na,t,c) as orig -> if h <> no_hash then (orig, h) else
+	let t, ht = sh_rec t
+	and c, hc = sh_rec c in
+        let h = combinesmall 4 (combine ht hc) in
+	(HProd (h, sh_na na, t, c), h)
+      | HLambda (h, na,t,c) as orig -> if h <> no_hash then (orig, h) else
+	let t, ht = sh_rec t
+	and c, hc = sh_rec c in
+        let h = combinesmall 5 (combine ht hc) in
+	(HLambda (h, sh_na na, t, c), h)
+      | HLetIn (h, na,b,t,c) as orig -> if h <> no_hash then (orig, h) else
+	let b, hb = sh_rec b in
+	let t, ht = sh_rec t in
+	let c, hc = sh_rec c in
+        let h = combinesmall 6 (combine3 hb ht hc) in
+	(HLetIn (h, sh_na na, b, t, c), h)
+      | HApp (h, c,l) as orig -> if h <> no_hash then (orig, h) else
+	let c, hc = sh_rec c in
+	let hl = hash_term_array l in
+        let h = combinesmall 7 (combine hl hc) in
+	(HApp (h, c, l), h)
+      | HEvar (h, e,l) as orig -> if h <> no_hash then (orig, h) else
+	let hl = hash_term_array l in
+        let h = combinesmall 8 (combine (genhash e) hl) in
+	(HEvar (h, e, l), h)
+      | HConst c ->
+	(HConst (sh_con c), combinesmall 9 (genhash c))
+      | HInd ((kn,i) as ind) ->
+	(HInd (sh_ind ind), combinesmall 9 (combine (genhash kn) i))
+      | HConstruct (((kn,i),j) as c)->
+	(HConstruct(sh_construct c),combinesmall 10 (combine3 (genhash kn) i j))
+      | HCase (h, ci,p,c,bl) as orig -> if h <> no_hash then (orig, h) else
+	let p, hp = sh_rec p
+	and c, hc = sh_rec c in
+	let hbl = hash_term_array bl in
+	let hbl = combine (combine hc hp) hbl in
+        let h = combinesmall 11 hbl in
+	(HCase (h, sh_ci ci, p, c, bl), h)
+      | HFix (h, ln,(lna,tl,bl)) as orig -> if h <> no_hash then (orig, h) else
+	let hbl = hash_term_array  bl in
+	let htl = hash_term_array  tl in
+	Array.iteri (fun i x -> lna.(i) <- sh_na x) lna;
+        let h = combinesmall 13 (combine (genhash lna) (combine hbl htl)) in
+	(HFix (h, ln,(lna,tl,bl)), h)
+      | HCoFix(h, ln,(lna,tl,bl)) as orig -> if h <> no_hash then (orig, h) else
+	let hbl = hash_term_array bl in
+	let htl = hash_term_array tl in
+	Array.iteri (fun i x -> lna.(i) <- sh_na x) lna;
+        let h = combinesmall 14 (combine (genhash lna) (combine hbl htl)) in
+	(HCoFix(h, ln,(lna,tl,bl)), h)
+      | HMeta n as t ->
+	(t, combinesmall 15 n)
+      | HRel n as t ->
+	(t, combinesmall 16 n)
+
+    and sh_rec t =
+      let (y, h) = hash_term t in
+      (HashsetTerm.repr h y term_table, h)
+
+  in
+  (* Make sure our statically allocated Rels (1 to 16) are considered
+     as canonical, and hence hash-consed to themselves *)
+  ignore (hash_term_array rels);
+
+  fun t -> fst (sh_rec t)
+
+  let equal = (==)
+
+  let compare t1 t2 =
+    if t1 == t2 then 0
+    else
+      let diff = hash_of_term t1 - hash_of_term t2 in
+      if diff = 0 then Pervasives.compare t1 t2 else diff
+
+  let hash = hash_of_term
+
+  module HET = struct
+    type t = hconstr
+    let equal = equal
+    let hash = hash
+  end
+  module Table = Hashtbl.Make(HET)
+
+  module HOT = struct
+    type t = hconstr
+    let compare = compare
+  end
+  module Map = Map.Make(HOT)
+  module Set = Set.Make(HOT)
+
+end
 
 (*******)
 (* Type of abstract machine values *)

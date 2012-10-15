@@ -634,4 +634,27 @@ val hcons_types : types -> types
 
 (**************************************)
 
+module H : sig
+
+  type hconstr
+  val equal : hconstr -> hconstr -> bool
+  val compare : hconstr -> hconstr -> int
+  val hash : hconstr -> int
+
+  val intern : constr -> hconstr
+  val extern : hconstr -> constr
+
+  val reset : unit -> unit
+  val distribution : unit -> (hconstr * int) list list
+
+  val kind_of_term : hconstr -> (hconstr,hconstr) kind_of_term
+
+  module Table : Hashtbl.S with type key = hconstr
+  module Map : Map.S with type key = hconstr
+  module Set : Set.S with type elt = hconstr
+
+end
+
+(**************************************)
+
 type values
