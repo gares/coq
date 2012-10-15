@@ -210,6 +210,8 @@ type 'a infos = {
   i_vars : (identifier * constr) list;
   i_tab : (table_key, 'a) Hashtbl.t }
 
+let env_of_infos { i_env = x } = x
+
 let info_flags info = info.i_flags
 
 let ref_value_cache info ref =
@@ -639,7 +641,7 @@ let rec to_constr constr_fun lfts v =
    fconstr. When we find a closure whose substitution is the identity,
    then we directly return the constr to avoid possibly huge
    reallocation. *)
-let term_of_fconstr =
+let term_of_lift_fconstr =
   let rec term_of_fconstr_lift lfts v =
     match v.term with
       | FCLOS(t,env) when is_subs_id env & is_lift_id lfts -> t
@@ -648,8 +650,9 @@ let term_of_fconstr =
       | FFix(fx,e) when is_subs_id e & is_lift_id lfts -> mkFix fx
       | FCoFix(cfx,e) when is_subs_id e & is_lift_id lfts -> mkCoFix cfx
       | _ -> to_constr term_of_fconstr_lift lfts v in
-  term_of_fconstr_lift el_id
+  term_of_fconstr_lift
 
+let term_of_fconstr = term_of_lift_fconstr el_id
 
 
 (* fstrong applies unfreeze_fun recursively on the (freeze) term and

@@ -153,6 +153,7 @@ val mk_atom : constr -> fconstr
 
 val fterm_of : fconstr -> fterm
 val term_of_fconstr : fconstr -> constr
+val term_of_lift_fconstr : lift -> fconstr -> constr
 val destFLambda :
   (fconstr subs -> constr -> fconstr) -> fconstr -> name * fconstr * fconstr
 
@@ -160,6 +161,7 @@ val destFLambda :
 type clos_infos
 val create_clos_infos :
   ?evars:Mini_evd.EvarMap.t -> reds -> env -> clos_infos
+val env_of_infos : clos_infos -> env
 
 (** Reduction function *)
 

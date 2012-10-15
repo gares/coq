@@ -103,3 +103,4 @@ val default_inline_level : int
 
 val dump_conv_pbs : bool ref
 val run_conv_pbs : string option ref
+val run_conv_pb : int option ref

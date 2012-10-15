@@ -432,13 +432,23 @@ let compile verbosely f =
   | Some ext ->
       let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
       let stats = open_out (long_f_dot_v ^ ".stats." ^ ext) in
-      List.iter (fun x ->
-        let diff, ok = Reduction.run_cpb x in
-        Printf.fprintf stats "%s\n" (Reduction.print_cpb x);
+      Util.List.iteri (fun i x ->
+        Printf.fprintf stats "( %d , %s" i (Reduction.print_cpb x);
+        flush stats;
+        let time, ok = Reduction.run_cpb x in
         if not ok then prerr_endline "ERR";
-        if diff > 0.1 then 
-          prerr_endline ("diff " ^ string_of_float diff)) pbs;
+        Printf.fprintf stats "%.3f , %b ) ;\n" time ok)
+      pbs;
       close_out stats;
+  | None -> match !Flags.run_conv_pb with
+  | Some n ->
+      Reduction.debug := true;
+      Sys.catch_break true;
+      let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
+      let p = List.nth pbs n in
+      let time, ok = Reduction.run_cpb p in
+      Printf.eprintf "( %d , %s %.3f , %b ) ;\n" n 
+        (Reduction.print_cpb p) time ok
   | None ->
       if !Flags.dump_conv_pbs then Reduction.set_dump_cpbs (long_f_dot_v ^ "c");
       load_vernac verbosely long_f_dot_v;

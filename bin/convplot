@@ -1,30 +1,50 @@
 #!/usr/bin/ocaml
 
-let mk_input what =
-  Sys.command ("(echo 'let data_" ^what^ " = [ ';
-    cat `find . -name '*.stats." ^what^ "'`; echo '];;' )> input." ^what)
+let file = if Array.length Sys.argv > 1 then Sys.argv.(1) else "*"
+
+let mk_input v what =
+  let cmd = "(echo 'let data_" ^what^ " = [ ';
+    cat `find . -name '"^v^".v.stats."^what^"'`; echo '];;' )> input." ^what in
+  prerr_endline cmd;
+  Sys.command cmd
 ;;
 
-mk_input "default";;
+mk_input file "default";;
 #use "input.default";;
-mk_input "current";;
+mk_input file "current";;
 #use "input.current";;
 
 let data = List.combine data_default data_current;;
 
 let od = open_out "/tmp/data";;
-let i = ref 0;;
+let sum1, sum2 = ref 0.0, ref 0.0;;
 let () =
-  List.iter (fun ((v1,l1,_,f1,_),(v2,l2,_,f2,_)) ->
-    assert(v1 = v2 && l1 = l2); (* the same problem *)
-    incr i;Printf.fprintf od "%d %.4f %4f\n" !i f1 f2)
+  List.iter (fun ((v1,l1,_,_,_,f1,b1),(v2,l2,_,_,_,f2,b2)) ->
+    assert(v1 = v2 && l1 = l2 && b1 = b2); (* the same problem *)
+    sum1 := !sum1 +. f1;
+    sum2 := !sum2 +. f2;
+    Printf.fprintf od "%d %f %f\n" v1 f1 f2)
   data;;
 close_out od;;
+let dataset = float_of_int (List.length data)
+let avg1 = !sum1 /. dataset
+let avg2 = !sum2 /. dataset
+let sigma1, sigma2 = List.fold_left 
+  (fun (s1,s2) ((_,_,_,_,_,f1,_),(_,_,_,_,_,f2,_)) ->
+     (s1 +. ((f1 -. avg1) ** 2.0), s2 +. ((f2 -. avg2) ** 2.0)))
+  (0.0,0.0) data;;
+Printf.eprintf "old=%f, new=%f, diff=%f, sigma1=%f, sigma2=%f\n"
+  !sum1 !sum2 (!sum1 -. !sum2)
+  (sqrt (sigma1 /. dataset)) (sqrt (sigma2 /.  dataset));;
 
 let oc = open_out "/tmp/plot";;
 Printf.fprintf oc "
- set terminal png size 1600, 500
+ set terminal png size 1600, 700
  set output \"/tmp/plot.png\"
+ set logscale y
+ set yrange [*:6]
+ set ytics 0,.01,6
+ set ytics add 3
  set style data points
  plot \\
         \"/tmp/data\" using 1:2 title \"default\", \\
