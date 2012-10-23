@@ -608,6 +608,65 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
   ccnv cv_pb l2r infos el_id el_id (inject t1) (inject t2) empty_constraint
 (*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
 
+(* *************** test of the day ****************
+
+module HT = Hashtbl.Make(HCT)
+
+module UF : sig
+
+  val find : hc -> hc
+  val union : hc -> hc -> unit
+  val reset : unit -> unit
+  
+end = struct
+
+  let rank : int HT.t = HT.create 1099
+  let father : hc HT.t = HT.create 1099
+  let reset () = HT.clear rank; HT.clear father
+
+  let father_of t =
+    try HT.find father t with Not_found -> HT.replace father t t; t
+  let rank_of t = try HT.find rank t with Not_found -> 0
+  
+  let rec find i =
+    let fi = father_of i in
+    if fi == i then i
+    else
+      let ri = find fi in 
+      HT.replace father i ri;
+      ri 
+    
+  let union x y =
+    let rx = find x in
+    let ry = find y in
+    if rx != ry then begin
+      let rkx = rank_of x in
+      let rky = rank_of y in
+      if rkx > rky then
+        HT.replace father ry rx
+      else if rkx < rky then
+        HT.replace father rx ry
+      else begin
+        HT.replace rank rx (rkx + 1);
+        HT.replace father ry rx
+      end
+    end
+
+end
+
+let clos_fconv trans cv_pb l2r evars env t1 t2 =
+(*D*   __inside "fconv"; try let __rc =  *D*)
+(*D*  pp(lazy(ppctx env  ^ "\n----------------------------\n"));  *D*)
+(*D*  pp(lazy(ppterm ~depth:max_int env t1 ^ " \n= " ^ ppterm ~depth:max_int env t2));  *D*)
+  let t1 = cohc (hc t1) in
+  let t2 = cohc (hc t2) in
+  let infos = trans, create_clos_infos ~evars betaiotazeta env in
+  ccnv cv_pb l2r infos el_id el_id (inject t1) (inject t2) empty_constraint
+(*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
+
+
+*************** end test of the day **************** *)
+
 type cpb = 
   (string * int * int) * (Names.Idpred.t * Names.Cpred.t) * conv_pb * bool *
    Mini_evd.EvarMap.t * Environ.env *
