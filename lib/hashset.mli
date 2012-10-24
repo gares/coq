@@ -27,12 +27,15 @@ module type S = sig
   (** Type of hashsets. *)
   val create : int -> t
   (** [create n] creates a fresh hashset with initial size [n]. *)
+  val reset : int -> t -> unit
+  (** [reset n t] sets t to be a fressh hashset of size [n]. *)
   val repr : int -> elt -> t -> elt
   (** [repr key constr set] uses [key] to look for [constr]
       in the hashet [set]. If [constr] is in [set], returns the
       specific representation that is stored in [set]. Otherwise,
       [constr] is stored in [set] and will be used as the canonical
       representation of this value in the future. *)
+  val distribution : t -> (elt * int) list list
 end
 
 module Make (E : EqType) : S with type elt = E.t

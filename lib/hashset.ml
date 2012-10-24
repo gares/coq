@@ -25,7 +25,9 @@ module type S = sig
   type elt
   type t
   val create : int -> t
+  val reset : int -> t -> unit
   val repr : int -> elt -> t -> elt
+  val distribution : t -> (elt * int) list list
 end
 
 module Make (E : EqType) =
@@ -43,6 +45,9 @@ module Make (E : EqType) =
       let s = min (max 1 s) Sys.max_array_length in
       { size = 0; data = Array.make s Empty }
 
+    let reset s t =
+      let t' = create s in t.size <- t'.size; t.data <- t'.data
+
     let resize table =
       let odata = table.data in
       let osize = Array.length odata in
@@ -52,7 +57,7 @@ module Make (E : EqType) =
         let rec insert_bucket = function
         | Empty -> ()
         | Cons (key, hash, rest) ->
-            let nidx = hash mod nsize in
+            let nidx = abs hash mod nsize in
             let obucket = ndata.(nidx) in
             ndata.(nidx) <- Cons (key, hash, obucket);
             insert_bucket rest
@@ -64,7 +69,7 @@ module Make (E : EqType) =
   let add hash key table =
     let odata = table.data in
     let osize = Array.length odata in
-    let i = hash mod osize in
+    let i = abs hash mod osize in
     odata.(i) <- Cons (key, hash, odata.(i));
     table.size <- table.size + 1;
     if table.size > osize lsl 1 then resize table
@@ -81,7 +86,7 @@ module Make (E : EqType) =
   let repr hash key table =
     let odata = table.data in
     let osize = Array.length odata in
-    let i = hash mod osize in
+    let i = abs hash mod osize in
     match odata.(i) with
       |	Empty -> add hash key table; key
       | Cons (k1, h1, rest1) ->
@@ -96,6 +101,12 @@ module Make (E : EqType) =
 		    if hash == h2 && E.equal key k3 then k3
 		    else find_rec hash key table rest3
 
+  let distribution table =
+    let rec tol = function Empty -> [] | Cons (v,h,l) -> (v,h)::tol l in
+    List.fold_left (fun acc -> function
+      | Empty -> acc
+      | Cons _ as l -> tol l :: acc)
+    [] (Array.to_list table.data)
 end
 
 module Combine = struct
