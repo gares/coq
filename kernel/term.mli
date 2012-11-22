@@ -634,9 +634,38 @@ val hcons_types : types -> types
 
 (**************************************)
 
+val ll_pr_constr : int -> rel_context -> constr -> Pp.std_ppcmds
+
 module H : sig
 
   type hconstr
+  type dummy (* like unit, no content *)
+
+  type 'a existential = dummy * existential_key * 'a array
+  type ('a,'b) rec_declaration = name array * 'b array * 'a array
+  type ('a,'b) fixpoint = dummy * (int array * int) * ('a,'b) rec_declaration
+  type ('a,'b) cofixpoint = dummy * int * ('a,'b) rec_declaration
+
+  type ('constr, 'types) kind_of_hconstr =
+  | HRel       of int
+  | HVar       of identifier
+  | HMeta      of metavariable
+  | HEvar      of 'constr existential
+  | HSort      of sorts
+  | HCast      of dummy * 'constr * cast_kind * 'types
+  | HProd      of dummy * name * 'types * 'types
+  | HLambda    of dummy * name * 'types * 'constr
+  | HLetIn     of dummy * name * 'constr * 'types * 'constr
+  | HApp       of dummy * 'constr * 'constr array
+  | HConst     of constant
+  | HInd       of inductive
+  | HConstruct of constructor
+  | HCase      of dummy * case_info * 'constr * 'constr * 'constr array
+  | HFix       of ('constr, 'types) fixpoint
+  | HCoFix     of ('constr, 'types) cofixpoint
+
+  val kind_of : hconstr -> (hconstr,hconstr) kind_of_hconstr
+
   val equal : hconstr -> hconstr -> bool
   val compare : hconstr -> hconstr -> int
   val hash : hconstr -> int
@@ -644,14 +673,16 @@ module H : sig
   val intern : constr -> hconstr
   val extern : hconstr -> constr
 
+  val mkHFix : (int array * int) * (hconstr,hconstr) rec_declaration -> hconstr
+
   val reset : unit -> unit
   val distribution : unit -> (hconstr * int) list list
-
-  val kind_of_term : hconstr -> (hconstr,hconstr) kind_of_term
 
   module Table : Hashtbl.S with type key = hconstr
   module Map : Map.S with type key = hconstr
   module Set : Set.S with type elt = hconstr
+
+  val ll_pr_hconstr : int -> rel_context -> hconstr -> Pp.std_ppcmds
 
 end
 

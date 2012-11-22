@@ -433,7 +433,6 @@ let compile verbosely f =
       let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
       let stats = open_out (long_f_dot_v ^ ".stats." ^ ext) in
       Util.List.iteri (fun i x ->
-        Term.reset ();
         Printf.fprintf stats "( %d , %s" i (Reduction.print_cpb x);
         flush stats;
         let time, ok = Reduction.run_cpb x in

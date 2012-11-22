@@ -1461,48 +1461,160 @@ let hcons_constr =
 
 let hcons_types = hcons_constr
 
+(* BEGIN PP *)
+open Pp
+
+let pr_id id = str (string_of_id id)
+
+let print_sort = function
+  | Prop Pos -> (str "Set")
+  | Prop Null -> (str "Prop")
+  | Type u -> (str "Type")
+
+let pr_sort_family = function
+  | InSet -> (str "Set")
+  | InProp -> (str "Prop")
+  | InType -> (str "Type")
+
+let pr_name = function
+  | Name id -> pr_id id
+  | Anonymous -> str "_"
+
+let pr_con sp = str(string_of_label(con_label sp))
+
+let pr_rel_name e n =
+  try let name, _, _= lookup_rel n e in pr_name name
+  with _ -> str"UNBOUND"
+
+let rec pr_constr h e c = if h < 0 then str".." else match c with
+  | HRel n -> pr_rel_name e n (*++str"("++int n++str")"*)
+  | HMeta n -> str "?m(" ++ int n ++ str ")"
+  | HVar id -> pr_id id
+  | HSort s -> print_sort s
+  | HCast (_,c,_, t) -> hov 1
+      (str"(" ++ pr_constr (h-1) e c ++ cut() ++
+       str":" ++ pr_constr (h-1) e t ++ str")")
+  | HProd (_,(Name(id) as n),t,c) -> hov 1
+      (str"forall " ++ pr_id id ++ str":" ++ pr_constr (h-1) e t ++ str"," ++
+       spc() ++ pr_constr (h-1) (add_rel_decl (n,None,t) e) c)
+  | HProd (_,(Anonymous as n),t,c) -> hov 0
+      (str"(" ++ pr_constr (h-1) e t ++ str " ->" ++ spc() ++
+       pr_constr (h-1) (add_rel_decl (n,None,t) e) c ++ str")")
+  | HLambda (_,na,t,c) -> hov 1
+      (str"(fun (" ++ pr_name na ++ str":" ++
+       pr_constr (h-1) e t ++ str") =>" ++ spc() ++ pr_constr (h-1) (add_rel_decl
+       (na,None,t) e) c ++ str")")
+  | HLetIn (_,na,b,t,c) -> hov 0
+      (str"let " ++ pr_name na ++ str":=" ++ pr_constr (h-1) e b ++
+       str":" ++ brk(1,2) ++ pr_constr (h-1) e t ++ str" in " ++ cut() ++
+       pr_constr (h-1) (add_rel_decl (na,Some b,t) e) c)
+  | HApp (_,c,l) ->  hov 1
+      (str"(" ++ pr_constr (h-1) e c ++ spc() ++
+       prlist_with_sep spc (pr_constr (h-1) e) (Array.to_list l) ++ str")")
+  | HEvar (_,e,l) -> hov 1
+      (str"?e(" ++ int e ++ str")")
+(*        str"{" ++ prlist_with_sep spc pr_constr (h-1) e (Array.to_list l) ++str"}") *)
+  | HConst c -> pr_con c
+  | HInd (sp,i) -> let _, _, l = repr_mind sp in
+      str(string_of_label l)++str"[" ++ int i ++ str"]"
+  | HConstruct ((sp,i),j) -> let _, _, l = repr_mind sp in
+      str(string_of_label l)++str"[" ++ int i ++ str "," ++ int j++ str"]"
+  | HCase (_,ci,p,c,bl) -> v 0
+      (hv 0 (hov 0 (str"case " ++ pr_constr (h-1) e c ++spc()++
+       str"return "++pr_constr (h-1) e p++spc()++str"with ")) ++ cut() ++
+       prlist_with_sep (fun _ -> cut()) 
+         (fun t -> str"| " ++ pr_constr (h-1) e t)
+         (Array.to_list bl) ++
+      cut() ++ str"end")
+  | HFix (_,(t,i),(lna,tl,bl)) ->
+(*       let fixl = Array.mapi (fun i na -> (na,t.(i),tl.(i),bl.(i))) lna in *)
+      (* FIX env *)
+      hov 1
+        (str"fix " ++ int i ++ spc() (* ++  str"{" ++
+         v 0 (prlist_with_sep spc (fun (na,i,ty,bd) ->
+           pr_name na ++ str"/" ++ int i ++ str":" ++ pr_constr (h-1) e ty ++
+           cut() ++ str":=" ++ pr_constr (h-1) e bd) (Array.to_list fixl)) ++
+         str"}"*))
+  | HCoFix(_,i,(lna,tl,bl)) ->
+      (* FIX env *)
+(*       let fixl = Array.mapi (fun i na -> (na,tl.(i),bl.(i))) lna in *)
+      hov 1
+        (str"cofix " ++ int i (* ++ spc() ++  str"{" ++
+         v 0 (prlist_with_sep spc (fun (na,ty,bd) ->
+           pr_name na ++ str":" ++ pr_constr (h-1) e ty ++
+           cut() ++ str":=" ++ pr_constr (h-1) e bd) (Array.to_list fixl)) ++
+         str"}"*))
+;;
+(* END PP *)
+
+let ll_pr_constr = pr_constr
+
 (* alpha eq aware internalized constr *)
 module H = struct
+  type dummy = hash
   type hconstr = constr
-  let kind_of_term = kind_of_term
+  type 'a existential = 'a hpexistential
+  type ('a,'b) rec_declaration = ('a,'b) prec_declaration
+  type ('a,'b) fixpoint = ('a,'b) hpfixpoint
+  type ('a,'b) cofixpoint = ('a,'b) hpcofixpoint
+  type ('constr,'types) kind_of_hconstr = ('constr,'types) kind_of_hterm =
+  | HRel       of int
+  | HVar       of identifier
+  | HMeta      of metavariable
+  | HEvar      of 'constr existential
+  | HSort      of sorts
+  | HCast      of dummy * 'constr * cast_kind * 'types
+  | HProd      of dummy * name * 'types * 'types
+  | HLambda    of dummy * name * 'types * 'constr
+  | HLetIn     of dummy * name * 'constr * 'types * 'constr
+  | HApp       of dummy * 'constr * 'constr array
+  | HConst     of constant
+  | HInd       of inductive
+  | HConstruct of constructor
+  | HCase      of dummy * case_info * 'constr * 'constr * 'constr array
+  | HFix       of ('constr, 'types) fixpoint
+  | HCoFix     of ('constr, 'types) cofixpoint
+          
+  let kind_of t = t
 
-let equals_constr t1 t2 =
-  match t1, t2 with
-    | HRel n1, HRel n2 -> n1 == n2
-    | HMeta m1, HMeta m2 -> m1 == m2
-    | HVar id1, HVar id2 -> id1 == id2
-    | HSort s1, HSort s2 -> s1 == s2
-    | HCast (_,c1,k1,t1), HCast (_,c2,k2,t2) -> c1 == c2 && k1 == k2 && t1 == t2
-    | HProd (_,n1,t1,c1), HProd (_,n2,t2,c2) -> n1 == n2 && t1 == t2 && c1 == c2
-    | HLambda (_,n1,t1,c1), HLambda (_,n2,t2,c2) -> n1 == n2 && t1 == t2 && c1 == c2
-    | HLetIn (_,n1,b1,t1,c1), HLetIn (_,n2,b2,t2,c2) ->
-      n1 == n2 && b1 == b2 && t1 == t2 && c1 == c2
-    | HApp (_,c1,l1), HApp (_,c2,l2) -> c1 == c2 && array_eqeq l1 l2
-    | HEvar (_,e1,l1), HEvar (_,e2,l2) -> e1 = e2 && array_eqeq l1 l2
-    | HConst c1, HConst c2 -> c1 == c2
-    | HInd (sp1,i1), HInd (sp2,i2) -> sp1 == sp2 && i1 = i2
-    | HConstruct ((sp1,i1),j1), HConstruct ((sp2,i2),j2) ->
-      sp1 == sp2 && i1 = i2 && j1 = j2
-    | HCase (_,ci1,p1,c1,bl1), HCase (_,ci2,p2,c2,bl2) ->
-      ci1 == ci2 && p1 == p2 && c1 == c2 && array_eqeq bl1 bl2
-    | HFix (_,ln1,(lna1,tl1,bl1)), HFix (_,ln2,(lna2,tl2,bl2)) ->
-      ln1 = ln2
-      && array_eqeq lna1 lna2
-      && array_eqeq tl1 tl2
-      && array_eqeq bl1 bl2
-    | HCoFix(_,ln1,(lna1,tl1,bl1)), HCoFix(_,ln2,(lna2,tl2,bl2)) ->
-      ln1 = ln2
-      && array_eqeq lna1 lna2
-      && array_eqeq tl1 tl2
-      && array_eqeq bl1 bl2
-    | _ -> false
+  let ll_pr_hconstr = ll_pr_constr
+
+  let equals_constr t1 t2 =
+    match t1, t2 with
+      | HRel n1, HRel n2 -> n1 == n2
+      | HMeta m1, HMeta m2 -> m1 == m2
+      | HVar id1, HVar id2 -> id1 == id2
+      | HSort s1, HSort s2 -> s1 == s2
+      | HCast (_,c1,k1,t1), HCast (_,c2,k2,t2) -> c1 == c2 && k1 == k2 && t1 == t2
+      | HProd (_,n1,t1,c1), HProd (_,n2,t2,c2) -> n1 == n2 && t1 == t2 && c1 == c2
+      | HLambda (_,n1,t1,c1), HLambda (_,n2,t2,c2) -> n1 == n2 && t1 == t2 && c1 == c2
+      | HLetIn (_,n1,b1,t1,c1), HLetIn (_,n2,b2,t2,c2) ->
+        n1 == n2 && b1 == b2 && t1 == t2 && c1 == c2
+      | HApp (_,c1,l1), HApp (_,c2,l2) -> c1 == c2 && array_eqeq l1 l2
+      | HEvar (_,e1,l1), HEvar (_,e2,l2) -> e1 = e2 && array_eqeq l1 l2
+      | HConst c1, HConst c2 -> c1 == c2
+      | HInd (sp1,i1), HInd (sp2,i2) -> sp1 == sp2 && i1 = i2
+      | HConstruct ((sp1,i1),j1), HConstruct ((sp2,i2),j2) ->
+        sp1 == sp2 && i1 = i2 && j1 = j2
+      | HCase (_,ci1,p1,c1,bl1), HCase (_,ci2,p2,c2,bl2) ->
+        ci1 == ci2 && p1 == p2 && c1 == c2 && array_eqeq bl1 bl2
+      | HFix (_,ln1,(lna1,tl1,bl1)), HFix (_,ln2,(lna2,tl2,bl2)) ->
+        ln1 = ln2
+        && array_eqeq lna1 lna2
+        && array_eqeq tl1 tl2
+        && array_eqeq bl1 bl2
+      | HCoFix(_,ln1,(lna1,tl1,bl1)), HCoFix(_,ln2,(lna2,tl2,bl2)) ->
+        ln1 = ln2
+        && array_eqeq lna1 lna2
+        && array_eqeq tl1 tl2
+        && array_eqeq bl1 bl2
+      | _ -> false
 
   module HashsetTerm = Hashset.Make(
     struct type t = constr let equal = equals_constr end)
 
   let size = 19991
   let term_table = HashsetTerm.create size
-  let reset () = HashsetTerm.reset size term_table
   let distribution () = HashsetTerm.distribution term_table
 
   let alpha = 65599
@@ -1530,7 +1642,7 @@ let equals_constr t1 t2 =
 
   let extern x = x
 
-  let intern =
+  let intern, hash_term_array =
     let (sh_sort,sh_ci,sh_construct,sh_ind,sh_con,sh_na,sh_id) =
       (hcons_sorts, hcons_caseinfo, hcons_construct,
        hcons_ind, hcons_con, hcons_name, hcons_ident) in
@@ -1593,6 +1705,7 @@ let equals_constr t1 t2 =
         let h = combinesmall 11 hbl in
 	(HCase (h, sh_ci ci, p, c, bl), h)
       | HFix (h, ln,(lna,tl,bl)) as orig -> if h <> no_hash then (orig, h) else
+              (* XXX why ln is not used!!! *)
 	let hbl = hash_term_array  bl in
 	let htl = hash_term_array  tl in
 	Array.iteri (fun i x -> lna.(i) <- sh_na x) lna;
@@ -1618,7 +1731,11 @@ let equals_constr t1 t2 =
      as canonical, and hence hash-consed to themselves *)
   ignore (hash_term_array rels);
 
-  fun t -> fst (sh_rec t)
+  (fun t -> fst (sh_rec t)), hash_term_array
+  
+  let reset () =
+    HashsetTerm.reset size term_table;
+    ignore(hash_term_array rels)
 
   let equal = (==)
 
@@ -1629,6 +1746,8 @@ let equals_constr t1 t2 =
       if diff = 0 then Pervasives.compare t1 t2 else diff
 
   let hash = hash_of_term
+
+  let mkHFix (x,y) = intern (HFix (0,x,y))
 
   module HET = struct
     type t = hconstr
@@ -1645,6 +1764,7 @@ let equals_constr t1 t2 =
   module Set = Set.Make(HOT)
 
 end
+
 
 (*******)
 (* Type of abstract machine values *)
