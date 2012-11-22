@@ -24,90 +24,15 @@ open Environ
 open Closure
 open Esubst
 
-(* BEGIN PP *)
+(* PP *)
+let pr_constr h e c =
+  Term.ll_pr_constr h (Environ.rel_context e) c
+
 open Pp
-
 let pr_id id = str (string_of_id id)
-
-let print_sort = function
-  | Prop Pos -> (str "Set")
-  | Prop Null -> (str "Prop")
-  | Type u -> (str "Type")
-
-let pr_sort_family = function
-  | InSet -> (str "Set")
-  | InProp -> (str "Prop")
-  | InType -> (str "Type")
-
 let pr_name = function
   | Name id -> pr_id id
   | Anonymous -> str "_"
-
-let pr_con sp = str(string_of_label(con_label sp))
-
-let pr_rel_name e n =
-  try let name, _, _= Environ.lookup_rel n e in pr_name name
-  with Not_found -> str"UNBOUND"
-
-let rec pr_constr h e c = if h < 0 then str"…" else match kind_of_term c with
-  | Rel n -> pr_rel_name e n (*++str"("++int n++str")"*)
-  | Meta n -> str "?m(" ++ int n ++ str ")"
-  | Var id -> pr_id id
-  | Sort s -> print_sort s
-  | Cast (c,_, t) -> hov 1
-      (str"(" ++ pr_constr (h-1) e c ++ cut() ++
-       str":" ++ pr_constr (h-1) e t ++ str")")
-  | Prod (Name(id) as n,t,c) -> hov 1
-      (str"forall " ++ pr_id id ++ str":" ++ pr_constr (h-1) e t ++ str"," ++
-       spc() ++ pr_constr (h-1) (Environ.push_rel (n,None,t) e) c)
-  | Prod (Anonymous as n,t,c) -> hov 0
-      (str"(" ++ pr_constr (h-1) e t ++ str " ->" ++ spc() ++
-       pr_constr (h-1) (Environ.push_rel (n,None,t) e) c ++ str")")
-  | Lambda (na,t,c) -> hov 1
-      (str"(fun (" ++ pr_name na ++ str":" ++
-       pr_constr (h-1) e t ++ str") =>" ++ spc() ++ pr_constr (h-1) (Environ.push_rel
-       (na,None,t) e) c ++ str")")
-  | LetIn (na,b,t,c) -> hov 0
-      (str"let " ++ pr_name na ++ str":=" ++ pr_constr (h-1) e b ++
-       str":" ++ brk(1,2) ++ pr_constr (h-1) e t ++ str" in " ++ cut() ++
-       pr_constr (h-1) (Environ.push_rel (na,Some b,t) e) c)
-  | App (c,l) ->  hov 1
-      (str"(" ++ pr_constr (h-1) e c ++ spc() ++
-       prlist_with_sep spc (pr_constr (h-1) e) (Array.to_list l) ++ str")")
-  | Evar (e,l) -> hov 1
-      (str"?e(" ++ int e ++ str")")
-(*        str"{" ++ prlist_with_sep spc pr_constr (h-1) e (Array.to_list l) ++str"}") *)
-  | Const c -> pr_con c
-  | Ind (sp,i) -> let _, _, l = repr_mind sp in
-      str(string_of_label l)++str"[" ++ int i ++ str"]"
-  | Construct ((sp,i),j) -> let _, _, l = repr_mind sp in
-      str(string_of_label l)++str"[" ++ int i ++ str "," ++ int j++ str"]"
-  | Case (ci,p,c,bl) -> v 0
-      (hv 0 (hov 0 (str"case " ++ pr_constr (h-1) e c ++spc()++
-       str"return "++pr_constr (h-1) e p++spc()++str"with ")) ++ cut() ++
-       prlist_with_sep (fun _ -> cut()) 
-         (fun t -> str"| " ++ pr_constr (h-1) e t)
-         (Array.to_list bl) ++
-      cut() ++ str"end")
-  | Fix ((t,i),(lna,tl,bl)) ->
-(*       let fixl = Array.mapi (fun i na -> (na,t.(i),tl.(i),bl.(i))) lna in *)
-      (* FIX env *)
-      hov 1
-        (str"fix " ++ int i ++ spc() (* ++  str"{" ++
-         v 0 (prlist_with_sep spc (fun (na,i,ty,bd) ->
-           pr_name na ++ str"/" ++ int i ++ str":" ++ pr_constr (h-1) e ty ++
-           cut() ++ str":=" ++ pr_constr (h-1) e bd) (Array.to_list fixl)) ++
-         str"}"*))
-  | CoFix(i,(lna,tl,bl)) ->
-      (* FIX env *)
-(*       let fixl = Array.mapi (fun i na -> (na,tl.(i),bl.(i))) lna in *)
-      hov 1
-        (str"cofix " ++ int i (* ++ spc() ++  str"{" ++
-         v 0 (prlist_with_sep spc (fun (na,ty,bd) ->
-           pr_name na ++ str":" ++ pr_constr (h-1) e ty ++
-           cut() ++ str":=" ++ pr_constr (h-1) e bd) (Array.to_list fixl)) ++
-         str"}"*))
-;;
 
 let ppctx e = 
   let opt e = function None -> str "" | Some t -> str" := " ++ pr_constr 10 e t in
