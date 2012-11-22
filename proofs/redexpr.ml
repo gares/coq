@@ -152,6 +152,8 @@ let declare_reduction s f =
   then error ("There is already a reduction expression of name "^s)
   else reduction_tab := Stringmap.add s f !reduction_tab
 
+let () = declare_reduction "mine" Conversion.red_whd
+
 let check_custom = function
   | ExtraRedExpr s ->
       if not (Stringmap.mem s !reduction_tab || Stringmap.mem s !red_expr_tab)
