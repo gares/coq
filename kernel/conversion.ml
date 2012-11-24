@@ -575,13 +575,13 @@ let whd env evars c =
     | HLambda (_,_,_,t) -> (* XXX n-ary lambdas in hconstr too! *)
         let rec nlam n acc t = match kind_of t with
           | HLambda (_,_,_,bo) -> nlam (n+1) (t::acc) bo
-          | _ -> n, List.rev acc, t in
+          | _ -> n, acc, t in
         let nlam, spine, bo = nlam 1 [hd] t in
         let rec eat_lam subs n c =
           if n = nlam then aux subs bo c
           else match Ctx.kind_of c with
           | (Znil | Zcase _ | Zfix _) ->
-             if n > 0 then aux subs (List.nth spine n) c else subs, hd, c
+             if n > 0 then aux subs (List.nth spine (nlam - n)) c else subs, hd, c
           | Zshift (_,k,c) -> eat_lam (Subs.shift k subs) n c
           | Zapp (_,args,c) ->
               let nargs = Array.length args in
