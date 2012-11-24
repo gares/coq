@@ -348,11 +348,15 @@ let get_nth_arg n (ctx as orig) =
         else
           let rstk =
             if n = 0 then rstk else (`App (Array.sub args 0 n) :: rstk) in
-          let after = Array.sub args (n + 1) (nargs - n - 1) in
+          let afterctx =
+            let len = nargs - n - 1 in
+            if len > 0 then 
+              Ctx.app (Array.sub args (n + 1) len) ctx
+            else ctx in
           let pctx = List.fold_left (fun c -> function
            `App a -> Ctx.app a c | `Shift n -> Ctx.shift n c)
             Ctx.nil rstk in
-          Some (pctx, args.(n)), append_stack after ctx
+          Some (pctx, args.(n)), afterctx
     | Zcase _ -> assert false
     | Zfix _ -> assert false
     | Znil -> None, orig in
