@@ -13,6 +13,9 @@ open Term
 open Univ
 open Environ
 
+(* when false, not hashconsing is performed, just for testing performances *)
+let interning = false
+
 let array_peq t1 t2 = t1 == t2 || Util.Array.for_all2 (==) t1 t2
 
 module Hclosure : sig
@@ -147,7 +150,7 @@ end = struct
       accu := combine !accu (hash t.(i));
     done;
     !accu
-  let hash_t_array t =
+  let hash_tv t =
     let accu = ref 0 in
     for i = 0 to Array.length t - 1 do
       accu := combine !accu (H.hash t.(i));
@@ -157,21 +160,22 @@ end = struct
   (* ctx constructor *)
   module Ctx = struct
   let nil = Znil
-  let app a c =
-(*     let h = combinesmall 17 (combine (hash_array a) (hash_ctx c)) in *)
-    let h = 0 in
-    Zapp (h,a,c)
-  let case ci m p c =
-(*   let h = combinesmall 18 (combine3 (hash m) (hash_t_array p) (hash_ctx c)) in *)
-          let h = 0 in
-    Zcase (h,ci,m,p,c)
-  let fix m c =
-(*     let h = combinesmall 19 (combine (hash m) (hash_ctx c)) in *)
-          let h = 0 in
-    Zfix (h,m,c)
-  let shift n c =
-    let h = combinesmall 20 (combine n (hash_ctx c)) in
-    Zshift (h,n,c)
+  let app = if not interning then (fun a c -> Zapp (0,a,c))
+    else (fun a c ->
+       let h = combinesmall 17 (combine (hash_array a) (hash_ctx c)) in
+       Zapp (h,a,c))
+  let case = if not interning then (fun ci m p c -> Zcase (0,ci,m,p,c))
+    else (fun ci m p c ->
+      let h = combinesmall 18 (combine3 (hash m) (hash_tv p) (hash_ctx c)) in
+      Zcase (h,ci,m,p,c))
+  let fix = if not interning then (fun m c -> Zfix (0,m,c))
+    else (fun m c ->
+      let h = combinesmall 19 (combine (hash m) (hash_ctx c)) in
+      Zfix (h,m,c))
+  let shift = if not interning then (fun n c -> Zshift (0,n,c))
+    else (fun n c ->
+      let h = combinesmall 20 (combine n (hash_ctx c)) in
+      Zshift (h,n,c))
   let kind_of c = c
   let equal c1 c2 =
     let h1 = hash_ctx c1 in let h2 = hash_ctx c2 in
@@ -187,25 +191,29 @@ end = struct
   (* subs constructors *)
   module Subs = struct
   let id n = ESID n
-  let cons a s =
-(*     let h = combinesmall 21 (combine (hash_array a) (hash_subs s)) in *)
-          let h = 0 in
-    CONS (h,a,s)
-  let shift n s =
-    if n = 0 then s
-    else match s with
-    | SHIFT (_,m,s) ->
-        let n = n + m in
-(*     let h = combinesmall 22 (combine n (hash_subs s)) in *)
-          let h = 0 in
-        SHIFT (h,n,s)
-    | _ ->
-(*     let h = combinesmall 22 (combine n (hash_subs s)) in *)
-          let h = 0 in
-        SHIFT (h,n,s)
-  let lift n s =
-    let h = combinesmall 23 (combine n (hash_subs s)) in
-    LIFT (h,n,s)
+  let cons = if not interning then (fun a s -> CONS (0,a,s))
+    else (fun a s ->
+      let h = combinesmall 21 (combine (hash_array a) (hash_subs s)) in
+      CONS (h,a,s))
+  let shift = if not interning then (fun n s -> 
+      if n = 0 then s
+      else match s with
+      | SHIFT (_,m,s) -> SHIFT (0,n + m,s)
+      | _ -> SHIFT (0,n,s))
+    else (fun n s ->
+      if n = 0 then s
+      else match s with
+      | SHIFT (_,m,s) ->
+          let n = n + m in
+          let h = combinesmall 22 (combine n (hash_subs s)) in
+          SHIFT (h,n,s)
+      | _ ->
+          let h = combinesmall 22 (combine n (hash_subs s)) in
+          SHIFT (h,n,s))
+  let lift = if not interning then (fun n s -> LIFT(0,n,s))
+    else (fun n s ->
+      let h = combinesmall 23 (combine n (hash_subs s)) in
+      LIFT (h,n,s))
   let kind_of s = s
   let equal s1 s2 =
     let h1 = hash_subs s2 in let h2 = hash_subs s2 in
@@ -213,10 +221,12 @@ end = struct
   end
 
   module Clos = struct
-  let intern s t c = 0, s, t ,c (*
-    let h =
-      combinesmall 24 (combine3 (hash_subs s) (Term.H.hash t) (hash_ctx c)) in
-    HashsetClos.repr h (h,s,t,c) clos_table *)
+  let intern =
+    if not interning then fun s t c -> 0, s, t ,c
+    else fun s t c ->
+      let h =
+        combinesmall 24 (combine3 (hash_subs s) (Term.H.hash t) (hash_ctx c)) in
+      HashsetClos.repr h (h,s,t,c) clos_table
 
   let extern c = c
 
@@ -338,7 +348,9 @@ end
 open Hclosure
 open Term.H
 
-let intern x = Obj.magic x
+let intern =
+  if not interning then Obj.magic
+  else intern
 
 let append_stack v s =
   if Array.length v = 0 then s else (*
