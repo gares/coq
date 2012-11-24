@@ -188,11 +188,21 @@ end = struct
   module Subs = struct
   let id n = ESID n
   let cons a s =
-    let h = combinesmall 21 (combine (hash_array a) (hash_subs s)) in
+(*     let h = combinesmall 21 (combine (hash_array a) (hash_subs s)) in *)
+          let h = 0 in
     CONS (h,a,s)
   let shift n s =
-    let h = combinesmall 22 (combine n (hash_subs s)) in
-    SHIFT (h,n,s)
+    if n = 0 then s
+    else match s with
+    | SHIFT (_,m,s) ->
+        let n = n + m in
+(*     let h = combinesmall 22 (combine n (hash_subs s)) in *)
+          let h = 0 in
+        SHIFT (h,n,s)
+    | _ ->
+(*     let h = combinesmall 22 (combine n (hash_subs s)) in *)
+          let h = 0 in
+        SHIFT (h,n,s)
   let lift n s =
     let h = combinesmall 23 (combine n (hash_subs s)) in
     LIFT (h,n,s)
@@ -203,10 +213,10 @@ end = struct
   end
 
   module Clos = struct
-  let intern s t c =
+  let intern s t c = 0, s, t ,c (*
     let h =
       combinesmall 24 (combine3 (hash_subs s) (Term.H.hash t) (hash_ctx c)) in
-    HashsetClos.repr h (h,s,t,c) clos_table
+    HashsetClos.repr h (h,s,t,c) clos_table *)
 
   let extern c = c
 
@@ -328,7 +338,7 @@ end
 open Hclosure
 open Term.H
 
-let mk_clos ?(subs=Subs.id 0) ?(ctx=Ctx.nil) t = Clos.intern subs t ctx
+let intern x = Obj.magic x
 
 let append_stack v s =
   if Array.length v = 0 then s else (*
@@ -382,9 +392,25 @@ let expand_rel k s =
   in
    aux_rel 0 k s
 
-let lift_closure k cl =
+let assoc_opt l v =
+  try Some (List.assoc v l)
+  with Not_found -> None
+
+let mk_clos ?(subs=Subs.id 0) ?(ctx=Ctx.nil) t =
+  match kind_of t with
+  | HRel i ->
+        (match expand_rel i subs with
+        | Inl(n,cl) ->
+            let _,subs, t, c = Clos.extern cl in
+            Clos.intern (Subs.shift n subs) t (Ctx.append c ctx)
+        | Inr(k,None) -> Clos.intern subs (intern (mkRel k)) ctx
+        | _ -> Clos.intern subs t ctx)
+  | _ -> Clos.intern subs t ctx
+
+let lift_closure_array k clv =
+  Array.map (fun cl ->
   let _,s,t,c = Clos.extern cl in
-  Clos.intern (Subs.shift k s) t c
+  Clos.intern (Subs.shift k s) t c) clv
 
 let rec get_args n e stk =
   match Ctx.kind_of stk with
@@ -437,10 +463,6 @@ and apply_subs s t = match kind_of t with
 and clos_to_constr c =
   let _,s,t,c = Clos.extern c in
   unzip (apply_subs s t) c
-
-let assoc_opt l v =
-  try Some (List.assoc v l)
-  with Not_found -> None
 
 let fix_body subs fix =
   let (reci,i),(_,_,bds as rdcl) = match kind_of fix with
@@ -546,13 +568,13 @@ let whd env evars c =
         | None, ctx -> subs, hd, ctx
         | Some(actx, a), ctx -> 
             let _, s, t, c = Clos.extern a in
-            assert(Ctx.equal c Ctx.nil);
-            aux s t (Ctx.fix (mk_clos ~subs ~ctx:actx hd) ctx))
+(*             assert(Ctx.equal c Ctx.nil); *)
+            aux s t (Ctx.append c (Ctx.fix (mk_clos ~subs ~ctx:actx hd) ctx)))
     | HConstruct (ind, k) ->
         let rec ctx_for_case depth n c = match Ctx.kind_of c with
           | Zapp (_,args,c) when n = 0 ->
               let args = if depth = 0 then args else
-                Array.map (lift_closure depth) args in
+                      lift_closure_array depth args in
               Ctx.app args (ctx_for_case depth n c)
           | Zapp (_,args,c) ->
               let nargs = Array.length args in
