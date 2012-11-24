@@ -431,7 +431,50 @@ open Pp
 let pp ?(depth=3) e x =
   Term.ll_pr_constr depth (Environ.rel_context e) x
 
+let pph ?depth e x = pp?depth e (extern x)
+
 let print cmds = prerr_endline (string_of_ppcmds cmds)
+
+let rec ps m e s =
+  if Subs.kind_of s = ESID 0 then str"-" else
+  let rec tol s = match Subs.kind_of s with
+  | SHIFT (_,n,s) -> `Shift n :: tol s
+  | ESID 0 -> []
+  | ESID n -> [`Id n]
+  | CONS (_,cv,s) -> `Cons cv :: tol s
+  | LIFT (_,n,s) -> `Lift n :: tol s in
+  str"{" ++ hv 1 (prlist_with_sep (fun () -> str";"++cut()) (function
+  | `Shift n -> str "S " ++ int n
+  | `Id n -> str"I " ++ int n
+  | `Lift n -> str"L " ++ int n
+  | `Cons v -> str"C " ++ prvect_with_sep spc (pcl m e) v) (tol s)) ++ str"}"
+
+and pc m e c =
+  if Ctx.kind_of c = Znil then str"-" else
+  let rec tol c = match Ctx.kind_of c with
+  | Znil -> []
+  | Zapp (_,a,c) -> `App a :: tol c
+  | Zfix (_,f,c) -> `Fix f :: tol c
+  | Zcase (_,ci,t,br,c) -> `Case (t,br) :: tol c
+  | Zshift (_,n,c) -> `Shift n :: tol c in
+  str"[" ++ hv 1 (prlist_with_sep (fun () -> str";"++cut()) (function 
+    | `App cv -> str"A " ++ prvect_with_sep spc (pcl m e) cv
+    | `Fix c -> str"F " ++ pcl m e c
+    | `Case (p,br) -> str"M " ++ pcl m e p ++ prvect_with_sep spc (pph e) br
+    | `Shift n -> str"S "++int n) 
+    (tol c)) ++ str"]"
+
+and pcl m e cl = if m = 0 then str"…" else let m = m-1 in
+ let _,s,t,c = Clos.extern cl in
+ if Subs.kind_of s = ESID 0 && Ctx.kind_of c = Znil then
+  hv 1 (str"(; " ++ pp e (extern t) ++ str" ;)")
+ else
+  hv 1 (str"(" ++ ps m e s ++ str";" ++ spc() ++
+                pp e (extern t) ++ str";" ++ spc() ++
+                pc m e c ++
+      str")")
+
+let print_status e s t c = print(pcl 3 e (Clos.intern s t c))
 
 let whd env evars c =
   let rel_context_len, rel_context =
