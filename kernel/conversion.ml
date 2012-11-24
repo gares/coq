@@ -515,7 +515,9 @@ let whd env evars c =
 	   | None -> e
 	   | Some body -> (id, body)::e)
        (named_context env) ~init:[] in
-  let rec aux subs hd ctx = match kind_of hd with
+  let rec aux subs hd ctx =
+(*     print_status env subs hd ctx; *)
+    match kind_of hd with
     | HRel i -> (match expand_rel i subs with
         | Inl(n,cl) ->
             let _,subs, t, c = Clos.extern cl in
