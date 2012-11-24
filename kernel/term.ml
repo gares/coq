@@ -1484,7 +1484,7 @@ let pr_con sp = str(string_of_label(con_label sp))
 
 let pr_rel_name e n =
   try let name, _, _= lookup_rel n e in pr_name name
-  with _ -> str"UNBOUND"
+  with _ -> str"__" ++ int (n - rel_context_length e)
 
 let rec pr_constr h e c = if h < 0 then str".." else match c with
   | HRel n -> pr_rel_name e n (*++str"("++int n++str")"*)
@@ -1527,14 +1527,7 @@ let rec pr_constr h e c = if h < 0 then str".." else match c with
          (Array.to_list bl) ++
       cut() ++ str"end")
   | HFix (_,(t,i),(lna,tl,bl)) ->
-(*       let fixl = Array.mapi (fun i na -> (na,t.(i),tl.(i),bl.(i))) lna in *)
-      (* FIX env *)
-      hov 1
-        (str"fix " ++ int i ++ spc() (* ++  str"{" ++
-         v 0 (prlist_with_sep spc (fun (na,i,ty,bd) ->
-           pr_name na ++ str"/" ++ int i ++ str":" ++ pr_constr (h-1) e ty ++
-           cut() ++ str":=" ++ pr_constr (h-1) e bd) (Array.to_list fixl)) ++
-         str"}"*))
+      hov 1 (str"fix " ++ int i ++ str" " ++ prvect_with_sep spc pr_name lna)
   | HCoFix(_,i,(lna,tl,bl)) ->
       (* FIX env *)
 (*       let fixl = Array.mapi (fun i na -> (na,tl.(i),bl.(i))) lna in *)
