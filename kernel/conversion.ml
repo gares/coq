@@ -637,11 +637,10 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
   empty_constraint
 
 let red_whd env evars t =
-  Term.H.reset ();
+  reset ();
   Clos.reset ();
   UF.reset ();
-  let c = mk_clos (Term.H.intern t) in
-  print (str "interned");
+  let c = mk_clos (intern t) in
   let n = whd env evars.Mini_evd.evars c in
   print (str "mas subs len " ++ int !len);
   unwind n
