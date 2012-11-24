@@ -348,17 +348,17 @@ let get_nth_arg n (ctx as orig) =
   strip_rec [] n ctx
 
 let expand_rel k s =
-  let rec aux lams k s = match Subs.kind_of s with
+  let rec aux_rel lams k s = match Subs.kind_of s with
     | CONS (_,def,_) when k <= Array.length def
                            -> Inl(lams,def.(Array.length def - k))
-    | CONS (_,v,l)           -> aux lams (k - Array.length v) l
+    | CONS (_,v,l)           -> aux_rel lams (k - Array.length v) l
     | LIFT (_,n,_) when k<=n -> Inr(lams+k,None)
-    | LIFT (_,n,l)           -> aux (n+lams) (k-n) l
-    | SHIFT (_,n,s)          -> aux (n+lams) k s
+    | LIFT (_,n,l)           -> aux_rel (n+lams) (k-n) l
+    | SHIFT (_,n,s)          -> aux_rel (n+lams) k s
     | ESID n when k<=n     -> Inr(lams+k,None)
     | ESID n               -> Inr(lams+k,Some (k-n))
   in
-   aux 0 k s
+   aux_rel 0 k s
 
 let lift_closure k cl =
   let _,s,t,c = Clos.extern cl in

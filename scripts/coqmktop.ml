@@ -258,13 +258,13 @@ let main () =
       (* native code *)
       if !top then failwith "no custom toplevel in native code !";
       let ocamloptexec = Filename.quote (Filename.concat camlbin "ocamlopt") in
-        ocamloptexec^" -linkall"
+        ocamloptexec^" -p -linkall"
     end else
       (* bytecode (we shunt ocamlmktop script which fails on win32) *)
       let ocamlmktoplib = if is_ocaml4
 	then " ocamlcommon.cma ocamlbytecomp.cma ocamltoplevel.cma"
 	else " toplevellib.cma" in
-      let ocamlcexec = Filename.quote (Filename.concat camlbin "ocamlc") in
+      let ocamlcexec = Filename.quote (Filename.concat camlbin "ocamlcp") in
       let ocamlccustom = Printf.sprintf "%s %s -linkall "
         ocamlcexec Coq_config.coqrunbyteflags in
       (if !top then ocamlccustom^ocamlmktoplib else ocamlccustom)
