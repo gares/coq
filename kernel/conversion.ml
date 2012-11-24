@@ -27,7 +27,7 @@ module Hclosure : sig
   type kind_of_ctx =
     | Znil
     | Zapp   of dummy * closure array * ctx
-    | Zcase  of dummy * case_info * closure * closure array * ctx
+    | Zcase  of dummy * case_info * closure * H.hconstr array * ctx
     | Zfix   of dummy * closure * ctx
     | Zshift of dummy * int * ctx
   type kind_of_subs =
@@ -39,7 +39,7 @@ module Hclosure : sig
   module Ctx : sig
     val nil : ctx
     val app : closure array -> ctx -> ctx
-    val case : case_info -> closure -> closure array -> ctx -> ctx
+    val case : case_info -> closure -> H.hconstr array -> ctx -> ctx
     val fix : closure -> ctx -> ctx
     val shift : int -> ctx -> ctx
     val kind_of : ctx -> kind_of_ctx
@@ -76,7 +76,7 @@ end = struct
   type ctx =
     | Znil
     | Zapp   of hash * closure array * ctx
-    | Zcase  of hash * case_info * closure * closure array * ctx
+    | Zcase  of hash * case_info * closure * H.hconstr array * ctx
     | Zfix   of hash * closure * ctx
     | Zshift of hash * int * ctx
   and subs =
@@ -89,7 +89,7 @@ end = struct
   type kind_of_ctx = ctx =
     | Znil
     | Zapp   of hash * closure array * ctx
-    | Zcase  of hash * case_info * closure * closure array * ctx
+    | Zcase  of hash * case_info * closure * H.hconstr array * ctx
     | Zfix   of hash * closure * ctx
     | Zshift of hash * int * ctx
   type kind_of_subs = subs =
@@ -146,18 +146,27 @@ end = struct
       accu := combine !accu (hash t.(i));
     done;
     !accu
+  let hash_t_array t =
+    let accu = ref 0 in
+    for i = 0 to Array.length t - 1 do
+      accu := combine !accu (H.hash t.(i));
+    done;
+    !accu
 
   (* ctx constructor *)
   module Ctx = struct
   let nil = Znil
   let app a c =
-    let h = combinesmall 17 (combine (hash_array a) (hash_ctx c)) in
+(*     let h = combinesmall 17 (combine (hash_array a) (hash_ctx c)) in *)
+    let h = 0 in
     Zapp (h,a,c)
   let case ci m p c =
-    let h = combinesmall 18 (combine3 (hash m) (hash_array p) (hash_ctx c)) in
+(*   let h = combinesmall 18 (combine3 (hash m) (hash_t_array p) (hash_ctx c)) in *)
+          let h = 0 in
     Zcase (h,ci,m,p,c)
   let fix m c =
-    let h = combinesmall 19 (combine (hash m) (hash_ctx c)) in
+(*     let h = combinesmall 19 (combine (hash m) (hash_ctx c)) in *)
+          let h = 0 in
     Zfix (h,m,c)
   let shift n c =
     let h = combinesmall 20 (combine n (hash_ctx c)) in
@@ -384,7 +393,9 @@ let rec unzip t c = match Ctx.kind_of c with
 (* very suboptimal, maybe wrong *)
   | Zshift (_,k,ctx) -> unzip (apply_subs (Subs.shift k (Subs.id 0)) (intern t)) ctx
   | Zcase (_,ci,p,br,ctx) ->
-     unzip (mkCase (ci,clos_to_constr p,t,Array.map clos_to_constr br)) ctx
+     let _,s,_,c = Clos.extern p in
+     let br = Array.map (fun t -> unzip (apply_subs s t) c) br in
+     unzip (mkCase (ci,clos_to_constr p,t,br)) ctx
   | Zfix (_,fx,ctx) ->
      unzip (clos_to_constr fx) (Ctx.app [|mk_clos (intern t)|] ctx)
 and apply_subs s t = match kind_of t with
@@ -514,8 +525,7 @@ let whd env evars c =
     | HCast (_,t,_,_) -> aux subs t ctx
     | HApp (_,f,a) -> aux subs f (Ctx.app (Array.map (mk_clos ~subs) a) ctx)
     | HCase (_,ci,p,t,br) ->
-        aux subs t
-          (Ctx.case ci (mk_clos ~subs p) (Array.map (mk_clos ~subs) br) ctx)
+        aux subs t (Ctx.case ci (mk_clos ~subs p) br ctx)
     | HFix (_,(ri,n),_) ->
         (match get_nth_arg n ctx with
         | None, ctx -> subs, hd, ctx
@@ -549,8 +559,9 @@ let whd env evars c =
         let rec find_iota depth c = match Ctx.kind_of c with
           | Zapp (_,_,c) -> find_iota depth c
           | Zshift (_,k,c) -> find_iota (depth + k) c
-          | Zcase (_,ci,_,br,_) ->
-              let _, subs, b, c = Clos.extern br.(k-1) in
+          | Zcase (_,ci,p,br,_) ->
+              let _, subs, _, c = Clos.extern p in
+              let b = br.(k-1) in
               assert(Ctx.equal c Ctx.nil);
               aux subs b (ctx_for_case depth ci.ci_npar ctx)
           | Zfix (_,fx,c) ->
