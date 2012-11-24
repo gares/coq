@@ -356,7 +356,14 @@ let get_nth_arg n (ctx as orig) =
     | Znil -> None, orig in
   strip_rec [] n ctx
 
+let rec len_subs s n = match Subs.kind_of s with
+  | LIFT(_,_,s) |CONS (_,_,s) | SHIFT(_,_,s) -> len_subs s (n+1)
+  | _ -> n
+
+let len = ref 0;;
+
 let expand_rel k s =
+(*   len := max !len (len_subs s 0); *)
   let rec aux_rel lams k s = match Subs.kind_of s with
     | CONS (_,def,_) when k <= Array.length def
                            -> Inl(lams,def.(Array.length def - k))
@@ -636,5 +643,5 @@ let red_whd env evars t =
   let c = mk_clos (Term.H.intern t) in
   print (str "interned");
   let n = whd env evars.Mini_evd.evars c in
-  print (str "reduced");
+  print (str "mas subs len " ++ int !len);
   unwind n
