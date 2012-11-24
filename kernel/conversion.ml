@@ -59,6 +59,7 @@ module Hclosure : sig
     val hash : closure -> int
     val compare : closure -> closure -> int
     val reset : unit -> unit 
+    val distribution : unit -> (closure * int) list list
 
     val intern : subs -> hconstr -> ctx -> closure
     val extern : closure -> dummy * subs * hconstr * ctx
@@ -220,6 +221,7 @@ end = struct
       if diff = 0 then Pervasives.compare c1 c2 else diff
 
   let reset = reset
+  let distribution () = HashsetClos.distribution clos_table
   end
 
   module Table = Hashtbl.Make(struct
@@ -643,4 +645,8 @@ let red_whd env evars t =
   let c = mk_clos (intern t) in
   let n = whd env evars.Mini_evd.evars c in
   print (str "mas subs len " ++ int !len);
+(*
+  List.iter (fun l -> Printf.eprintf "%d\n" (List.length l))
+    (Clos.distribution ());
+*)
   unwind n
