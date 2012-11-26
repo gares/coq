@@ -126,8 +126,83 @@ end = struct
   let equal_closure (_,s1,t1,c1) (_,s2,t2,c2) =
     Term.H.equal t1 t2 && equal_subs s1 s2 && equal_ctx c1 c2
 
-  module HashsetClos = Hashset.Make(
-    struct type t = closure let equal = equal_closure end)
+  module HashsetClos = struct
+
+    type elt = closure
+
+    type bucketlist = Empty | Cons of elt * int * bucketlist
+
+    type t = {
+      mutable size : int;
+      mutable data : bucketlist array; }
+
+    let create s =
+      let s = min (max 1 s) Sys.max_array_length in
+      { size = 0; data = Array.make s Empty }
+
+    let reset s t =
+      let t' = create s in t.size <- t'.size; t.data <- t'.data
+
+    let resize table =
+      let odata = table.data in
+      let osize = Array.length odata in
+      let nsize = min (2 * osize + 1) Sys.max_array_length in
+      if nsize <> osize then begin
+        let ndata = Array.create nsize Empty in
+        let rec insert_bucket = function
+        | Empty -> ()
+        | Cons (key, hash, rest) ->
+            let nidx = abs hash mod nsize in
+            let obucket = ndata.(nidx) in
+            ndata.(nidx) <- Cons (key, hash, obucket);
+            insert_bucket rest
+        in
+        for i = 0 to osize - 1 do insert_bucket odata.(i) done;
+        table.data <- ndata
+      end
+
+    let add hash key table =
+      let odata = table.data in
+      let osize = Array.length odata in
+      let i = abs hash mod osize in
+      odata.(i) <- Cons (key, hash, odata.(i));
+      table.size <- table.size + 1;
+      if table.size > osize lsl 1 then resize table
+
+    let find_rec hash key table bucket =
+      let rec aux = function
+        | Empty ->
+          add hash key table; key
+        | Cons (k, h, rest) ->
+          if hash == h && equal_closure key k then k else aux rest
+      in
+      aux bucket
+
+    let repr hash key table =
+      let odata = table.data in
+      let osize = Array.length odata in
+      let i = abs hash mod osize in
+      match odata.(i) with
+        |	Empty -> add hash key table; key
+        | Cons (k1, h1, rest1) ->
+          if hash == h1 && equal_closure key k1 then k1 else
+            match rest1 with
+              | Empty -> add hash key table; key
+              | Cons (k2, h2, rest2) ->
+                if hash == h2 && equal_closure key k2 then k2 else
+                  match rest2 with
+                    | Empty -> add hash key table; key
+                    | Cons (k3, h3, rest3) ->
+                      if hash == h2 && equal_closure key k3 then k3
+                      else find_rec hash key table rest3
+
+    let distribution table =
+      let rec tol = function Empty -> [] | Cons (v,h,l) -> (v,h)::tol l in
+      List.fold_left (fun acc -> function
+        | Empty -> acc
+        | Cons _ as l -> tol l :: acc)
+      [] (Array.to_list table.data)
+  end
 
   let clos_table = HashsetClos.create 19991
   let reset () = HashsetClos.reset 19991 clos_table
