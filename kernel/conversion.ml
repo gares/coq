@@ -326,6 +326,7 @@ module UF : sig
   open Hclosure
 
   val find : closure -> closure
+  val find_smaller : closure -> closure
   val union : smaller:closure -> closure -> unit
   val partition : closure -> closure -> unit
   val same : closure -> closure -> [`Yes | `No | `Maybe of closure * closure]
@@ -382,6 +383,8 @@ end = struct
     if Clos.equal rx ry then `Yes
     else if UFCset.mem rx (diff_of ry) then `No
     else `Maybe (smallest_of rx,smallest_of ry)
+
+  let find_smaller x = smallest_of (find x)
 
   let reset () =
     HT.clear rank;
