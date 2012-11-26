@@ -742,9 +742,14 @@ let red_whd env evars t =
   UF.reset ();
   let c = mk_clos (intern t) in
   let n = whd env evars.Mini_evd.evars c in
-  print (str "mas subs len " ++ int !len);
 (*
-  List.iter (fun l -> Printf.eprintf "%d\n" (List.length l))
+  print (str "mas subs len " ++ int !len);
+  let m = ref Intmap.empty in
+  List.iter (fun l ->
+     let n = List.length l in
+     try let k = Intmap.find n !m in m := Intmap.add n (k+1) !m
+     with Not_found -> m := Intmap.add n 1 !m)
     (Clos.distribution ());
+  Intmap.iter (fun n k -> Printf.eprintf "%4n %n\n" n k ) !m;
 *)
   unwind n
