@@ -346,32 +346,6 @@ let intern =
   if not interning then Obj.magic
   else intern
 
-let get_nth_arg n (ctx as orig) =
-  (* XXX check if it can be coded as for match *)
-  let rec strip_rec rstk n ctx = match Ctx.kind_of ctx with
-    | Zshift (_,s,ctx) -> strip_rec (`Shift s :: rstk) n ctx
-    | Zapp (_,args,ctx) ->
-        let nargs = Array.length args in
-        if n >= nargs
-        then
-          strip_rec (`App args :: rstk) (n - nargs) ctx
-        else
-          let rstk =
-            if n = 0 then rstk else (`App (Array.sub args 0 n) :: rstk) in
-          let afterctx =
-            let len = nargs - n - 1 in
-            if len > 0 then 
-              Ctx.app (Array.sub args (n + 1) len) ctx
-            else ctx in
-          let pctx = List.fold_left (fun c -> function
-           `App a -> Ctx.app a c | `Shift n -> Ctx.shift n c)
-            Ctx.nil rstk in
-          Some (pctx, args.(n)), afterctx
-    | Zcase _ -> assert false
-    | Zfix _ -> assert false
-    | Znil -> None, orig in
-  strip_rec [] n ctx
-
 let rec len_subs s n = match Subs.kind_of s with
   | LIFT(_,_,s) |CONS (_,_,s) | SHIFT(_,_,s) -> len_subs s (n+1)
   | _ -> n
@@ -562,12 +536,35 @@ let whd env evars c =
     | HCase (_,ci,p,t,br) ->
         aux subs t
           (Ctx.case ci (mk_clos ~subs p) (Array.map (mk_clos ~subs) br) ctx)
-    | HFix (_,(ri,n),_) ->
-        (match get_nth_arg n ctx with
-        | None, ctx -> subs, hd, ctx
-        | Some(actx, a), ctx -> 
-            let _, s, t, c = Clos.extern a in
-            aux s t (Ctx.append c (Ctx.fix (mk_clos ~subs ~ctx:actx hd) ctx)))
+    | HFix (_,(_,rarg),_) ->
+        let rec fix_params n c = if n <= 0 then Ctx.nil else
+          match Ctx.kind_of c with
+          | Zapp (_, args, c) ->
+              let nargs = Array.length args in
+              if n >= nargs then Ctx.app args (fix_params (n - nargs) c)
+              else Ctx.app (Array.sub args 0 n) Ctx.nil
+(*           | Zshift (_,k,c) -> Ctx.shift k (fix_params n c) *)
+          | Znil -> assert false
+          | Zcase _ -> assert false
+          | Zfix _ -> assert false in
+        let rec find_arg n c = match Ctx.kind_of c with
+          | Znil -> subs, hd, ctx
+          | Zapp (_,args,c) ->
+              let nargs = Array.length args in
+              if n >= nargs then find_arg (n - nargs) c
+              else
+                let afterctx =
+                  let after = nargs - n - 1 in
+                  if after > 0 then Ctx.app (Array.sub args (n + 1) after) c
+                  else c in
+                let _, s, t, c = Clos.extern args.(n) in
+                aux s t (Ctx.append c 
+                  (Ctx.fix (mk_clos ~subs ~ctx:(fix_params (rarg-1) ctx) hd)
+                  afterctx))
+(*           | Zshift (_,_,c) -> find_arg n c *)
+          | Zcase _ -> assert false
+          | Zfix _ -> assert false in
+        find_arg rarg ctx
     | HConstruct (ind, k) ->
         let rec ctx_for_case depth n c = match Ctx.kind_of c with
           | Zapp (_,args,c) when n = 0 ->
