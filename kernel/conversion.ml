@@ -32,7 +32,8 @@ module Hclosure : sig
     | Zapp   of dummy * closure array * ctx
     | Zcase  of dummy * case_info * closure * closure array * ctx
     | Zfix   of dummy * closure * ctx
-    | Zshift of dummy * int * ctx
+(*     | Zshift of dummy * int * ctx *)
+    | Zupdate of dummy * (closure array * int) * ctx
   type kind_of_subs =
     | ESID  of int
     | CONS  of dummy * closure array * subs
@@ -44,7 +45,8 @@ module Hclosure : sig
     val app : closure array -> ctx -> ctx
     val case : case_info -> closure -> closure array -> ctx -> ctx
     val fix : closure -> ctx -> ctx
-    val shift : int -> ctx -> ctx
+(*     val shift : int -> ctx -> ctx *)
+    val update : (closure array * int) -> ctx -> ctx
     val kind_of : ctx -> kind_of_ctx
     val equal : ctx -> ctx -> bool
     val append : ctx -> ctx -> ctx
@@ -82,7 +84,8 @@ end = struct
     | Zapp   of hash * closure array * ctx
     | Zcase  of hash * case_info * closure * closure array * ctx
     | Zfix   of hash * closure * ctx
-    | Zshift of hash * int * ctx
+(*     | Zshift of hash * int * ctx *)
+    | Zupdate of hash * (closure array * int) * ctx
   and subs =
     | ESID  of int
     | CONS  of hash * closure array * subs
@@ -95,7 +98,8 @@ end = struct
     | Zapp   of hash * closure array * ctx
     | Zcase  of hash * case_info * closure * closure array * ctx
     | Zfix   of hash * closure * ctx
-    | Zshift of hash * int * ctx
+(*     | Zshift of hash * int * ctx *)
+    | Zupdate of hash * (closure array * int) * ctx
   type kind_of_subs = subs =
     | ESID  of int
     | CONS  of hash * closure array * subs
@@ -111,7 +115,8 @@ end = struct
     | Zcase (_,_,t1,a1,c1), Zcase (_,_,t2,a2,c2) ->
         t1 == t2 && array_peq a1 a2 && equal_ctx c1 c2
     | Zfix (_,f1,c1), Zfix (_,f2,c2) -> f1 == f2 && equal_ctx c1 c2
-    | Zshift (_,n1,c1), Zshift (_,n2,c2) -> n1 = n2 && equal_ctx c1 c2
+(*     | Zshift (_,n1,c1), Zshift (_,n2,c2) -> n1 = n2 && equal_ctx c1 c2 *)
+    | Zupdate _, _ -> assert false
     | _ -> false
 
   (* XXX think about comparing the hash *)
@@ -209,7 +214,8 @@ end = struct
 
   let hash_ctx = function
     | Znil -> 0
-    | Zapp (h,_,_) | Zcase (h,_,_,_,_) | Zfix (h,_,_) | Zshift (h,_,_) -> h
+    | Zapp (h,_,_) | Zcase (h,_,_,_,_) | Zfix (h,_,_) (*| Zshift (h,_,_)*) |
+    Zupdate (h,_,_) -> h
 
   let hash_subs = function
     | ESID n -> n
@@ -241,10 +247,16 @@ end = struct
     else (fun m c ->
       let h = combinesmall 19 (combine (hash m) (hash_ctx c)) in
       Zfix (h,m,c))
+(*
   let shift = if not interning then (fun n c -> Zshift (0,n,c))
     else (fun n c ->
       let h = combinesmall 20 (combine n (hash_ctx c)) in
       Zshift (h,n,c))
+*)
+  let update = if not interning then fun f c -> Zupdate (0,f,c)
+    else  (fun (a,i as f) c ->
+      let h = combinesmall 25 (combine (hash_ctx c) i) in
+      Zupdate (h,f,c))
   let kind_of c = c
   let equal c1 c2 =
     let h1 = hash_ctx c1 in let h2 = hash_ctx c2 in
@@ -254,7 +266,8 @@ end = struct
     | Zapp (_,a,c) -> app a (append c c2)
     | Zcase (_,ci,m,p,c) -> case ci m p (append c c2)
     | Zfix (_,m,c) -> fix m (append c c2)
-    | Zshift (_,n,c) -> shift n (append c c2)
+(*     | Zshift (_,n,c) -> shift n (append c c2) *)
+    | Zupdate (_,f,c) -> update f (append c c2)
   end
 
   (* subs constructors *)
@@ -295,13 +308,16 @@ end = struct
     else fun s t c ->
       let h =
         combinesmall 24 (combine3 (hash_subs s) (Term.H.hash t) (hash_ctx c)) in
-      HashsetClos.repr h (h,s,t,c) clos_table
+      let k = h, s, t, c in
+(*       let k' = HashsetClos.repr h k clos_table in *)
+      let k' = k in
+      (*if k != k' then incr hits else incr misses;*) k'
 
   let extern c = c
 
   let hash = hash
 
-  let equal c1 c2 = c1 == c2
+  let equal c1 c2 = (*c1 == c2*) c1 = c2
 
   let compare c1 c2 =
     if equal c1 c2 then 0
@@ -434,7 +450,8 @@ let expand_rel k s =
 (*   len := max !len (len_subs s 0); *)
   let rec aux_rel lams k s = match Subs.kind_of s with
     | CONS (_,def,_) when k <= Array.length def
-                           -> Inl(lams,def.(Array.length def - k))
+                           -> Inl(lams,def.(Array.length def - k),
+                              (def, Array.length def - k))
     | CONS (_,v,l)           -> aux_rel lams (k - Array.length v) l
     | LIFT (_,n,_) when k<=n -> Inr(lams+k,None)
     | LIFT (_,n,l)           -> aux_rel (n+lams) (k-n) l
@@ -449,15 +466,15 @@ let assoc_opt l v =
   with Not_found -> None
 
 let mk_clos ?(subs=Subs.id 0) ?(ctx=Ctx.nil) t =
-  match kind_of t with
+  (*match kind_of t with
   | HRel i ->
         (match expand_rel i subs with
-        | Inl(n,cl) ->
+        | Inl(n,cl,_) ->
             let _,subs, t, c = Clos.extern cl in
             Clos.intern (Subs.shift n subs) t (Ctx.append c ctx)
         | Inr(k,None) -> Clos.intern subs (intern (mkRel k)) ctx
         | _ -> Clos.intern subs t ctx)
-  | _ -> Clos.intern subs t ctx
+  | _ ->*) Clos.intern subs t ctx
 
 let lift_closure_array k clv =
   Array.map (fun cl ->
@@ -466,7 +483,7 @@ let lift_closure_array k clv =
 
 let rec get_args n e stk =
   match Ctx.kind_of stk with
-    | Zshift(_,k,s) -> get_args n (Subs.shift k e) s
+(*     | Zshift(_,k,s) -> get_args n (Subs.shift k e) s *)
     | Zapp(_,l,s) ->
         let na = Array.length l in
         if n = na then (Inl (Subs.cons l e), s)
@@ -482,11 +499,12 @@ let rec unzip t c = match Ctx.kind_of c with
   | Znil -> t
   | Zapp (_,a,ctx) -> unzip (mkApp (t, Array.map clos_to_constr a)) ctx
 (* very suboptimal, maybe wrong *)
-  | Zshift (_,k,ctx) -> unzip (apply_subs (Subs.shift k (Subs.id 0)) (intern t)) ctx
+(*   | Zshift (_,k,ctx) -> unzip (apply_subs (Subs.shift k (Subs.id 0)) (intern  t)) ctx *)
   | Zcase (_,ci,p,br,ctx) ->
      unzip (mkCase (ci,clos_to_constr p,t,Array.map clos_to_constr br)) ctx
   | Zfix (_,fx,ctx) ->
      unzip (clos_to_constr fx) (Ctx.app [|mk_clos (intern t)|] ctx)
+  | Zupdate (_,_,ctx) -> unzip t ctx
 and apply_subs s t = match kind_of t with
   | HConst _
   | HInd _
@@ -507,7 +525,7 @@ and apply_subs s t = match kind_of t with
   | HCoFix c -> extern t (* XXX *)
   | HRel i ->
       match expand_rel i s with
-      | Inl (n, t) -> lift n (clos_to_constr t)
+      | Inl (n, t,_) -> lift n (clos_to_constr t)
       | Inr (k, None) -> mkRel k
       | Inr (k, Some p) -> lift (k-p) (mkRel p)
 and clos_to_constr c =
@@ -552,7 +570,7 @@ and pc m e c =
   | Zapp (_,a,c) -> `App a :: tol c
   | Zfix (_,f,c) -> `Fix f :: tol c
   | Zcase (_,ci,t,br,c) -> `Case (t,br) :: tol c
-  | Zshift (_,n,c) -> `Shift n :: tol c in
+(*   | Zshift (_,n,c) -> `Shift n :: tol c *) in
   str"[" ++ hv 1 (prlist_with_sep (fun () -> str";"++cut()) (function 
     | `App cv -> str"A " ++ prvect_with_sep spc (pcl m e) cv
     | `Fix c -> str"F " ++ pcl m e c
@@ -591,9 +609,9 @@ let whd env evars c =
 (*     print_status env subs hd ctx; *)
     match kind_of hd with
     | HRel i -> (match expand_rel i subs with
-        | Inl(n,cl) ->
+        | Inl(n,cl,update) ->
             let _,subs, t, c = Clos.extern cl in
-            aux (Subs.shift n subs) t (Ctx.append c ctx)
+            aux (Subs.shift n subs) t (Ctx.append c (Ctx.update update ctx))
         | Inr(k,None) -> subs, intern (mkRel k), ctx
         | Inr(k,Some p) ->
             let subs = Subs.shift (k-p) subs in
@@ -640,6 +658,8 @@ let whd env evars c =
                   (Ctx.fix (mk_clos ~subs ~ctx:(fix_params (rarg-1) ctx) hd)
                   afterctx))
 (*           | Zshift (_,_,c) -> find_arg n c *)
+          | Zupdate (_,_,c) -> find_arg n c (* HERE WE SHOULD INSERT THE ZUPDATE
+          *)
           | Zcase _ -> assert false
           | Zfix _ -> assert false in
         find_arg rarg ctx
@@ -656,19 +676,25 @@ let whd env evars c =
               else
                 let after = Array.sub args n (nargs - n) in
                 ctx_for_case depth 0 (Ctx.app after c)
-          | Zshift (_,k,c) -> ctx_for_case (depth - k) n c
+(*           | Zshift (_,k,c) -> ctx_for_case (depth - k) n c *)
           | Zcase (_,_,_,_,c) -> c
+          | Zupdate (_,_,c) -> ctx_for_case depth n c (* CHECK *)
           | Znil -> assert false
           | Zfix _ -> assert false in
         let rec ctx_for_fix_arg args = match Ctx.kind_of args with
           | Zfix (_,_,c) -> Ctx.nil
           | Zapp (_,a,c) -> Ctx.app a (ctx_for_fix_arg c)
-          | Zshift (_,k,c) -> Ctx.shift k (ctx_for_fix_arg c)
+(*           | Zshift (_,k,c) -> Ctx.shift k (ctx_for_fix_arg c) *)
+          | Zupdate (_,_,c) -> ctx_for_fix_arg c (* CHECK *)
           | Zcase _ -> assert false
           | Znil _ -> assert false in
+        let rec ctx_for_update c = match Ctx.kind_of c with
+          | Zupdate _ -> Ctx.nil
+          | Zapp (_,a,c) -> Ctx.app a (ctx_for_update c)
+          | _ -> assert false in
         let rec find_iota depth c = match Ctx.kind_of c with
           | Zapp (_,_,c) -> find_iota depth c
-          | Zshift (_,k,c) -> find_iota (depth + k) c
+(*           | Zshift (_,k,c) -> find_iota (depth + k) c *)
           | Zcase (_,ci,p,br,_) ->
               let _, subs, b, c = Clos.extern br.(k-1) in
               assert(Ctx.equal c Ctx.nil);
@@ -678,6 +704,10 @@ let whd env evars c =
               let fisubs, fi = fix_body fxsubs fxbo in
               aux fisubs fi (Ctx.append fctx
                 (Ctx.app [|mk_clos ~subs ~ctx:(ctx_for_fix_arg ctx) hd|] c))
+          | Zupdate (_,(a,i),c) ->
+              let hnf = mk_clos ~subs ~ctx:(ctx_for_update ctx) hd in
+              a.(i) <- hnf;
+              find_iota depth c 
           | Znil -> subs, hd, ctx
         in
           find_iota 0 ctx
@@ -692,7 +722,7 @@ let whd env evars c =
           | (Znil | Zcase _ | Zfix _) ->
              if n > 0 then aux subs (List.nth spine (nlam - n)) c
              else subs, hd, c
-          | Zshift (_,k,c) -> eat_lam (Subs.shift k subs) n c
+(*           | Zshift (_,k,c) -> eat_lam (Subs.shift k subs) n c *)
           | Zapp (_,args,c) ->
               let nargs = Array.length args in
               if n + nargs = nlam then
