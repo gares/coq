@@ -20,25 +20,18 @@ Let n := $1.
 Let test := (fact n - fact n).
 
 Fixpoint fact_s n := match n with 0 => 1 | S m => n * fact_s m end.
-Let n_s := $2.
+Let n_s := $1.
 Let test_s := (fact_s n_s - fact_s n_s).
 
 Goal True.
 
-idtac "        ------------ with no sharing --------------".
-idtac "----> conversion".
-Time Eval mine in test.
-idtac "".
-idtac "----> closure".
-Time Eval lazy in test.
-idtac "".
+idtac "------------ $2, without sharing --------------".
+Time Eval $2 in test.
 
-idtac "        ------------- with sharing ---------------".
-idtac "----> conversion".
-Time Eval mine in test_s.
-idtac "".
-idtac "----> closure".
-Time Eval lazy in test_s.
+idtac "------------- $2, with sharing ---------------".
+idtac "----> $2".
+Time Eval $2 in test_s.
+
 Abort. 
 EOT
 }
@@ -50,19 +43,23 @@ build kernel/closure
 echo building Coq
 make -j2 states bin/coqtop.byte > /tmp/coqlog 2>&1 || \
 	(cat /tmp/coqlog; exit 1)
+grep warning /tmp/coqlog || true
 
-OPT=8
-BYTE=8
+OPT=9
+BYTE=9
 
 echo 'running *************** opt ' $OPT ' *****************'
-mktest $OPT $OPT
+mktest $OPT mine
 OCAMLRUNPARAM='s=33554432,o=120' bin/coqtop -compile /tmp/test
-
-echo generating gprof.out
-gprof bin/coqtop > gprof.out
+echo generating gprof.mine.out
+gprof bin/coqtop > gprof.mine.out
+mktest $OPT lazy
+OCAMLRUNPARAM='s=33554432,o=120' bin/coqtop -compile /tmp/test
+echo generating gprof.lazy.out
+gprof bin/coqtop > gprof.lazy.out
 
 echo 'running *************** byte ' $BYTE ' ******************'
-mktest $BYTE $BYTE
+mktest $BYTE mine
 OCAMLRUNPARAM='s=33554432,o=120' bin/coqtop.byte -compile /tmp/test
 
 echo generating annot.out
@@ -70,4 +67,7 @@ echo '(* vim: set ft=ocaml: *)' > annot.out
 ocamlprof kernel/conversion.ml >> annot.out
 ocamlprof kernel/closure.ml >> annot.out
 
-echo type: gvim -o gprof.out annot.out
+mktest $BYTE lazy
+OCAMLRUNPARAM='s=33554432,o=120' bin/coqtop.byte -compile /tmp/test
+
+echo type: gvim -o gprof.mine.out annot.out
