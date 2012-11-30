@@ -608,7 +608,8 @@ let whd env evars c =
 	   | Some body -> (id, body)::e)
        (named_context env) ~init:[] in
   let rec aux subs hd ctx =
-(*     print_status env subs hd ctx; *)
+(*   print_status env subs hd ctx; *)
+(*   print (pp ~depth:100 env (clos_to_constr (Clos.intern  subs hd ctx))); *)
     match kind_of hd with
     | HRel i -> (match expand_rel i subs with
         | Inl(n,cl,update) ->
