@@ -614,6 +614,7 @@ let whd env evars c =
     | HRel i -> (match expand_rel i subs with
         | Inl(n,cl,update) ->
             let _,subs, t, c = Clos.extern cl in
+            let v,j = update in v.(j) <- mk_clos (intern (mkProp));
             aux (Subs.shift n subs) t (Ctx.append c (Ctx.update update ctx))
         | Inr(k,None) -> subs, intern (mkRel k), ctx
         | Inr(k,Some p) ->
@@ -706,9 +707,9 @@ let whd env evars c =
               let _, fxsubs, fxbo, fctx = Clos.extern fx in
               let fisubs, fi = fix_body fxsubs fxbo in
               aux fisubs fi (Ctx.append fctx
-                (Ctx.app [|mk_clos ~subs ~ctx:(ctx_for_fix_arg ctx) hd|] c))
+                (Ctx.app [|mk_clos (*~subs*) ~ctx:(ctx_for_fix_arg ctx) hd|] c))
           | Zupdate (_,(a,i),c) ->
-              let hnf = mk_clos ~subs ~ctx:(ctx_for_update ctx) hd in
+              let hnf = mk_clos (*~subs*) ~ctx:(ctx_for_update ctx) hd in
               a.(i) <- hnf;
               find_iota depth c 
           | Znil -> subs, hd, ctx
@@ -742,7 +743,7 @@ let whd env evars c =
           try Some (constant_value env c) with NotEvaluableConst _ -> None in
         (match bo with
         | None -> subs, hd, ctx
-        | Some bo -> aux subs (intern bo) ctx)
+        | Some bo -> aux (*subs*)(Subs.id 0) (intern bo) ctx)
     | HSort _ 
     | HMeta _ 
     | HProd _ 
