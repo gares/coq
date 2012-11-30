@@ -455,45 +455,45 @@ let zupdate m s =
 
 (* Closure optimization: *)
 let rec compact_constr (lg, subs as s) c k =
-  match kind_of_term c with
-      Rel i ->
+  match kind_of_constr c with
+      HRel i ->
         if i < k then c,s else
           (try mkRel (k + lg - List.index (i-k+1) subs), (lg,subs)
           with Not_found -> mkRel (k+lg), (lg+1, (i-k+1)::subs))
-    | (Sort _|Var _|Meta _|Ind _|Const _|Construct _) -> c,s
-    | Evar(ev,v) ->
+    | (HSort _|HVar _|HMeta _|HInd _|HConst _|HConstruct _) -> c,s
+    | HEvar(_,ev,v) ->
         let (v',s) = compact_vect s v k in
         if v==v' then c,s else mkEvar(ev,v'),s
-    | Cast(a,ck,b) ->
+    | HCast(_,a,ck,b) ->
         let (a',s) = compact_constr s a k in
         let (b',s) = compact_constr s b k in
         if a==a' && b==b' then c,s else mkCast(a', ck, b'), s
-    | App(f,v) ->
+    | HApp(_,f,v) ->
         let (f',s) = compact_constr s f k in
         let (v',s) = compact_vect s v k in
         if f==f' && v==v' then c,s else mkApp(f',v'), s
-    | Lambda(n,a,b) ->
+    | HLambda(_,n,a,b) ->
         let (a',s) = compact_constr s a k in
         let (b',s) = compact_constr s b (k+1) in
         if a==a' && b==b' then c,s else mkLambda(n,a',b'), s
-    | Prod(n,a,b) ->
+    | HProd(_,n,a,b) ->
         let (a',s) = compact_constr s a k in
         let (b',s) = compact_constr s b (k+1) in
         if a==a' && b==b' then c,s else mkProd(n,a',b'), s
-    | LetIn(n,a,ty,b) ->
+    | HLetIn(_,n,a,ty,b) ->
         let (a',s) = compact_constr s a k in
         let (ty',s) = compact_constr s ty k in
         let (b',s) = compact_constr s b (k+1) in
         if a==a' && ty==ty' && b==b' then c,s else mkLetIn(n,a',ty',b'), s
-    | Fix(fi,(na,ty,bd)) ->
+    | HFix(_,fi,(na,ty,bd)) ->
         let (ty',s) = compact_vect s ty k in
         let (bd',s) = compact_vect s bd (k+Array.length ty) in
         if ty==ty' && bd==bd' then c,s else mkFix(fi,(na,ty',bd')), s
-    | CoFix(i,(na,ty,bd)) ->
+    | HCoFix(_,i,(na,ty,bd)) ->
         let (ty',s) = compact_vect s ty k in
         let (bd',s) = compact_vect s bd (k+Array.length ty) in
         if ty==ty' && bd==bd' then c,s else mkCoFix(i,(na,ty',bd')), s
-    | Case(ci,p,a,br) ->
+    | HCase(_,ci,p,a,br) ->
         let (p',s) = compact_constr s p k in
         let (a',s) = compact_constr s a k in
         let (br',s) = compact_vect s br k in
@@ -535,14 +535,14 @@ let destFLambda clos_fun t =
 (* Optimization: do not enclose variables in a closure.
    Makes variable access much faster *)
 let mk_clos e t =
-  match kind_of_term t with
-    | Rel i -> clos_rel e i
-    | Var x -> { norm = Red; term = FFlex (VarKey x) }
-    | Const c -> { norm = Red; term = FFlex (ConstKey c) }
-    | Meta _ | Sort _ ->  { norm = Norm; term = FAtom t }
-    | Ind kn -> { norm = Norm; term = FInd kn }
-    | Construct kn -> { norm = Cstr; term = FConstruct kn }
-    | (CoFix _|Lambda _|Fix _|Prod _|Evar _|App _|Case _|Cast _|LetIn _) ->
+  match kind_of_constr t with
+    | HRel i -> clos_rel e i
+    | HVar x -> { norm = Red; term = FFlex (VarKey x) }
+    | HConst c -> { norm = Red; term = FFlex (ConstKey c) }
+    | HMeta _ | HSort _ ->  { norm = Norm; term = FAtom t }
+    | HInd kn -> { norm = Norm; term = FInd kn }
+    | HConstruct kn -> { norm = Cstr; term = FConstruct kn }
+    | (HCoFix _|HLambda _|HFix _|HProd _|HEvar _|HApp _|HCase _|HCast _|HLetIn _) ->
         {norm = Red; term = FCLOS(t,e)}
 
 let mk_clos_vect env v = Array.map (mk_clos env) v
@@ -552,33 +552,33 @@ let mk_clos_vect env v = Array.map (mk_clos env) v
    subterms.
    Could be used insted of mk_clos. *)
 let mk_clos_deep clos_fun env t =
-  match kind_of_term t with
-    | (Rel _|Ind _|Const _|Construct _|Var _|Meta _ | Sort _) ->
+  match kind_of_constr t with
+    | (HRel _|HInd _|HConst _|HConstruct _|HVar _|HMeta _ | HSort _) ->
         mk_clos env t
-    | Cast (a,k,b) ->
+    | HCast (_,a,k,b) ->
         { norm = Red;
           term = FCast (clos_fun env a, k, clos_fun env b)}
-    | App (f,v) ->
+    | HApp (_,f,v) ->
         { norm = Red;
 	  term = FApp (clos_fun env f, Array.map (clos_fun env) v) }
-    | Case (ci,p,c,v) ->
+    | HCase (_,ci,p,c,v) ->
         { norm = Red;
 	  term = FCases (ci, clos_fun env p, clos_fun env c,
 			 Array.map (clos_fun env) v) }
-    | Fix fx ->
-        { norm = Cstr; term = FFix (fx, env) }
-    | CoFix cfx ->
-        { norm = Cstr; term = FCoFix(cfx,env) }
-    | Lambda _ ->
+    | HFix (_,f,x) ->
+        { norm = Cstr; term = FFix ((f,x), env) }
+    | HCoFix (_,cf,x) ->
+        { norm = Cstr; term = FCoFix((cf,x), env) }
+    | HLambda _ ->
         { norm = Cstr; term = mk_lambda env t }
-    | Prod (n,t,c)   ->
+    | HProd (_,n,t,c)   ->
         { norm = Whnf;
 	  term = FProd (n, clos_fun env t, clos_fun (subs_lift env) c) }
-    | LetIn (n,b,t,c) ->
+    | HLetIn (_,n,b,t,c) ->
         { norm = Red;
 	  term = FLetIn (n, clos_fun env b, clos_fun env t, c, env) }
-    | Evar ev ->
-	{ norm = Red; term = FEvar(ev,env) }
+    | HEvar (_,e,v) ->
+	{ norm = Red; term = FEvar((e,v),env) }
 
 (* A better mk_clos? *)
 let mk_clos2 = mk_clos_deep mk_clos
@@ -827,16 +827,16 @@ let rec knh m stk =
 
 (* The same for pure terms *)
 and knht e t stk =
-  match kind_of_term t with
-    | App(a,b) ->
+  match kind_of_constr t with
+    | HApp(_,a,b) ->
         knht e a (append_stack (mk_clos_vect e b) stk)
-    | Case(ci,p,t,br) ->
+    | HCase(_,ci,p,t,br) ->
         knht e t (Zcase(ci, mk_clos e p, mk_clos_vect e br)::stk)
-    | Fix _ -> knh (mk_clos2 e t) stk
-    | Cast(a,_,_) -> knht e a stk
-    | Rel n -> knh (clos_rel e n) stk
-    | (Lambda _|Prod _|Construct _|CoFix _|Ind _|
-       LetIn _|Const _|Var _|Evar _|Meta _|Sort _) ->
+    | HFix _ -> knh (mk_clos2 e t) stk
+    | HCast(_,a,_,_) -> knht e a stk
+    | HRel n -> knh (clos_rel e n) stk
+    | (HLambda _|HProd _|HConstruct _|HCoFix _|HInd _|
+       HLetIn _|HConst _|HVar _|HEvar _|HMeta _|HSort _) ->
         (mk_clos2 e t, stk)
 
 
