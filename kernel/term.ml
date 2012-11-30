@@ -291,6 +291,26 @@ let kind_of_type = function
     -> AtomicType (c,[||])
   | (HLambda _ | HConstruct _) -> failwith "Not a type"
 
+type dummy = int
+type ('constr, 'types) kind_of_constr = ('constr, 'types) kind_of_hterm =
+  | HRel       of int
+  | HVar       of identifier
+  | HMeta      of metavariable
+  | HEvar      of 'constr hpexistential
+  | HSort      of sorts
+  | HCast      of dummy * 'constr * cast_kind * 'types
+  | HProd      of dummy * name * 'types * 'types
+  | HLambda    of dummy * name * 'types * 'constr
+  | HLetIn     of dummy * name * 'constr * 'types * 'constr
+  | HApp       of dummy * 'constr * 'constr array
+  | HConst     of constant
+  | HInd       of inductive
+  | HConstruct of constructor
+  | HCase      of dummy * case_info * 'constr * 'constr * 'constr array
+  | HFix       of ('constr, 'types) hpfixpoint
+  | HCoFix     of ('constr, 'types) hpcofixpoint
+let kind_of_constr c = c
+
 (**********************************************************************)
 (*          Non primitive term destructors                            *)
 (**********************************************************************)

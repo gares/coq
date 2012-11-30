@@ -226,6 +226,32 @@ type ('constr, 'types) kind_of_type =
 
 val kind_of_type : types -> (constr, types) kind_of_type
 
+(* This is 0 cost *)
+type dummy  
+type 'constr hpexistential = dummy * existential_key * 'constr array
+type ('constr, 'types) hpfixpoint =
+    dummy * (int array * int) * ('constr, 'types) prec_declaration
+type ('constr, 'types) hpcofixpoint =
+    dummy * int * ('constr, 'types) prec_declaration
+type ('constr, 'types) kind_of_constr =
+  | HRel       of int
+  | HVar       of identifier
+  | HMeta      of metavariable
+  | HEvar      of 'constr hpexistential
+  | HSort      of sorts
+  | HCast      of dummy * 'constr * cast_kind * 'types
+  | HProd      of dummy * name * 'types * 'types
+  | HLambda    of dummy * name * 'types * 'constr
+  | HLetIn     of dummy * name * 'constr * 'types * 'constr
+  | HApp       of dummy * 'constr * 'constr array
+  | HConst     of constant
+  | HInd       of inductive
+  | HConstruct of constructor
+  | HCase      of dummy * case_info * 'constr * 'constr * 'constr array
+  | HFix       of ('constr, 'types) hpfixpoint
+  | HCoFix     of ('constr, 'types) hpcofixpoint
+val kind_of_constr : constr -> (constr, types) kind_of_constr
+
 (** {6 Simple term case analysis. } *)
 
 val isRel  : constr -> bool
