@@ -570,10 +570,12 @@ and pc m e c =
   | Zapp (_,a,c) -> `App a :: tol c
   | Zfix (_,f,c) -> `Fix f :: tol c
   | Zcase (_,ci,t,br,c) -> `Case (t,br) :: tol c
+  | Zupdate (_,(_,i),c) -> `Up i :: tol c
 (*   | Zshift (_,n,c) -> `Shift n :: tol c *) in
-  str"[" ++ hv 1 (prlist_with_sep (fun () -> str";"++cut()) (function 
+  str"[" ++ hv 0 (prlist_with_sep (fun () -> str";"++cut()) (function 
     | `App cv -> str"A " ++ prvect_with_sep spc (pcl m e) cv
     | `Fix c -> str"F " ++ pcl m e c
+    | `Up i -> str"# " ++ int i
     | `Case (p,br) -> str"M " ++ pcl m e p ++ prvect_with_sep spc (pcl m e) br
     | `Shift n -> str"S "++int n) 
     (tol c)) ++ str"]"
