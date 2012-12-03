@@ -14,3 +14,4 @@ val clos_fconv :
   Environ.env -> Term.constr -> Term.constr -> Univ.constraints
 
 val red_whd : Environ.env -> Mini_evd.evar_map -> Term.constr -> Term.constr
+val red_strong : Environ.env -> Mini_evd.evar_map -> Term.constr -> Term.constr

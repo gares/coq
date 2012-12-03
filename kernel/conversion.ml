@@ -793,3 +793,45 @@ let red_whd env evars t =
   Intmap.iter (fun n k -> Printf.eprintf "%4n %n\n" n k ) !m;
 *)
   unwind n
+
+let red_strong env evars t =
+  let rec red_aux cl =
+    let n = whd env evars.Mini_evd.evars cl in
+    let _, s, t, c = Clos.extern n in
+    unzip_aux (subs_aux s t) c
+  and unzip_aux t c = match Ctx.kind_of c with
+  | Znil -> t
+  | Zapp (_,a,ctx) -> unzip_aux (mkApp (t, Array.map red_aux a)) ctx
+  | Zcase (_,ci,p,br,ctx) ->
+     unzip_aux (mkCase (ci,red_aux p,t,Array.map red_aux br)) ctx
+  | Zfix (_,fx,ctx) ->
+     unzip_aux (red_aux fx) (Ctx.app [|mk_clos (intern t)|] ctx)
+  | Zupdate (_,(a,n),ctx) -> a.(n) <- (mk_clos (intern t)); unzip_aux t ctx
+  and subs_aux s t = match kind_of t with
+  | HConst _
+  | HInd _
+  | HConstruct _
+  | HSort _
+  | HVar _
+  | HMeta _ -> extern t
+  | HEvar (_,k,a) -> mkEvar (k, Array.map (subs_aux s) a)
+  | HCast (_,t,k,ty) -> mkCast (subs_aux s t, k, subs_aux s ty)
+  | HProd (_,n,t1,t2) -> mkProd (n, subs_aux s t1, subs_aux (Subs.lift 1 s) t2)
+  | HLambda (_,n,t1,t2) ->
+      mkLambda (n, red_aux (mk_clos ~subs:s t1),
+        red_aux (mk_clos ~subs:(Subs.lift 1 s) t2))
+  | HLetIn (_,n, b,ty,t) ->
+      mkLetIn (n, subs_aux s b, subs_aux s ty, subs_aux (Subs.lift 1 s) t)
+  | HApp (_,f,a) -> mkApp (subs_aux s f, Array.map (subs_aux s) a)
+  | HCase (_,ci,t,p,bs) ->
+      mkCase (ci, subs_aux s t, subs_aux s p, Array.map (subs_aux s) bs)
+  | HFix f -> extern t (* XXX *)
+  | HCoFix c -> extern t (* XXX *)
+  | HRel i ->
+      match expand_rel i s with
+      | Inl (n, t,_) -> lift n (red_aux t)
+      | Inr (k, None) -> mkRel k
+      | Inr (k, Some p) -> lift (k-p) (mkRel p)
+  in
+    red_aux (mk_clos (intern t))
+
