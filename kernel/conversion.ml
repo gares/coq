@@ -724,9 +724,12 @@ let whd env evars c =
           if n = nlam then aux subs bo c
           else match Ctx.kind_of c with
           | (Znil | Zcase _ | Zfix _) ->
-             if n > 0 then aux subs (List.nth spine (nlam - n)) c
+             if n > 0 then aux subs (List.nth spine (nlam - n - 1)) c
              else subs, hd, c
 (*           | Zshift (_,k,c) -> eat_lam (Subs.shift k subs) n c *)
+          | Zupdate (_,(a,m),c) ->
+              a.(m) <- mk_clos ~subs (List.nth spine (nlam - n - 1));
+              eat_lam subs n c (* ??? *)
           | Zapp (_,args,c) ->
               let nargs = Array.length args in
               if n + nargs = nlam then
