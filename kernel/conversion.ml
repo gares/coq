@@ -12,11 +12,7 @@ open Names
 open Term
 open Univ
 open Environ
-
-(* when false, not hashconsing is performed, just for testing performances *)
-let interning = false
-
-let array_peq t1 t2 = t1 == t2 || Util.Array.for_all2 (==) t1 t2
+open Mini_evd
 
 module Hclosure : sig
 
@@ -32,7 +28,6 @@ module Hclosure : sig
     | Zapp   of dummy * closure array * ctx
     | Zcase  of dummy * case_info * closure * closure array * ctx
     | Zfix   of dummy * closure * ctx
-(*     | Zshift of dummy * int * ctx *)
     | Zupdate of dummy * (closure array * int) * ctx
   type kind_of_subs =
     | ESID  of int
@@ -45,11 +40,10 @@ module Hclosure : sig
     val app : closure array -> ctx -> ctx
     val case : case_info -> closure -> closure array -> ctx -> ctx
     val fix : closure -> ctx -> ctx
-(*     val shift : int -> ctx -> ctx *)
     val update : (closure array * int) -> ctx -> ctx
     val kind_of : ctx -> kind_of_ctx
-    val equal : ctx -> ctx -> bool
     val append : ctx -> ctx -> ctx
+    val equal : ctx -> ctx -> bool
   end
   module Subs : sig
     val id : int -> subs
@@ -84,7 +78,6 @@ end = struct
     | Zapp   of hash * closure array * ctx
     | Zcase  of hash * case_info * closure * closure array * ctx
     | Zfix   of hash * closure * ctx
-(*     | Zshift of hash * int * ctx *)
     | Zupdate of hash * (closure array * int) * ctx
   and subs =
     | ESID  of int
@@ -98,7 +91,6 @@ end = struct
     | Zapp   of hash * closure array * ctx
     | Zcase  of hash * case_info * closure * closure array * ctx
     | Zfix   of hash * closure * ctx
-(*     | Zshift of hash * int * ctx *)
     | Zupdate of hash * (closure array * int) * ctx
   type kind_of_subs = subs =
     | ESID  of int
@@ -115,7 +107,6 @@ end = struct
     | Zcase (_,_,t1,a1,c1), Zcase (_,_,t2,a2,c2) ->
         t1 == t2 && array_peq a1 a2 && equal_ctx c1 c2
     | Zfix (_,f1,c1), Zfix (_,f2,c2) -> f1 == f2 && equal_ctx c1 c2
-(*     | Zshift (_,n1,c1), Zshift (_,n2,c2) -> n1 = n2 && equal_ctx c1 c2 *)
     | Zupdate _, _ -> assert false
     | _ -> false
 
@@ -247,12 +238,6 @@ end = struct
     else (fun m c ->
       let h = combinesmall 19 (combine (hash m) (hash_ctx c)) in
       Zfix (h,m,c))
-(*
-  let shift = if not interning then (fun n c -> Zshift (0,n,c))
-    else (fun n c ->
-      let h = combinesmall 20 (combine n (hash_ctx c)) in
-      Zshift (h,n,c))
-*)
   let update = if not interning then fun f c -> Zupdate (0,f,c)
     else  (fun (a,i as f) c ->
       let h = combinesmall 25 (combine (hash_ctx c) i) in
@@ -266,7 +251,6 @@ end = struct
     | Zapp (_,a,c) -> app a (append c c2)
     | Zcase (_,ci,m,p,c) -> case ci m p (append c c2)
     | Zfix (_,m,c) -> fix m (append c c2)
-(*     | Zshift (_,n,c) -> shift n (append c c2) *)
     | Zupdate (_,f,c) -> update f (append c c2)
   end
 
@@ -483,7 +467,6 @@ let lift_closure_array k clv =
 
 let rec get_args n e stk =
   match Ctx.kind_of stk with
-(*     | Zshift(_,k,s) -> get_args n (Subs.shift k e) s *)
     | Zapp(_,l,s) ->
         let na = Array.length l in
         if n = na then (Inl (Subs.cons l e), s)
@@ -557,7 +540,7 @@ let rec ps m e s =
   | ESID n -> [`Id n]
   | CONS (_,cv,s) -> `Cons cv :: tol s
   | LIFT (_,n,s) -> `Lift n :: tol s in
-  str"{" ++ hv 1 (prlist_with_sep (fun () -> str";"++cut()) (function
+  str"{" ++ hv 0 (prlist_with_sep (fun () -> str";"++cut()) (function
   | `Shift n -> str "S " ++ int n
   | `Id n -> str"I " ++ int n
   | `Lift n -> str"L " ++ int n
@@ -571,7 +554,6 @@ and pc m e c =
   | Zfix (_,f,c) -> `Fix f :: tol c
   | Zcase (_,ci,t,br,c) -> `Case (t,br) :: tol c
   | Zupdate (_,(_,i),c) -> `Up i :: tol c
-(*   | Zshift (_,n,c) -> `Shift n :: tol c *) in
   str"[" ++ hv 0 (prlist_with_sep (fun () -> str";"++cut()) (function 
     | `App cv -> str"A " ++ prvect_with_sep spc (pcl m e) cv
     | `Fix c -> str"F " ++ pcl m e c
@@ -643,7 +625,6 @@ let whd env evars c =
               let nargs = Array.length args in
               if n >= nargs then Ctx.app args (fix_params (n - nargs) c)
               else Ctx.app (Array.sub args 0 n) Ctx.nil
-(*           | Zshift (_,k,c) -> Ctx.shift k (fix_params n c) *)
           | Znil -> assert false
           | Zcase _ -> assert false
           | Zfix _ -> assert false in
@@ -661,7 +642,6 @@ let whd env evars c =
                 aux s t (Ctx.append c 
                   (Ctx.fix (mk_clos ~subs ~ctx:(fix_params (rarg-1) ctx) hd)
                   afterctx))
-(*           | Zshift (_,_,c) -> find_arg n c *)
           | Zupdate (_,_,c) -> find_arg n c (* HERE WE SHOULD INSERT THE ZUPDATE
           *)
           | Zcase _ -> assert false
@@ -680,7 +660,6 @@ let whd env evars c =
               else
                 let after = Array.sub args n (nargs - n) in
                 ctx_for_case depth 0 (Ctx.app after c)
-(*           | Zshift (_,k,c) -> ctx_for_case (depth - k) n c *)
           | Zcase (_,_,_,_,c) -> c
           | Zupdate (_,_,c) -> ctx_for_case depth n c (* CHECK *)
           | Znil -> assert false
@@ -688,7 +667,6 @@ let whd env evars c =
         let rec ctx_for_fix_arg args = match Ctx.kind_of args with
           | Zfix (_,_,c) -> Ctx.nil
           | Zapp (_,a,c) -> Ctx.app a (ctx_for_fix_arg c)
-(*           | Zshift (_,k,c) -> Ctx.shift k (ctx_for_fix_arg c) *)
           | Zupdate (_,_,c) -> ctx_for_fix_arg c (* CHECK *)
           | Zcase _ -> assert false
           | Znil _ -> assert false in
@@ -698,7 +676,6 @@ let whd env evars c =
           | _ -> assert false in
         let rec find_iota depth c = match Ctx.kind_of c with
           | Zapp (_,_,c) -> find_iota depth c
-(*           | Zshift (_,k,c) -> find_iota (depth + k) c *)
           | Zcase (_,ci,p,br,_) ->
               let _, subs, b, c = Clos.extern br.(k-1) in
               assert(Ctx.equal c Ctx.nil);
