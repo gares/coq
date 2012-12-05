@@ -1598,17 +1598,17 @@ module H = struct
       | HMeta m1, HMeta m2 -> m1 == m2
       | HVar id1, HVar id2 -> id1 == id2
       | HSort s1, HSort s2 -> s1 == s2
-      | HCast (_,c1,k1,t1), HCast (_,c2,k2,t2) -> c1 == c2 && k1 == k2 && t1 == t2
-      | HProd (_,n1,t1,c1), HProd (_,n2,t2,c2) -> n1 == n2 && t1 == t2 && c1 == c2
-      | HLambda (_,n1,t1,c1), HLambda (_,n2,t2,c2) -> n1 == n2 && t1 == t2 && c1 == c2
-      | HLetIn (_,n1,b1,t1,c1), HLetIn (_,n2,b2,t2,c2) ->
-        n1 == n2 && b1 == b2 && t1 == t2 && c1 == c2
+      | HCast (_,c1,k1,t1), HCast (_,c2,k2,t2) ->
+        c1 == c2 && k1 == k2 && t1 == t2
+      | HProd (_,_,t1,c1), HProd (_,_,t2,c2) -> t1 == t2 && c1 == c2
+      | HLambda (_,_,t1,c1), HLambda (_,_,t2,c2) -> t1 == t2 && c1 == c2
+      | HLetIn (_,_,b1,t1,c1), HLetIn (_,_,b2,t2,c2) ->
+        b1 == b2 && t1 == t2 && c1 == c2
       | HApp (_,c1,l1), HApp (_,c2,l2) -> c1 == c2 && array_eqeq l1 l2
       | HEvar (_,e1,l1), HEvar (_,e2,l2) -> e1 = e2 && array_eqeq l1 l2
-      | HConst c1, HConst c2 -> c1 == c2
-      | HInd (sp1,i1), HInd (sp2,i2) -> sp1 == sp2 && i1 = i2
-      | HConstruct ((sp1,i1),j1), HConstruct ((sp2,i2),j2) ->
-        sp1 == sp2 && i1 = i2 && j1 = j2
+      | HConst _, HConst _
+      | HInd _, HInd _
+      | HConstruct _, HConstruct _ -> eq_constr t1 t2 (* CHECK *)
       | HCase (_,ci1,p1,c1,bl1), HCase (_,ci2,p2,c2,bl2) ->
         ci1 == ci2 && p1 == p2 && c1 == c2 && array_eqeq bl1 bl2
       | HFix (_,ln1,(lna1,tl1,bl1)), HFix (_,ln2,(lna2,tl2,bl2)) ->
@@ -1644,12 +1644,14 @@ module H = struct
   let hash_of_term = function
     | HCast (n,_,_,_) | HProd (n,_,_,_) | HLambda (n,_,_,_)
     | HLetIn (n,_,_,_,_) | HApp (n,_,_) | HEvar (n,_,_)
-    | HCase (n,_,_,_,_) | HFix (n,_,_) | HCoFix (n,_,_) -> assert (n <> 0); n
+    | HCase (n,_,_,_,_) | HFix (n,_,_) | HCoFix (n,_,_) ->
+        assert (n <> no_hash); n
     | HVar i -> combinesmall 1 (genhash i)
     | HSort s -> combinesmall 2 (genhash s)
-    | HConst c -> combinesmall 9 (genhash c) (* XXX *)
-    | HInd (kn,i) -> combinesmall 9 (combine (genhash kn) i)
-    | HConstruct ((kn,i),j)-> combinesmall 10 (combine3 (genhash kn) i j)
+    | HConst c -> combinesmall 9 (genhash (canonical_con c))
+    | HInd (mi,i) -> combinesmall 9 (combine (genhash(canonical_mind mi)) i)
+    | HConstruct ((mi,i),j)->
+        combinesmall 10 (combine3 (genhash(canonical_mind mi)) i j)
     | HMeta n -> combinesmall 15 n
     | HRel n -> combinesmall 16 n
 
@@ -1671,69 +1673,72 @@ module H = struct
 
     and hash_term = function
       | HVar i ->
-	(HVar (sh_id i), combinesmall 1 (genhash i))
+	HVar (sh_id i), combinesmall 1 (genhash i)
       | HSort s ->
-	(HSort (sh_sort s), combinesmall 2 (genhash s))
+	HSort (sh_sort s), combinesmall 2 (genhash s)
       | HCast (h, c, k, t) as orig -> if h <> no_hash then (orig, h) else
 	let c, hc = sh_rec c in
 	let t, ht = sh_rec t in
         let h = combinesmall 3 (combine3 hc (genhash k) ht) in
-	(HCast (h, c, k, t), h)
+	HCast (h, c, k, t), h
       | HProd (h, na,t,c) as orig -> if h <> no_hash then (orig, h) else
 	let t, ht = sh_rec t
 	and c, hc = sh_rec c in
         let h = combinesmall 4 (combine ht hc) in
-	(HProd (h, sh_na na, t, c), h)
+	HProd (h, sh_na na, t, c), h
       | HLambda (h, na,t,c) as orig -> if h <> no_hash then (orig, h) else
 	let t, ht = sh_rec t
 	and c, hc = sh_rec c in
         let h = combinesmall 5 (combine ht hc) in
-	(HLambda (h, sh_na na, t, c), h)
+	HLambda (h, sh_na na, t, c), h
       | HLetIn (h, na,b,t,c) as orig -> if h <> no_hash then (orig, h) else
 	let b, hb = sh_rec b in
 	let t, ht = sh_rec t in
 	let c, hc = sh_rec c in
         let h = combinesmall 6 (combine3 hb ht hc) in
-	(HLetIn (h, sh_na na, b, t, c), h)
+	HLetIn (h, sh_na na, b, t, c), h
       | HApp (h, c,l) as orig -> if h <> no_hash then (orig, h) else
 	let c, hc = sh_rec c in
 	let hl = hash_term_array l in
         let h = combinesmall 7 (combine hl hc) in
-	(HApp (h, c, l), h)
+	HApp (h, c, l), h
       | HEvar (h, e,l) as orig -> if h <> no_hash then (orig, h) else
 	let hl = hash_term_array l in
         let h = combinesmall 8 (combine (genhash e) hl) in
-	(HEvar (h, e, l), h)
+        HEvar (h, e, l), h
       | HConst c ->
-	(HConst (sh_con c), combinesmall 9 (genhash c))
-      | HInd ((kn,i) as ind) ->
-	(HInd (sh_ind ind), combinesmall 9 (combine (genhash kn) i))
-      | HConstruct (((kn,i),j) as c)->
-	(HConstruct(sh_construct c),combinesmall 10 (combine3 (genhash kn) i j))
+        let c = sh_con c in
+	HConst c, combinesmall 9 (genhash (canonical_con c))
+      | HInd (mi,i as ind) ->
+        let ind = sh_ind ind in
+	HInd ind, combinesmall 9 (combine (genhash (canonical_mind mi)) i)
+      | HConstruct (((mi,i),j) as c) ->
+        let c = sh_construct c in
+	HConstruct c,combinesmall 10 (combine3 (genhash(canonical_mind mi)) i j)
       | HCase (h, ci,p,c,bl) as orig -> if h <> no_hash then (orig, h) else
 	let p, hp = sh_rec p
 	and c, hc = sh_rec c in
 	let hbl = hash_term_array bl in
 	let hbl = combine (combine hc hp) hbl in
         let h = combinesmall 11 hbl in
-	(HCase (h, sh_ci ci, p, c, bl), h)
+	HCase (h, sh_ci ci, p, c, bl), h
       | HFix (h, ln,(lna,tl,bl)) as orig -> if h <> no_hash then (orig, h) else
               (* XXX why ln is not used!!! *)
 	let hbl = hash_term_array  bl in
 	let htl = hash_term_array  tl in
 	Array.iteri (fun i x -> lna.(i) <- sh_na x) lna;
         let h = combinesmall 13 (combine (genhash lna) (combine hbl htl)) in
-	(HFix (h, ln,(lna,tl,bl)), h)
+	HFix (h, ln,(lna,tl,bl)), h
       | HCoFix(h, ln,(lna,tl,bl)) as orig -> if h <> no_hash then (orig, h) else
 	let hbl = hash_term_array bl in
 	let htl = hash_term_array tl in
 	Array.iteri (fun i x -> lna.(i) <- sh_na x) lna;
         let h = combinesmall 14 (combine (genhash lna) (combine hbl htl)) in
-	(HCoFix(h, ln,(lna,tl,bl)), h)
+	HCoFix(h, ln,(lna,tl,bl)), h
       | HMeta n as t ->
-	(t, combinesmall 15 n)
+	t, combinesmall 15 n
       | HRel n as t ->
-	(t, combinesmall 16 n)
+	t, combinesmall 16 n
 
     and sh_rec t =
       let (y, h) = hash_term t in
@@ -1753,7 +1758,7 @@ module H = struct
   let equal = (==)
 
   let compare t1 t2 =
-    if t1 == t2 then 0
+    if equal t1 t2 then 0
     else
       let diff = hash_of_term t1 - hash_of_term t2 in
       if diff = 0 then Pervasives.compare t1 t2 else diff
@@ -1761,6 +1766,8 @@ module H = struct
   let hash = hash_of_term
 
   let mkHFix (x,y) = intern (HFix (0,x,y))
+  let iter_constr = iter_constr
+  let iter_constr_with_binders = iter_constr_with_binders
 
   module HET = struct
     type t = hconstr

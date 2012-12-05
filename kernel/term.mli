@@ -700,6 +700,8 @@ module H : sig
   val extern : hconstr -> constr
 
   val mkHFix : (int array * int) * (hconstr,hconstr) rec_declaration -> hconstr
+  val iter_constr : (hconstr -> unit) -> hconstr -> unit
+  val iter_constr_with_binders : ('a -> 'a) -> ('a -> hconstr -> unit) -> 'a -> hconstr -> unit
 
   val reset : unit -> unit
   val distribution : unit -> (hconstr * int) list list
