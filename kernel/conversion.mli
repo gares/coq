@@ -6,6 +6,8 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
+exception NotConvertible
+
 val clos_fconv : 
   Names.Idpred.t * Names.Cpred.t ->
   Mini_evd.conv_pb ->

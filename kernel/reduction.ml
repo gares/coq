@@ -654,7 +654,8 @@ let run_cpb strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
     match rc with
     | None -> !time, false, true
     | Some rc -> !time, true, Univ.compare_constraints rc u
-  with e -> !time, None = rc, true
+  with NotConvertible | Conversion.NotConvertible -> !time, None = rc, true
+  | e -> prerr_endline (Printexc.to_string e); !time, false, true
 
 let trans_fconv reds cv_pb l2r evars env t1 t2 =
   let time = ref (__time ()) in
