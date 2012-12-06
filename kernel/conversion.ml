@@ -54,19 +54,24 @@ module Hclosure : sig
     val equal : subs -> subs -> bool
   end
   module Clos : sig
-    val equal : closure -> closure -> bool
-    val hash : closure -> int
-    val compare : closure -> closure -> int
-    val reset : unit -> unit 
-    val distribution : unit -> (closure * int) list list
-
-    val intern : subs -> hconstr -> ctx -> closure
-    val extern : closure -> dummy * subs * hconstr * ctx
+    val mk : ?subs:subs -> ?ctx:ctx -> hconstr -> closure
+    val kind_of : closure -> dummy * subs * hconstr * ctx
+    module H : sig
+      type hclosure
+      val equal : hclosure -> hclosure -> bool
+      val hash : hclosure -> int
+      val compare : hclosure -> hclosure -> int
+      val reset : unit -> unit 
+      val distribution : unit -> (hclosure * int) list list
+      val intern : closure -> hclosure
+      val extern : hclosure -> closure
+      val kind_of : hclosure -> dummy * subs * hconstr * ctx
+    end
   end
 
-  module Table : Hashtbl.S with type key = closure
+  module Table : Hashtbl.S with type key = Clos.H.hclosure
 
-end = struct
+end = struct (* {{{ *)
 
   type hconstr = Term.H.hconstr
 
@@ -98,8 +103,8 @@ end = struct
     | SHIFT of hash * int * subs
     | LIFT  of hash * int * subs
 
-  (* one level comparson, used to hashcons only. closures are shared *)
-  (* XXX think about comparing the hash *)
+  let array_peq t1 t2 = t1 == t2 || Util.Array.for_all2 (==) t1 t2
+
   let rec equal_ctx c1 c2 = c1 == c2 || match c1, c2 with
     | Znil, Znil -> true
     | Zapp (_,a1,c1), Zapp (_,a2,c2) ->
@@ -107,18 +112,19 @@ end = struct
     | Zcase (_,_,t1,a1,c1), Zcase (_,_,t2,a2,c2) ->
         t1 == t2 && array_peq a1 a2 && equal_ctx c1 c2
     | Zfix (_,f1,c1), Zfix (_,f2,c2) -> f1 == f2 && equal_ctx c1 c2
-    | Zupdate _, _ -> assert false
+(*
+    | Zupdate (_,(a1,n1),c1), Zupdate (_,(a2,n2),c2) ->
+       a1 == a2 && n1 = n2 && equal_ctx c1 c2 (* XXX unsure *)
+  in the spirit of fapp_stack, updates could be erased *)
+    | Zupdate (_,_,c1), _ -> equal_ctx c1 c2
+    | _, Zupdate (_,_,c2) -> equal_ctx c1 c2
     | _ -> false
-
-  (* XXX think about comparing the hash *)
   let rec equal_subs s1 s2 = s1 == s2 || match s1, s2 with
     | ESID n, ESID m -> n = m
-    | CONS (_,a1,s1), CONS (_,a2,s2) -> array_peq a1 a2 && equal_subs s1 s2
-    | SHIFT (_,n,s1), SHIFT (_,m,s2)
-    | LIFT (_,n,s1), LIFT (_,m,s2) -> n = m && equal_subs s1 s2
+    | CONS (h1,a1,s1), CONS (h2,a2,s2) -> h1 = h2 && array_peq a1 a2 && equal_subs s1 s2
+    | SHIFT (h1,n,s1), SHIFT (h2,m,s2)
+    | LIFT (h1,n,s1), LIFT (h2,m,s2) -> h1 = h2 && n = m && equal_subs s1 s2
     | _ -> false
-
-  (* XXX think about comparing the hash *)
   let equal_closure (_,s1,t1,c1) (_,s2,t2,c2) =
     Term.H.equal t1 t2 && equal_subs s1 s2 && equal_ctx c1 c2
 
@@ -179,7 +185,7 @@ end = struct
       let osize = Array.length odata in
       let i = abs hash mod osize in
       match odata.(i) with
-        |	Empty -> add hash key table; key
+        | Empty -> add hash key table; key
         | Cons (k1, h1, rest1) ->
           if hash == h1 && equal_closure key k1 then k1 else
             match rest1 with
@@ -203,106 +209,123 @@ end = struct
   let clos_table = HashsetClos.create 19991
   let reset () = HashsetClos.reset 19991 clos_table
 
-  let hash_ctx = function
-    | Znil -> 0
-    | Zapp (h,_,_) | Zcase (h,_,_,_,_) | Zfix (h,_,_) (*| Zshift (h,_,_)*) |
-    Zupdate (h,_,_) -> h
+  let no_hash = 0
 
-  let hash_subs = function
-    | ESID n -> n
-    | CONS (h,_,_) | SHIFT (h,_,_) | LIFT (h,_,_) -> h
- 
-  let hash (h,_,_,_) = h
+  let alpha = 65599
+  let beta  = 7
+  let combine x y     = x * alpha + y
+  let combine3 x y z   = combine x (combine y z)
+  let combine4 x y z t = combine x (combine3 y z t)
+  let combinesmall x y =
+    let h = beta * x + y in
+    if h = no_hash then no_hash + 1 else h
 
-  open Hashset.Combine
+  let intern_closure =
+    let rec hash_closure (h,s,t,c as cl) =
+      if h <> no_hash then cl
+      else
+        let s, h1 = hash_subs s in
+        let    h2 = Term.H.hash t in
+        let c, h3 = hash_ctx c in
+        let h = combinesmall 24 (combine3 h1 h2 h3) in
+        h,s,t,c
+    and hash_array a =
+      let accu = ref 0 in
+      for i = 0 to Array.length a - 1 do
+        let x,h = sh_rec a.(i) in
+        accu := combine !accu h;
+        a.(i) <- x;
+      done;
+      !accu
+    and hash_subs = function
+    | ESID n as orig -> orig, n
+    | CONS (h,a,s) as orig -> if h <> no_hash then orig, h else
+       let h1 = hash_array a in
+       let s, h2 = hash_subs s in
+       let h = combinesmall 21 (combine h1 h2) in
+       CONS (h,a,s), h
+    | SHIFT (h,n,s) as orig -> if h <> no_hash then orig, h else
+       let s, h2 = hash_subs s in
+       let h = combinesmall 22 (combine n h2) in
+       SHIFT (h,n,s), h
+    | LIFT (h,n,s) as orig -> if h <> no_hash then orig, h else
+       let s, h2 = hash_subs s in
+       let h = combinesmall 23 (combine n h2) in
+       LIFT (h,n,s), h
+    and hash_ctx = function
+    | Znil as orig -> orig, 0
+    | Zapp (h,a,c) as orig -> if h <> no_hash then orig, h else
+       let h1 = hash_array a in
+       let c, h2 = hash_ctx c in
+       let h = combinesmall 17 (combine h1 h2) in
+       Zapp (h,a,c), h
+    | Zcase (h,ci,m,p,c) as orig -> if h <> no_hash then orig, h else
+       let m, h1 = sh_rec m in
+       let h2 = hash_array p in
+       let c, h3 = hash_ctx c in
+       let h = combinesmall 18 (combine3 h1 h2 h3) in
+       Zcase (h,ci,m,p,c), h
+    | Zfix (h,m,c) as orig -> if h <> no_hash then orig, h else
+       let m, h1 = sh_rec m in
+       let c, h2 = hash_ctx c in
+       let h = combinesmall 19 (combine h1 h2) in
+       Zfix (h,m,c), h
+    | Zupdate (h,(_,i as u),c) as orig -> if h <> no_hash then orig, h else
+       let c, h1 = hash_ctx c in
+(*        let h = combinesmall 20 (combine h1 i) in in sync with equal_ctx *)
+       Zupdate (h1,u,c), h1
+    and sh_rec cl =
+      let (h,_,_,_ as cl) = hash_closure cl in
+      (HashsetClos.repr h cl clos_table, h)
+    in   
+     (fun cl -> fst (sh_rec cl))
 
-  let hash_array t =
-    let accu = ref 0 in
-    for i = 0 to Array.length t - 1 do
-      accu := combine !accu (hash t.(i));
-    done;
-    !accu
-
-  (* ctx constructor *)
   module Ctx = struct
   let nil = Znil
-  let app = if not interning then (fun a c -> Zapp (0,a,c))
-    else (fun a c ->
-       let h = combinesmall 17 (combine (hash_array a) (hash_ctx c)) in
-       Zapp (h,a,c))
-  let case = if not interning then (fun ci m p c -> Zcase (0,ci,m,p,c))
-    else (fun ci m p c ->
-      let h = combinesmall 18 (combine3 (hash m) (hash_array p) (hash_ctx c)) in
-      Zcase (h,ci,m,p,c))
-  let fix = if not interning then (fun m c -> Zfix (0,m,c))
-    else (fun m c ->
-      let h = combinesmall 19 (combine (hash m) (hash_ctx c)) in
-      Zfix (h,m,c))
-  let update = if not interning then fun f c -> Zupdate (0,f,c)
-    else  (fun (a,i as f) c ->
-      let h = combinesmall 25 (combine (hash_ctx c) i) in
-      Zupdate (h,f,c))
+  let app a c = Zapp (no_hash,a,c)
+  let case ci m p c = Zcase (no_hash,ci,m,p,c)
+  let fix m c = Zfix (no_hash,m,c)
+  let update u c = Zupdate (no_hash,u,c)
   let kind_of c = c
-  let equal c1 c2 =
-    let h1 = hash_ctx c1 in let h2 = hash_ctx c2 in
-    h1 = h2 && equal_ctx c1 c2 (* XXX think about comparing the hash *)
   let rec append c1 c2 = match c1 with
     | Znil -> c2
     | Zapp (_,a,c) -> app a (append c c2)
     | Zcase (_,ci,m,p,c) -> case ci m p (append c c2)
     | Zfix (_,m,c) -> fix m (append c c2)
-    | Zupdate (_,f,c) -> update f (append c c2)
+    | Zupdate (_,u,c) -> update u (append c c2)
+  let equal = equal_ctx
   end
 
-  (* subs constructors *)
   module Subs = struct
   let id n = ESID n
-  let cons = if not interning then (fun a s -> CONS (0,a,s))
-    else (fun a s ->
-      let h = combinesmall 21 (combine (hash_array a) (hash_subs s)) in
-      CONS (h,a,s))
-  let shift = if not interning then (fun n s -> 
-      if n = 0 then s
-      else match s with
-      | SHIFT (_,m,s) -> SHIFT (0,n + m,s)
-      | _ -> SHIFT (0,n,s))
-    else (fun n s ->
-      if n = 0 then s
-      else match s with
-      | SHIFT (_,m,s) ->
-          let n = n + m in
-          let h = combinesmall 22 (combine n (hash_subs s)) in
-          SHIFT (h,n,s)
-      | _ ->
-          let h = combinesmall 22 (combine n (hash_subs s)) in
-          SHIFT (h,n,s))
-  let lift = if not interning then (fun n s -> LIFT(0,n,s))
-    else (fun n s ->
-      let h = combinesmall 23 (combine n (hash_subs s)) in
-      LIFT (h,n,s))
+  let cons a s = CONS (no_hash,a,s)
+  let shift n s =
+    if n = 0 then s
+    else match s with
+    | SHIFT (_,m,s) -> SHIFT (no_hash,n + m,s)
+    | _ -> SHIFT (no_hash,n,s)
+  let lift n s =
+    if n = 0 then s
+    else match s with
+    | LIFT (_,m,s) -> LIFT (no_hash,n + m,s)
+    | _ -> LIFT(no_hash,n,s)
   let kind_of s = s
-  let equal s1 s2 =
-    let h1 = hash_subs s2 in let h2 = hash_subs s2 in
-    h1 = h2 && equal_subs s1 s2 (* XXX think about comparing the hash *)
+  let equal = equal_subs
   end
 
   module Clos = struct
-  let intern =
-    if not interning then fun s t c -> 0, s, t ,c
-    else fun s t c ->
-      let h =
-        combinesmall 24 (combine3 (hash_subs s) (Term.H.hash t) (hash_ctx c)) in
-      let k = h, s, t, c in
-(*       let k' = HashsetClos.repr h k clos_table in *)
-      let k' = k in
-      (*if k != k' then incr hits else incr misses;*) k'
-
+  let empty_subs = Subs.id 0
+  let empty_ctx = Ctx.nil
+  let mk ?(subs=empty_subs) ?(ctx=empty_ctx) t = no_hash, subs, t ,ctx
+  let kind_of c = c
+  module H = struct
+  type hclosure = closure
+  let intern (h,s,t,c as orig) = orig (*
+    if h <> no_hash then orig else intern_closure orig *)
   let extern c = c
-
-  let hash = hash
-
-  let equal c1 c2 = (*c1 == c2*) c1 = c2
-
+  let kind_of c = c
+  let hash (h,_,_,_) = h
+  let equal c1 c2 = c1 == c2
   let compare c1 c2 =
     if equal c1 c2 then 0
     else
@@ -312,34 +335,36 @@ end = struct
   let reset = reset
   let distribution () = HashsetClos.distribution clos_table
   end
+  end
 
   module Table = Hashtbl.Make(struct
-    type t = closure
-    let equal = Clos.equal
-    let hash = Clos.hash
+    type t = Clos.H.hclosure
+    let equal = Clos.H.equal
+    let hash = Clos.H.hash
   end)
 
-end
+end (* }}} *)
 
 module UF : sig
 
-  open Hclosure
+  open Hclosure.Clos.H
 
-  val find : closure -> closure
-  val find_smaller : closure -> closure
-  val union : smaller:closure -> closure -> unit
-  val partition : closure -> closure -> unit
-  val same : closure -> closure -> [`Yes | `No | `Maybe of closure * closure]
+  val find : hclosure -> hclosure
+  val find_smaller : hclosure -> hclosure
+  val union : smaller:hclosure -> hclosure -> unit
+  val partition : hclosure -> hclosure -> unit
+  val same :
+    hclosure -> hclosure -> [`Yes | `No | `Maybe of hclosure * hclosure]
   val reset : unit -> unit
   
-end = struct
+end = struct (* {{{ *)
 
   open Hclosure
   module HT = Hclosure.Table
 
-  let rank : int HT.t = HT.create 1099
-  let father : closure HT.t = HT.create 1099
-  let smallest : closure HT.t = HT.create 1099
+  let rank : int HT.t = HT.create 19991
+  let father : Clos.H.hclosure HT.t = HT.create 19991
+  let smallest : Clos.H.hclosure HT.t = HT.create 19991
 
   let father_of t =
     try HT.find father t with Not_found -> HT.replace father t t; t
@@ -348,7 +373,7 @@ end = struct
   
   let rec find i =
     let fi = father_of i in
-    if Clos.equal fi i then i
+    if Clos.H.equal fi i then i
     else
       let ri = find fi in 
       HT.replace father i ri;
@@ -359,30 +384,31 @@ end = struct
     with Not_found -> rx
 
   module UFCset = Set.Make(struct
-    type t = closure
+    type t = Clos.H.hclosure
     let compare x y =
       let rx = find x in
       let ry = find y in
-      Clos.compare rx ry
+      Clos.H.compare rx ry
   end)
     
-  let partitions : UFCset.t HT.t = HT.create 1099
+  let partitions : UFCset.t HT.t = HT.create 19991
   
   let diff_of rx = try HT.find partitions rx with Not_found -> UFCset.empty
 
   let partition x y =
     let rx = find x in
     let ry = find y in
-    assert(Clos.equal rx ry = false);
+    assert(Clos.H.equal rx ry = false);
     HT.replace partitions rx (UFCset.add ry (diff_of rx));
-    HT.replace partitions ry (UFCset.add rx (diff_of ry))
+    HT.replace partitions ry (UFCset.add rx (diff_of ry))*)
 
   let same x y =
     let rx = find x in
     let ry = find y in
-    if Clos.equal rx ry then `Yes
-    else if UFCset.mem rx (diff_of ry) then `No
-    else `Maybe (smallest_of rx,smallest_of ry)
+    if Clos.H.equal rx ry then `Yes
+    else if UFCset.mem rx (diff_of ry) then `No (* XXX HUMMMMM is it complete?*)
+(*     else `Maybe (smallest_of rx,smallest_of ry) *)
+    else `Maybe (rx,ry)
 
   let find_smaller x = smallest_of (find x)
 
@@ -395,7 +421,7 @@ end = struct
   let union ~smaller:x y =
     let rx = find x in
     let ry = find y in
-    if not (Clos.equal rx ry) then begin
+    if not (Clos.H.equal rx ry) then begin
       let rkx = rank_of x in
       let rky = rank_of y in
       let sx = smallest_of rx in
@@ -415,14 +441,10 @@ end = struct
       end
     end
 
-end
+end (* }}} *)
 
 open Hclosure
 open Term.H
-
-let intern =
-  if not interning then Obj.magic
-  else intern
 
 let rec len_subs s n = match Subs.kind_of s with
   | LIFT(_,_,s) |CONS (_,_,s) | SHIFT(_,_,s) -> len_subs s (n+1)
@@ -449,21 +471,10 @@ let assoc_opt l v =
   try Some (List.assoc v l)
   with Not_found -> None
 
-let mk_clos ?(subs=Subs.id 0) ?(ctx=Ctx.nil) t =
-  (*match kind_of t with
-  | HRel i ->
-        (match expand_rel i subs with
-        | Inl(n,cl,_) ->
-            let _,subs, t, c = Clos.extern cl in
-            Clos.intern (Subs.shift n subs) t (Ctx.append c ctx)
-        | Inr(k,None) -> Clos.intern subs (intern (mkRel k)) ctx
-        | _ -> Clos.intern subs t ctx)
-  | _ ->*) Clos.intern subs t ctx
-
 let lift_closure_array k clv =
   Array.map (fun cl ->
-  let _,s,t,c = Clos.extern cl in
-  Clos.intern (Subs.shift k s) t c) clv
+  let _,s,t,c = Clos.kind_of cl in
+  Clos.mk ~subs:(Subs.shift k s) t ~ctx:c) clv
 
 let rec get_args n e stk =
   match Ctx.kind_of stk with
@@ -482,11 +493,10 @@ let rec unzip t c = match Ctx.kind_of c with
   | Znil -> t
   | Zapp (_,a,ctx) -> unzip (mkApp (t, Array.map clos_to_constr a)) ctx
 (* very suboptimal, maybe wrong *)
-(*   | Zshift (_,k,ctx) -> unzip (apply_subs (Subs.shift k (Subs.id 0)) (intern  t)) ctx *)
   | Zcase (_,ci,p,br,ctx) ->
      unzip (mkCase (ci,clos_to_constr p,t,Array.map clos_to_constr br)) ctx
   | Zfix (_,fx,ctx) ->
-     unzip (clos_to_constr fx) (Ctx.app [|mk_clos (intern t)|] ctx)
+     unzip (clos_to_constr fx) (Ctx.app [|Clos.mk (intern t)|] ctx)
   | Zupdate (_,_,ctx) -> unzip t ctx
 and apply_subs s t = match kind_of t with
   | HConst _
@@ -512,23 +522,23 @@ and apply_subs s t = match kind_of t with
       | Inr (k, None) -> mkRel k
       | Inr (k, Some p) -> lift (k-p) (mkRel p)
 and clos_to_constr c =
-  let _,s,t,c = Clos.extern c in
+  let _,s,t,c = Clos.kind_of c in
   unzip (apply_subs s t) c
 
 let fix_body subs fix =
   let (reci,i),(_,_,bds as rdcl) = match kind_of fix with
     | HFix (_,a,b) -> a, b
     | _ -> assert false in
-  let make_body j = mk_clos ~subs (mkHFix ((reci,j),rdcl)) in
+  let make_body j = Clos.mk ~subs (mkHFix ((reci,j),rdcl)) in
   let nfix = Array.length bds in
   Subs.cons (Array.init nfix make_body) subs, bds.(i)
 
 open Pp
 
-let pp ?(depth=3) e x =
+let ppt ?(depth=3) e x =
   Term.ll_pr_constr depth (Environ.rel_context e) x
 
-let pph ?depth e x = pp?depth e (extern x)
+let pph ?depth e x = ppt?depth e (extern x)
 
 let print cmds = prerr_endline (string_of_ppcmds cmds)
 
@@ -563,18 +573,22 @@ and pc m e c =
     (tol c)) ++ str"]"
 
 and pcl m e cl = if m = 0 then str"…" else let m = m-1 in
- let _,s,t,c = Clos.extern cl in
+ let _,s,t,c = Clos.kind_of cl in
  if Subs.kind_of s = ESID 0 && Ctx.kind_of c = Znil then
-  hv 1 (str"(; " ++ pp e (extern t) ++ str" ;)")
+  hv 1 (str"(; " ++ ppt ~depth:m e (extern t) ++ str" ;)")
  else
   hv 1 (str"(" ++ ps m e s ++ str";" ++ spc() ++
-                pp e (extern t) ++ str";" ++ spc() ++
+                ppt ~depth:m e (extern t) ++ str";" ++ spc() ++
                 pc m e c ++
       str")")
 
-let print_status e s t c = print(pcl 3 e (Clos.intern s t c))
+let print_status e s t c = print(pcl 10 e (Clos.mk ~subs:s t ~ctx:c))
 
-let whd env evars c =
+type options = { delta : bool }
+
+let opt_subst s t = s
+
+let whd opt env evars c =
   let rel_context_len, rel_context =
     Sign.fold_rel_context
       (fun (id,b,t) (i,subs) ->
@@ -590,21 +604,21 @@ let whd env evars c =
 	   | Some body -> (id, body)::e)
        (named_context env) ~init:[] in
   let rec aux subs hd ctx =
-(*   print_status env subs hd ctx; *)
-(*   print (pp ~depth:100 env (clos_to_constr (Clos.intern  subs hd ctx))); *)
+(*    print_status env subs hd ctx;  *)
+(*    print (ppt ~depth:100 env (clos_to_constr (Clos.mk ~subs hd ~ctx)));  *)
     match kind_of hd with
     | HRel i -> (match expand_rel i subs with
         | Inl(n,cl,update) ->
-            let _,subs, t, c = Clos.extern cl in
-            let v,j = update in v.(j) <- mk_clos (intern (mkProp));
+            let _,subs, t, c = Clos.kind_of cl in
+(*             let v,j = update in v.(j) <- Clos.mk (intern (mkProp)); *)
             aux (Subs.shift n subs) t (Ctx.append c (Ctx.update update ctx))
-        | Inr(k,None) -> subs, intern (mkRel k), ctx
+        | Inr(k,None) -> Subs.id 0, intern (mkRel k), ctx
         | Inr(k,Some p) ->
             let subs = Subs.shift (k-p) subs in
             (* XXX lookup not cached *)
             (match assoc_opt rel_context (rel_context_len - p) with
             | Some t -> aux subs (intern (lift p t)) ctx
-            | None -> subs, hd, ctx))
+            | None -> Subs.id 0, intern(mkRel p), ctx))
     | HVar id ->
             (match assoc_opt var_context id with
             | Some t -> aux subs (intern t) ctx
@@ -612,12 +626,18 @@ let whd env evars c =
 (*
     | Evar k -> evars[k]
 *)
-    | HLetIn (_,_,t,_,bo) -> aux (Subs.cons [|mk_clos ~subs t|] subs) bo ctx
+    | HLetIn (_,_,t,_,bo) -> aux (Subs.cons [|Clos.mk ~subs t|] subs) bo ctx
     | HCast (_,t,_,_) -> aux subs t ctx
-    | HApp (_,f,a) -> aux subs f (Ctx.app (Array.map (mk_clos ~subs) a) ctx)
+    | HApp (_,f,a) ->
+       let clos_mk ~subs t = match kind_of t with
+         | HConst _ | HVar _ | HInd _ | HConstruct _ | HSort _ | HMeta _ ->
+             Clos.mk t
+         | _ -> Clos.mk ~subs t in
+       aux subs f (Ctx.app (Array.map (clos_mk ~subs) a) ctx)
     | HCase (_,ci,p,t,br) ->
         aux subs t
-          (Ctx.case ci (mk_clos ~subs p) (Array.map (mk_clos ~subs) br) ctx)
+        (* redo the optimization XXX *)
+          (Ctx.case ci (Clos.mk ~subs p) (Array.map (Clos.mk ~subs) br) ctx)
     | HFix (_,(_,rarg),_) ->
         let rec fix_params n c = if n <= 0 then Ctx.nil else
           match Ctx.kind_of c with
@@ -625,6 +645,7 @@ let whd env evars c =
               let nargs = Array.length args in
               if n >= nargs then Ctx.app args (fix_params (n - nargs) c)
               else Ctx.app (Array.sub args 0 n) Ctx.nil
+          | Zupdate (_,_,c) -> fix_params n c (* CHECK *)
           | Znil -> assert false
           | Zcase _ -> assert false
           | Zfix _ -> assert false in
@@ -638,9 +659,9 @@ let whd env evars c =
                   let after = nargs - n - 1 in
                   if after > 0 then Ctx.app (Array.sub args (n + 1) after) c
                   else c in
-                let _, s, t, c = Clos.extern args.(n) in
+                let _, s, t, c = Clos.kind_of args.(n) in
                 aux s t (Ctx.append c 
-                  (Ctx.fix (mk_clos ~subs ~ctx:(fix_params (rarg-1) ctx) hd)
+                  (Ctx.fix (Clos.mk ~subs ~ctx:(fix_params (rarg-1) ctx) hd)
                   afterctx))
           | Zupdate (_,_,c) -> find_arg n c (* HERE WE SHOULD INSERT THE ZUPDATE
           *)
@@ -677,16 +698,16 @@ let whd env evars c =
         let rec find_iota depth c = match Ctx.kind_of c with
           | Zapp (_,_,c) -> find_iota depth c
           | Zcase (_,ci,p,br,_) ->
-              let _, subs, b, c = Clos.extern br.(k-1) in
-              assert(Ctx.equal c Ctx.nil);
+              let _, subs, b, c = Clos.kind_of br.(k-1) in
+              assert(c = Ctx.nil);
               aux subs b (ctx_for_case depth ci.ci_npar ctx)
           | Zfix (_,fx,c) ->
-              let _, fxsubs, fxbo, fctx = Clos.extern fx in
+              let _, fxsubs, fxbo, fctx = Clos.kind_of fx in
               let fisubs, fi = fix_body fxsubs fxbo in
               aux fisubs fi (Ctx.append fctx
-                (Ctx.app [|mk_clos (*~subs*) ~ctx:(ctx_for_fix_arg ctx) hd|] c))
+                (Ctx.app [|Clos.mk (*~subs*) ~ctx:(ctx_for_fix_arg ctx) hd|] c))
           | Zupdate (_,(a,i),c) ->
-              let hnf = mk_clos (*~subs*) ~ctx:(ctx_for_update ctx) hd in
+              let hnf = Clos.mk (*~subs*) ~ctx:(ctx_for_update ctx) hd in
               a.(i) <- hnf;
               find_iota depth c 
           | Znil -> subs, hd, ctx
@@ -701,24 +722,25 @@ let whd env evars c =
           if n = nlam then aux subs bo c
           else match Ctx.kind_of c with
           | (Znil | Zcase _ | Zfix _) ->
-             if n > 0 then aux subs (List.nth spine (nlam - n - 1)) c
+             if n > 0 then
+               let bo = List.nth spine (nlam - n - 1) in
+               aux (opt_subst subs bo) bo c
              else subs, hd, c
-(*           | Zshift (_,k,c) -> eat_lam (Subs.shift k subs) n c *)
           | Zupdate (_,(a,m),c) ->
-              a.(m) <- mk_clos ~subs (List.nth spine (nlam - n - 1));
+              a.(m) <- Clos.mk ~subs (List.nth spine (nlam - n - 1));
               eat_lam subs n c (* ??? *)
           | Zapp (_,args,c) ->
               let nargs = Array.length args in
               if n + nargs = nlam then
-                aux (Subs.cons args subs) bo c
+                aux (opt_subst (Subs.cons args subs) bo) bo c
               else if n + nargs < nlam then
                 eat_lam (Subs.cons args subs) (n + nargs) c
               else
                 let before = Array.sub args 0 (nlam - n) in
                 let after = Array.sub args (nlam - n) (nargs - (nlam - n)) in
-                aux (Subs.cons before subs) bo (Ctx.app after c) in
+                aux (opt_subst (Subs.cons before subs) bo) bo (Ctx.app after c) in
         eat_lam subs 0 ctx
-    | HConst c ->
+    | HConst c when opt.delta ->
         let bo =
           try Some (constant_value env c) with NotEvaluableConst _ -> None in
         (match bo with
@@ -731,9 +753,9 @@ let whd env evars c =
     | HCoFix _ -> subs, hd, ctx
     | _ -> subs, hd, ctx
   in
-  let _, s, t, c = Clos.extern c in
+  let _, s, t, c = Clos.kind_of c in
   let s, t, c = aux s t c in
-  Clos.intern s t c
+  Clos.mk ~subs:s ~ctx:c t
 
 let unwind c = clos_to_constr c
 
@@ -743,22 +765,12 @@ let rec convert c1 ctx1 c2 ctx2 =
 and convert_ctx
 *)
 
-let clos_fconv trans cv_pb l2r evars env t1 t2 =
-(*
-  Term.H.reset ();
-  Clos.reset ();
-  UF.reset ();
-  print (pp env t1 ++ Pp.spc () ++ Pp.str " ==> " ++ 
-    pp env (unwind (whd env evars (mk_clos (Term.H.intern t1)))) ++ str"\n");
-*)
-  empty_constraint
-
 let red_whd env evars t =
   reset ();
-  Clos.reset ();
+  Clos.H.reset ();
   UF.reset ();
-  let c = mk_clos (intern t) in
-  let n = whd env evars.Mini_evd.evars c in
+  let c = Clos.mk (intern t) in
+  let n = whd {delta=true} env evars.Mini_evd.evars c in
 (*
   print (str "mas subs len " ++ int !len);
   let m = ref Intmap.empty in
@@ -773,17 +785,18 @@ let red_whd env evars t =
 
 let red_strong env evars t =
   let rec red_aux cl =
-    let n = whd env evars.Mini_evd.evars cl in
-    let _, s, t, c = Clos.extern n in
-    unzip_aux (subs_aux s t) c
+    let n = whd {delta=true} env evars.Mini_evd.evars cl in
+    let _, s, t, c = Clos.kind_of n in
+    let t = subs_aux s t in
+    unzip_aux t c
   and unzip_aux t c = match Ctx.kind_of c with
   | Znil -> t
   | Zapp (_,a,ctx) -> unzip_aux (mkApp (t, Array.map red_aux a)) ctx
   | Zcase (_,ci,p,br,ctx) ->
      unzip_aux (mkCase (ci,red_aux p,t,Array.map red_aux br)) ctx
   | Zfix (_,fx,ctx) ->
-     unzip_aux (red_aux fx) (Ctx.app [|mk_clos (intern t)|] ctx)
-  | Zupdate (_,(a,n),ctx) -> a.(n) <- (mk_clos (intern t)); unzip_aux t ctx
+     unzip_aux (red_aux fx) (Ctx.app [|Clos.mk (intern t)|] ctx)
+  | Zupdate (_,(a,n),ctx) -> a.(n) <- (Clos.mk (intern t)); unzip_aux t ctx
   and subs_aux s t = match kind_of t with
   | HConst _
   | HInd _
@@ -795,8 +808,8 @@ let red_strong env evars t =
   | HCast (_,t,k,ty) -> mkCast (subs_aux s t, k, subs_aux s ty)
   | HProd (_,n,t1,t2) -> mkProd (n, subs_aux s t1, subs_aux (Subs.lift 1 s) t2)
   | HLambda (_,n,t1,t2) ->
-      mkLambda (n, red_aux (mk_clos ~subs:s t1),
-        red_aux (mk_clos ~subs:(Subs.lift 1 s) t2))
+      mkLambda (n, red_aux (Clos.mk ~subs:s t1),
+        red_aux (Clos.mk ~subs:(Subs.lift 1 s) t2))
   | HLetIn (_,n, b,ty,t) ->
       mkLetIn (n, subs_aux s b, subs_aux s ty, subs_aux (Subs.lift 1 s) t)
   | HApp (_,f,a) -> mkApp (subs_aux s f, Array.map (subs_aux s) a)
@@ -810,5 +823,6 @@ let red_strong env evars t =
       | Inr (k, None) -> mkRel k
       | Inr (k, Some p) -> lift (k-p) (mkRel p)
   in
-    red_aux (mk_clos (intern t))
+    red_aux (Clos.mk (intern t))
+
 
