@@ -153,6 +153,7 @@ let declare_reduction s f =
   else reduction_tab := Stringmap.add s f !reduction_tab
 
 let () = declare_reduction "mine" Conversion.red_whd
+let () = declare_reduction "mines" Conversion.red_strong
 
 let check_custom = function
   | ExtraRedExpr s ->
