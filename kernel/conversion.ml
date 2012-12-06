@@ -206,8 +206,8 @@ end = struct (* {{{ *)
       [] (Array.to_list table.data)
   end
 
-  let clos_table = HashsetClos.create 19991
-  let reset () = HashsetClos.reset 19991 clos_table
+  let clos_table = HashsetClos.create 100003
+  let reset () = HashsetClos.reset 100003 clos_table
 
   let no_hash = 0
 
@@ -221,20 +221,25 @@ end = struct (* {{{ *)
     if h = no_hash then no_hash + 1 else h
 
   let intern_closure =
-    let rec hash_closure (h,s,t,c as cl) =
-      if h <> no_hash then cl
-      else
-        let s, h1 = hash_subs s in
-        let    h2 = Term.H.hash t in
-        let c, h3 = hash_ctx c in
-        let h = combinesmall 24 (combine3 h1 h2 h3) in
-        h,s,t,c
+    let rec hash_closure (h,s,t,c) =
+      let s, h1 = hash_subs s in
+      let    h2 = Term.H.hash t in
+      let c, h3 = hash_ctx c in
+      let h = combinesmall 24 (combine3 h1 h2 h3) in
+      h,s,t,c
     and hash_array a =
-      let accu = ref 0 in
-      for i = 0 to Array.length a - 1 do
-        let x,h = sh_rec a.(i) in
+      assert(Array.length a > 0);
+      let _, s0, _,_ as a0 = a.(0) in
+      let (_, s0', _,_ as a0'), h = sh_rec a0 in
+      let accu = ref (combine 0 h) in
+      if a0' != a0 then a.(0) <- a0';
+      for i = 1 to Array.length a - 1 do
+        let hi, si, ti, ci as ai = a.(i) in
+        let ai',h =
+          if si == s0 && hi = no_hash then sh_rec (hi,s0',ti,ci)
+          else sh_rec ai in
         accu := combine !accu h;
-        a.(i) <- x;
+        if ai' != ai then a.(i) <- ai';
       done;
       !accu
     and hash_subs = function
@@ -261,7 +266,7 @@ end = struct (* {{{ *)
        Zapp (h,a,c), h
     | Zcase (h,ci,m,p,c) as orig -> if h <> no_hash then orig, h else
        let m, h1 = sh_rec m in
-       let h2 = hash_array p in
+       let h2 = if Array.length p > 0 then hash_array p else 0 in
        let c, h3 = hash_ctx c in
        let h = combinesmall 18 (combine3 h1 h2 h3) in
        Zcase (h,ci,m,p,c), h
@@ -274,9 +279,13 @@ end = struct (* {{{ *)
        let c, h1 = hash_ctx c in
 (*        let h = combinesmall 20 (combine h1 i) in in sync with equal_ctx *)
        Zupdate (h1,u,c), h1
-    and sh_rec cl =
-      let (h,_,_,_ as cl) = hash_closure cl in
-      (HashsetClos.repr h cl clos_table, h)
+    and sh_rec (h,_,_,_ as cl) =
+      if h <> no_hash then
+        let () = assert(HashsetClos.repr h cl clos_table == cl) in
+        cl, h
+      else
+        let h, _,_,_ as cl = hash_closure cl in
+        HashsetClos.repr h cl clos_table, h
     in   
      (fun cl -> fst (sh_rec cl))
 
@@ -320,8 +329,7 @@ end = struct (* {{{ *)
   let kind_of c = c
   module H = struct
   type hclosure = closure
-  let intern (h,s,t,c as orig) =
-    if h <> no_hash then orig else intern_closure orig
+  let intern = intern_closure
   let extern c = c
   let kind_of c = c
   let hash (h,_,_,_) = h
@@ -360,8 +368,8 @@ end = struct (* {{{ *)
   open Hclosure
   module HT = Hclosure.Table
 
-  let rank : int HT.t = HT.create 19991
-  let father : Clos.H.hclosure HT.t = HT.create 19991
+  let rank : int HT.t = HT.create 100003
+  let father : Clos.H.hclosure HT.t = HT.create 100003
 
   let father_of t =
     try HT.find father t with Not_found -> HT.replace father t t; t
@@ -384,8 +392,8 @@ end = struct (* {{{ *)
       Clos.H.compare rx ry
   end)
     
-  let partitions : UFCset.t HT.t = HT.create 19991
-  
+  let partitions : UFCset.t HT.t = HT.create 100003
+
   let diff_of rx = try HT.find partitions rx with Not_found -> UFCset.empty
 
   let partition x y =
@@ -539,7 +547,17 @@ let rec ps m e s =
   | `Shift n -> str "S " ++ int n
   | `Id n -> str"I " ++ int n
   | `Lift n -> str"L " ++ int n
-  | `Cons v -> str"C " ++ prvect_with_sep spc (pcl m e) v) (tol s)) ++ str"}"
+  | `Cons v -> str"C " ++ pclv m e v) (tol s)) ++ str"}"
+
+and pclv m e cv =
+  let s_of_cl cl = let _,s,_,_ = Clos.kind_of cl in s in
+  let s = s_of_cl cv.(0) in
+  if Array.for_all (fun cl -> s_of_cl cl == s) cv then
+    let pcl m e cl =
+      let _,s,t,c = Clos.kind_of cl in
+      pcl m e (Clos.mk ~ctx:c t) in
+    str"/" ++ ps m e s ++ str"/ on"++ spc() ++ prvect_with_sep spc (pcl m e) cv
+  else prvect_with_sep spc (pcl m e) cv
 
 and pc m e c =
   if Ctx.kind_of c = Znil then str"-" else
@@ -550,7 +568,7 @@ and pc m e c =
   | Zcase (_,ci,t,br,c) -> `Case (t,br) :: tol c
   | Zupdate (_,(_,i),c) -> `Up i :: tol c in
   str"[" ++ hv 0 (prlist_with_sep (fun () -> str";"++cut()) (function 
-    | `App cv -> str"A " ++ prvect_with_sep spc (pcl m e) cv
+    | `App cv -> str"A " ++ pclv m e cv
     | `Fix c -> str"F " ++ pcl m e c
     | `Up i -> str"# " ++ int i
     | `Case (p,br) -> str"M " ++ pcl m e p ++ prvect_with_sep spc (pcl m e) br
