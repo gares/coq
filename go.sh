@@ -60,7 +60,7 @@ mktest() {
 EOT
 }
 runcoq() {
-  OCAMLRUNPARAM='s=33554432,o=120' "$@"
+  OCAMLRUNPARAM='s=33554432,o=120,b' "$@"
 }
 
 print() {
