@@ -469,19 +469,6 @@ let lift_closure_array k clv =
   let _,s,t,c = Clos.kind_of cl in
   Clos.mk ~subs:(Subs.shift k s) t ~ctx:c) clv
 
-let rec get_args n e stk =
-  match Ctx.kind_of stk with
-    | Zapp(_,l,s) ->
-        let na = Array.length l in
-        if n = na then (Inl (Subs.cons l e), s)
-        else if n < na then (* more arguments *)
-          let args = Array.sub l 0 n in
-          let eargs = Array.sub l n (na-n) in
-          (Inl (Subs.cons args e), Ctx.app eargs s)
-        else (* more lambdas *)
-          get_args (n-na) (Subs.cons l e) s
-    | _ -> (Inr (n,e), stk)
-
 let rec unzip t c = match Ctx.kind_of c with
   | Znil -> t
   | Zapp (_,a,ctx) -> unzip (mkApp (t, Array.map clos_to_constr a)) ctx
