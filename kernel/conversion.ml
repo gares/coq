@@ -400,7 +400,7 @@ end = struct (* {{{ *)
     let ry = find y in
     assert(Clos.H.equal rx ry = false);
     HT.replace partitions rx (UFCset.add ry (diff_of rx));
-    HT.replace partitions ry (UFCset.add rx (diff_of ry))*)
+    HT.replace partitions ry (UFCset.add rx (diff_of ry))
 
   let same x y =
     let rx = find x in
@@ -563,7 +563,7 @@ and pc m e c =
   | Zapp (_,a,c) -> `App a :: tol c
   | Zfix (_,f,c) -> `Fix f :: tol c
   | Zcase (_,ci,t,br,c) -> `Case (t,br) :: tol c
-  | Zupdate (_,(_,i),c) -> `Up i :: tol c
+  | Zupdate (_,(_,i),c) -> `Up i :: tol c in
   str"[" ++ hv 0 (prlist_with_sep (fun () -> str";"++cut()) (function 
     | `App cv -> str"A " ++ prvect_with_sep spc (pcl m e) cv
     | `Fix c -> str"F " ++ pcl m e c
@@ -825,4 +825,251 @@ let red_strong env evars t =
   in
     red_aux (Clos.mk (intern t))
 
+exception NotConvertible
 
+(* reuse this above *)
+let unfold env c =
+  try Some (constant_value env c) with NotEvaluableConst _ -> None
+
+(* BEGIN TRACING INSTRUMENTATION *)
+
+let debug = ref true
+let indent = ref "";;
+let times = ref [];;
+let last_time = ref 0.0;;
+(*D* let pp s = if !debug then prerr_endline (string_of_ppcmds (Lazy.force s)) *D*)
+let __time () = (Unix.times ()).Unix.tms_utime
+let __time () = Unix.gettimeofday ()
+let __inside s =
+ if !debug then begin
+   let time1 = __time () in
+   let c = s.[0] in
+   times := time1 :: !times;
+   Printf.eprintf "{{{ %s %s\n" !indent s;
+   indent := !indent ^ String.make 1 c;
+  end
+;;
+let __outside ?cmp_opt exc_opt =
+ if !debug then
+  begin
+   let time2 = __time () in
+   let time1 =
+     match !times with time1::tl -> times := tl; time1 | [] -> assert false in
+   let time = time2 -. time1 in
+   last_time := time;
+   Printf.eprintf "}}}\n    %s%s%s\n" (String.make (String.length !indent) ' ')
+   (match exc_opt with
+   | None ->   Printf.sprintf "returned in %.3f" time
+   | Some e -> Printf.sprintf "failed in   %.3f (%s)" time
+       (Printexc.to_string e))
+   (match cmp_opt with
+   | None -> ""
+   | Some t when abs_float (t -. time) < 0.000001 -> ""
+   | Some t ->
+      Printf.sprintf " %s %.3f" (if t > time then "FASTER" else "SLOWER") t);
+   try
+    indent := String.sub !indent 0 (String.length !indent -1)
+   with
+    Invalid_argument _ -> indent := "??"; ()
+  end
+;;
+
+(* END TRACING INSTRUMENTATION *)
+
+
+let clos_fconv trans cv_pb l2r evars env t1 t2 =
+  reset ();
+  Clos.H.reset ();
+  UF.reset ();
+
+  let sort_cmp pb s0 s1 cuniv =
+    match (s0,s1) with
+    | (Prop c1, Prop c2) when pb = CUMUL ->
+        if c1 = Null or c2 = Pos then cuniv   (* Prop <= Set *)
+        else raise NotConvertible
+    | (Prop c1, Prop c2) ->
+        if c1 = c2 then cuniv else raise NotConvertible
+    | (Prop c1, Type u) when pb = CUMUL -> assert (is_univ_variable u); cuniv
+    | (Type u1, Type u2) ->
+	assert (is_univ_variable u2);
+	(match pb with
+           | CONV -> enforce_eq u1 u2 cuniv
+	   | CUMUL -> enforce_leq u1 u2 cuniv)
+    | (_, _) -> raise NotConvertible in
+
+  let whd cl = Clos.H.intern (whd {delta=false} env evars cl) in
+  (* XXX fire updates as in fapp_stack? *)
+  
+  let mk_whd_clos ?subs ?ctx t = whd (Clos.mk ?subs ?ctx t) in
+
+  let same_len a1 a2 = Array.length a1 = Array.length a2 in
+  let slift = Subs.lift 1 in
+  let fold_left2 = Util.Array.fold_left2 in
+  let fold_right2 = Util.Array.fold_right2 in
+
+  let pr_status cl1 cl2 i =
+(*     let pcl n e c = ppt ~depth:5 e (clos_to_constr (Clos.H.extern c)) in *)
+       let pcl n e c = pcl n e (Clos.H.extern c) in
+       let env = Environ.reset_context env in
+    hv 0 (pcl 5 env cl1 ++ spc()++
+           str "=?"++int i++str"="++spc()++ pcl 5 env cl2) in
+
+  let dbg_eq_clos c1 c2 = 
+    str " eqc=" ++ bool (eq_constr (clos_to_constr (Clos.H.extern c1))
+              (clos_to_constr (Clos.H.extern c2))) ++
+(*     str" hceq=" ++ bool (Clos.H.equal c1 c2) ++ *)
+    let h1,s1,t1,c1 = Clos.H.kind_of c1 in
+    let h2,s2,t2,c2 = Clos.H.kind_of c2 in
+(*     str" h=" ++ bool (h1 = h2) ++ *)
+    str" s=" ++ bool (Subs.equal s1 s2) (*++*)
+(*
+    str" c=" ++ bool (Ctx.equal c1 c2) ++ 
+    str" heq=" ++ bool (Term.H.equal t1 t2) ++
+    str" ht=" ++ int (Term.H.hash t1) ++
+    str" rehash=" ++ bool (Term.H.equal 
+      (Term.H.intern (Term.H.extern t1))
+      (Term.H.intern (Term.H.extern t2)))
+*)
+  in
+
+(*  OPTIMIZE CLOSURE  *)
+
+  let rec convert_whd cv_pb s1 s2 cst t1 t2 =
+    convert cv_pb cst (mk_whd_clos ~subs:s1 t1) (mk_whd_clos ~subs:s2 t2)
+
+  and convert cv_pb cst cl1 cl2 =
+(*D* __inside "convert"; try let __rc =  *D*)
+(*D* pp(lazy(pr_status cl1 cl2 1)); *D*)
+    match UF.same cl1 cl2 with
+    | `Yes ->
+         (*D* pp(lazy(str" UF: YES ")); *D*)
+         cst
+    | `No ->
+         (*D* pp(lazy(str" UF: NO ")); *D*)
+         raise NotConvertible
+    | `Maybe (_cl1', _cl2') -> let cl1', cl2' = cl1, cl2 in
+(*D* pp(lazy(str" UF: MAYBE " ++ dbg_eq_clos cl1' cl2')); *D*)
+    let _, s1, t1, c1 = Clos.H.kind_of cl1' in
+    let _, s2, t2, c2 = Clos.H.kind_of cl2' in
+(*D* pp(lazy(ppt env ~depth:1 (extern t1) ++ str" VS " ++ ppt env ~depth:1 (extern t2))); *D*)
+    match kind_of t1, kind_of t2 with
+    | HSort s1, HSort s2 -> sort_cmp cv_pb s1 s2 cst
+    | HMeta n1, HMeta n2 when n1 = n2 -> congruence cv_pb cst cl1' cl2' c1 c2
+    | HEvar (_,n1,a1), HEvar (_,n2,a2) when n1 = n2 && same_len a1 a2 ->
+        (try
+          let cst = fold_left2 (convert_whd cv_pb s1 s2) cst a1 a2 in
+          let cst = convert_stacks cv_pb  cst c1 c2 in
+          UF.union ~smaller:cl1' cl2'; cst
+        with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
+    | HRel n1, HRel n2 when n1 = n2 -> congruence cv_pb cst cl1' cl2' c1 c2
+    | HVar n1, HVar n2 when n1 = n2 -> congruence cv_pb cst cl1' cl2' c1 c2
+    | HInd i1, HInd i2 when eq_ind i1 i2 -> congruence cv_pb cst cl1' cl2' c1 c2
+    | HConstruct (i1,n1), HConstruct (i2,n2) when eq_ind i1 i2 && n1 = n2 ->
+        congruence cv_pb cst cl1' cl2' c1 c2
+    | HLambda (_,_,ty1,bo1), HLambda (_,_,ty2,bo2) ->
+        (try
+          let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
+          let cst = convert_whd CONV (slift s1) (slift s2) cst bo1 bo2 in
+          UF.union ~smaller:cl1' cl2'; cst
+        with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
+    | HProd (_,_,ty1,bo1), HProd (_,_,ty2,bo2) ->
+        (try
+          let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
+          let cst = convert_whd cv_pb (slift s1) (slift s2) cst bo1 bo2 in
+          UF.union ~smaller:cl1' cl2'; cst
+        with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
+(*     
+    | HLambda (_,_,ty1,bo1), _ -> eta
+    | _, HLambda (_,_,ty2,bo2) -> eta
+    | CoFix, CoFix ->
+ *)
+    | HFix(_,op1,(_,tys1,bos1)), HFix(_,op2,(_,tys2,bos2))
+      when op1 = op2 && same_len tys1 tys2 && same_len bos1 bos2 ->
+        (* WE CAN SAY DISTINCT BEFORE *)
+        let cst = fold_left2 (convert_whd CONV s1 s2) cst tys1 tys2 in
+	let n = Array.length bos1 in
+        let s1' = Subs.lift n s1 and s2' = Subs.lift n s2 in
+        let cst = fold_left2 (convert_whd CONV s1' s2') cst bos1 bos2 in
+        congruence cv_pb cst cl1' cl2' c1 c2
+    | HConst k1, HConst k2 ->
+        (try
+          if not (eq_constant k1 k2) then raise NotConvertible
+          else
+            let cst = convert_stacks cv_pb cst c1 c2 in
+            UF.union cl1' cl2';
+            cst
+        with NotConvertible ->
+          let bo1, bo2 =
+            match unfold env k1, unfold env k2 with
+            | None, None -> UF.partition cl1' cl2'; raise NotConvertible
+            | Some bo, None -> intern bo, t2
+            | None, Some bo -> t1, intern bo
+            | Some bo1, Some bo2 -> (*intern bo1*)t1, intern bo2 in
+          let cl1'' = mk_whd_clos ~subs:s1 ~ctx:c1 bo1 in
+          let cl2'' = mk_whd_clos ~subs:s2 ~ctx:c2 bo2 in
+          UF.union ~smaller:cl1'' cl1';
+          UF.union ~smaller:cl2'' cl2';
+          convert cv_pb cst cl1'' cl2'')
+    | HConst k1, _ ->
+        (match unfold env k1 with
+        | None -> UF.partition cl1' cl2'; raise NotConvertible
+        | Some bo ->
+            let cl1'' = mk_whd_clos ~subs:s1 ~ctx:c1 (intern bo) in
+            UF.union ~smaller:cl1'' cl1';
+            convert cv_pb cst cl1'' cl2')
+    | _, HConst k2 ->
+        (match unfold env k2 with
+        | None -> UF.partition cl1' cl2'; raise NotConvertible
+        | Some bo ->
+            let cl2'' = mk_whd_clos ~subs:s2 ~ctx:c2 (intern bo) in
+            UF.union ~smaller:cl2'' cl2';
+            convert cv_pb cst cl1' cl2'')
+    | (HLetIn _,_) | (_,HLetIn _) -> assert false
+    | (HApp _,_)   | (_,HApp _)   -> assert false
+    | (HCase _,_)  | (_,HCase _)  -> assert false
+    | _ -> UF.partition cl1' cl2'; raise NotConvertible
+(*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
+
+  and congruence cv_pb cst cl1 cl2 c1 c2 =
+(*D* __inside "Congruence"; try let __rc =  *D*)
+    try
+      let cst = convert_stacks cv_pb cst c1 c2 in
+      UF.union cl1 cl2; cst
+    with NotConvertible as e -> UF.partition cl1 cl2; raise e  
+(*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
+
+  and convert_whdcl cv_pb cl1 cl2 cst =
+    convert cv_pb cst (whd cl1) (whd cl2)
+
+  (* TODO: change order and optimize with compare_stack_shape, now the 
+   * shape is compared by the recursion *)
+  and convert_stacks cv_pb cst c1 c2 =
+(*D* __inside "stack"; try let __rc =  *D*)
+    match Ctx.kind_of c1, Ctx.kind_of c2 with
+    | Znil, Znil -> cst
+    | Zupdate (_,_, c1), _ -> convert_stacks cv_pb cst c1 c2
+    | _, Zupdate (_,_, c2) -> convert_stacks cv_pb cst c1 c2
+    | Zapp (_, a1, c1), Zapp (_, a2, c2) ->
+        (* Since I don't merge arrays, this may happen *)
+        let cst = convert_stacks cv_pb cst c1 c2 in
+        assert(Array.length a1 = Array.length a2);
+        fold_right2 (convert_whdcl cv_pb) a1 a2 cst 
+    | Zcase (_, i1, p1, br1, c1), Zcase (_, i2, p2, br2, c2)
+      when eq_ind i1.ci_ind i2.ci_ind ->
+        let cst = convert_stacks cv_pb cst c1 c2 in
+        let cst = convert_whdcl cv_pb p1 p2 cst in
+        fold_right2 (convert_whdcl cv_pb) br1 br2 cst 
+    | Zfix (_, f1, c1), Zfix (_, f2, c2) ->
+        let cst = convert_stacks cv_pb cst c1 c2 in
+        convert_whdcl cv_pb f1 f2 cst 
+    | _ -> raise NotConvertible
+(*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
+  in
+  let t1 = intern t1 in
+  let t2 = intern t2 in
+(*D* pp(lazy(ppt env ~depth:10 (extern t1) ++ str" VS " ++ spc()++ppt env ~depth:10 (extern t2))); *D*)
+  let cl1 = mk_whd_clos t1 in
+  let cl2 = mk_whd_clos t2 in
+  convert cv_pb empty_constraint cl1 cl2
+
+(* vim:set foldmethod=marker: *)
