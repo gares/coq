@@ -631,11 +631,14 @@ let dump reds cv_pb l2r evars env t1 t2 time rc =
       ((!filename,!loc_x,!loc_y), reds, cv_pb, l2r,
       evars, env, t1, t2, rc) :: !todump
 
-let trans_fconv reds cv_pb l2r evars env t1 t2 time =
+let trans_fconv strategy reds cv_pb l2r evars env t1 t2 time =
   try
     if eq_constr t1 t2 then empty_constraint
     else 
-      let rc = clos_fconv reds cv_pb l2r evars env t1 t2 in
+      let rc =
+        if strategy = `New then
+          Conversion.clos_fconv reds cv_pb l2r evars env t1 t2 
+        else clos_fconv reds cv_pb l2r evars env t1 t2 in
       time := __time () -. !time;
       dump reds cv_pb l2r evars env t1 t2 !time (Some rc);
       rc
@@ -644,18 +647,18 @@ let trans_fconv reds cv_pb l2r evars env t1 t2 time =
     dump reds cv_pb l2r evars env t1 t2 !time None;
     raise e
 
-let run_cpb (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
+let run_cpb strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
   let time = ref (__time ()) in
   try
-    let u = trans_fconv reds cv_pb l2r evars env t1 t2 time in
+    let u = trans_fconv strategy reds cv_pb l2r evars env t1 t2 time in
     match rc with
-    | None -> !time, false
-    | Some rc -> !time, Univ.compare_constraints rc u
-  with e -> !time, None = rc
+    | None -> !time, false, true
+    | Some rc -> !time, true, Univ.compare_constraints rc u
+  with e -> !time, None = rc, true
 
 let trans_fconv reds cv_pb l2r evars env t1 t2 =
   let time = ref (__time ()) in
-  trans_fconv reds cv_pb l2r evars env t1 t2 time
+  trans_fconv `Regular reds cv_pb l2r evars env t1 t2 time
 
 let trans_conv_cmp ?(l2r=false) conv reds = trans_fconv reds conv l2r Mini_evd.EvarMap.empty
 let trans_conv ?(l2r=false) ?(evars=Mini_evd.EvarMap.empty) reds = trans_fconv reds CONV l2r evars

@@ -435,9 +435,11 @@ let compile verbosely f =
       Util.List.iteri (fun i x ->
         Printf.fprintf stats "( %d , %s" i (Reduction.print_cpb x);
         flush stats;
-        let time, ok = Reduction.run_cpb x in
-        if not ok then prerr_endline "ERR";
-        Printf.fprintf stats "%.3f , %b ) ;\n" time ok)
+        let strategy = if ext = "regular" then `Regular else `New in
+        let time, ok1, ok2 = Reduction.run_cpb strategy x in
+        if not ok1 then prerr_endline ("ERR " ^ string_of_int i);
+        if not ok2 then prerr_endline ("ERR univ " ^ string_of_int i);
+        Printf.fprintf stats "%.3f , %b ) ;\n" time (ok1 && ok2))
       pbs;
       close_out stats;
   | None -> match !Flags.run_conv_pb with
@@ -446,9 +448,9 @@ let compile verbosely f =
       Sys.catch_break true;
       let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
       let p = List.nth pbs n in
-      let time, ok = Reduction.run_cpb p in
+      let time, ok1, ok2 = Reduction.run_cpb `New p in
       Printf.eprintf "( %d , %s %.3f , %b ) ;\n" n 
-        (Reduction.print_cpb p) time ok
+        (Reduction.print_cpb p) time (ok1 && ok2)
   | None ->
       (match !Flags.dump_conv_pbs with
       | Some limit -> Reduction.set_dump_cpbs limit (long_f_dot_v ^ "c")
