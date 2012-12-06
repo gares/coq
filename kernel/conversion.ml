@@ -320,8 +320,8 @@ end = struct (* {{{ *)
   let kind_of c = c
   module H = struct
   type hclosure = closure
-  let intern (h,s,t,c as orig) = orig (*
-    if h <> no_hash then orig else intern_closure orig *)
+  let intern (h,s,t,c as orig) =
+    if h <> no_hash then orig else intern_closure orig
   let extern c = c
   let kind_of c = c
   let hash (h,_,_,_) = h
@@ -350,11 +350,9 @@ module UF : sig
   open Hclosure.Clos.H
 
   val find : hclosure -> hclosure
-  val find_smaller : hclosure -> hclosure
-  val union : smaller:hclosure -> hclosure -> unit
+  val union : hclosure -> hclosure -> unit
   val partition : hclosure -> hclosure -> unit
-  val same :
-    hclosure -> hclosure -> [`Yes | `No | `Maybe of hclosure * hclosure]
+  val same : hclosure -> hclosure -> [`Yes | `No | `Maybe]
   val reset : unit -> unit
   
 end = struct (* {{{ *)
@@ -364,7 +362,6 @@ end = struct (* {{{ *)
 
   let rank : int HT.t = HT.create 19991
   let father : Clos.H.hclosure HT.t = HT.create 19991
-  let smallest : Clos.H.hclosure HT.t = HT.create 19991
 
   let father_of t =
     try HT.find father t with Not_found -> HT.replace father t t; t
@@ -378,10 +375,6 @@ end = struct (* {{{ *)
       let ri = find fi in 
       HT.replace father i ri;
       ri
-
-  let smallest_of rx =
-    try HT.find smallest rx
-    with Not_found -> rx
 
   module UFCset = Set.Make(struct
     type t = Clos.H.hclosure
@@ -407,36 +400,28 @@ end = struct (* {{{ *)
     let ry = find y in
     if Clos.H.equal rx ry then `Yes
     else if UFCset.mem rx (diff_of ry) then `No (* XXX HUMMMMM is it complete?*)
-(*     else `Maybe (smallest_of rx,smallest_of ry) *)
-    else `Maybe (rx,ry)
-
-  let find_smaller x = smallest_of (find x)
+    else `Maybe
 
   let reset () =
     HT.clear rank;
     HT.clear father;
-    HT.clear smallest;
     HT.clear partitions
 
-  let union ~smaller:x y =
+  let union x y =
     let rx = find x in
     let ry = find y in
     if not (Clos.H.equal rx ry) then begin
       let rkx = rank_of x in
       let rky = rank_of y in
-      let sx = smallest_of rx in
       if rkx > rky then begin
         HT.replace father ry rx;
-        HT.replace smallest rx sx;
         HT.replace partitions rx (UFCset.union (diff_of rx) (diff_of ry));
       end else if rkx < rky then begin
         HT.replace father rx ry;
-        HT.replace smallest ry sx;
         HT.replace partitions ry (UFCset.union (diff_of rx) (diff_of ry));
       end else begin
         HT.replace rank rx (rkx + 1);
         HT.replace father ry rx;
-        HT.replace smallest rx sx;
         HT.replace partitions rx (UFCset.union (diff_of rx) (diff_of ry));
       end
     end
@@ -907,14 +892,14 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
   let fold_left2 = Util.Array.fold_left2 in
   let fold_right2 = Util.Array.fold_right2 in
 
-  let pr_status cl1 cl2 i =
+  let _pr_status cl1 cl2 i =
 (*     let pcl n e c = ppt ~depth:5 e (clos_to_constr (Clos.H.extern c)) in *)
        let pcl n e c = pcl n e (Clos.H.extern c) in
        let env = Environ.reset_context env in
     hv 0 (pcl 5 env cl1 ++ spc()++
            str "=?"++int i++str"="++spc()++ pcl 5 env cl2) in
 
-  let dbg_eq_clos c1 c2 = 
+  let _dbg_eq_clos c1 c2 = 
     str " eqc=" ++ bool (eq_constr (clos_to_constr (Clos.H.extern c1))
               (clos_to_constr (Clos.H.extern c2))) ++
 (*     str" hceq=" ++ bool (Clos.H.equal c1 c2) ++ *)
@@ -939,7 +924,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
 
   and convert cv_pb cst cl1 cl2 =
 (*D* __inside "convert"; try let __rc =  *D*)
-(*D* pp(lazy(pr_status cl1 cl2 1)); *D*)
+(*D* pp(lazy(_pr_status cl1 cl2 1)); *D*)
     match UF.same cl1 cl2 with
     | `Yes ->
          (*D* pp(lazy(str" UF: YES ")); *D*)
@@ -947,8 +932,8 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
     | `No ->
          (*D* pp(lazy(str" UF: NO ")); *D*)
          raise NotConvertible
-    | `Maybe (_cl1', _cl2') -> let cl1', cl2' = cl1, cl2 in
-(*D* pp(lazy(str" UF: MAYBE " ++ dbg_eq_clos cl1' cl2')); *D*)
+    | `Maybe -> let cl1', cl2' = cl1, cl2 in
+(*D* pp(lazy(str" UF: MAYBE " ++ _dbg_eq_clos cl1' cl2')); *D*)
     let _, s1, t1, c1 = Clos.H.kind_of cl1' in
     let _, s2, t2, c2 = Clos.H.kind_of cl2' in
 (*D* pp(lazy(ppt env ~depth:1 (extern t1) ++ str" VS " ++ ppt env ~depth:1 (extern t2))); *D*)
@@ -959,7 +944,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
         (try
           let cst = fold_left2 (convert_whd cv_pb s1 s2) cst a1 a2 in
           let cst = convert_stacks cv_pb  cst c1 c2 in
-          UF.union ~smaller:cl1' cl2'; cst
+          UF.union cl1' cl2'; cst
         with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
     | HRel n1, HRel n2 when n1 = n2 -> congruence cv_pb cst cl1' cl2' c1 c2
     | HVar n1, HVar n2 when n1 = n2 -> congruence cv_pb cst cl1' cl2' c1 c2
@@ -970,13 +955,13 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
         (try
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
           let cst = convert_whd CONV (slift s1) (slift s2) cst bo1 bo2 in
-          UF.union ~smaller:cl1' cl2'; cst
+          UF.union cl1' cl2'; cst
         with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
     | HProd (_,_,ty1,bo1), HProd (_,_,ty2,bo2) ->
         (try
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
           let cst = convert_whd cv_pb (slift s1) (slift s2) cst bo1 bo2 in
-          UF.union ~smaller:cl1' cl2'; cst
+          UF.union cl1' cl2'; cst
         with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
 (*     
     | HLambda (_,_,ty1,bo1), _ -> eta
@@ -1007,22 +992,22 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
             | Some bo1, Some bo2 -> (*intern bo1*)t1, intern bo2 in
           let cl1'' = mk_whd_clos ~subs:s1 ~ctx:c1 bo1 in
           let cl2'' = mk_whd_clos ~subs:s2 ~ctx:c2 bo2 in
-          UF.union ~smaller:cl1'' cl1';
-          UF.union ~smaller:cl2'' cl2';
+          UF.union cl1'' cl1';
+          UF.union cl2'' cl2';
           convert cv_pb cst cl1'' cl2'')
     | HConst k1, _ ->
         (match unfold env k1 with
         | None -> UF.partition cl1' cl2'; raise NotConvertible
         | Some bo ->
             let cl1'' = mk_whd_clos ~subs:s1 ~ctx:c1 (intern bo) in
-            UF.union ~smaller:cl1'' cl1';
+            UF.union cl1'' cl1';
             convert cv_pb cst cl1'' cl2')
     | _, HConst k2 ->
         (match unfold env k2 with
         | None -> UF.partition cl1' cl2'; raise NotConvertible
         | Some bo ->
             let cl2'' = mk_whd_clos ~subs:s2 ~ctx:c2 (intern bo) in
-            UF.union ~smaller:cl2'' cl2';
+            UF.union cl2'' cl2';
             convert cv_pb cst cl1' cl2'')
     | (HLetIn _,_) | (_,HLetIn _) -> assert false
     | (HApp _,_)   | (_,HApp _)   -> assert false
