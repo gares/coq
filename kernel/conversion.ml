@@ -604,10 +604,11 @@ let whd opt env evars c =
             aux (Subs.shift n subs) t (Ctx.append c (Ctx.update update ctx))
         | Inr(k,None) -> Subs.id 0, intern (mkRel k), ctx
         | Inr(k,Some p) ->
-            let subs = Subs.shift (k-p) subs in
             (* XXX lookup not cached *)
             (match assoc_opt rel_context (rel_context_len - p) with
-            | Some t -> aux subs (intern (lift p t)) ctx
+            | Some t -> 
+                let subs = Subs.shift (k-p) (Subs.id 0) in
+                aux subs (intern (lift p t)) ctx
             | None -> Subs.id 0, intern(mkRel p), ctx))
     | HVar id ->
             (match assoc_opt var_context id with
