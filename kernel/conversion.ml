@@ -1029,12 +1029,12 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
     with NotConvertible as e -> UF.partition cl1 cl2; raise e  
 (*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
 
-  and convert_whdcl cv_pb cl1 cl2 cst =
-    convert cv_pb cst (whd cl1) (whd cl2)
-
   (* TODO: change order and optimize with compare_stack_shape, now the 
    * shape is compared by the recursion *)
   and convert_stacks cv_pb cst c1 c2 =
+    let convert_whdcl cv_pb cl1 cl2 cst =
+          (* TODO: if Clos.H.equal/UF.same cl1 cl2 then cst else *)
+      convert cv_pb cst (whd cl1) (whd cl2) in
 (*D* __inside "stack"; try let __rc =  *D*)
     match Ctx.kind_of c1, Ctx.kind_of c2 with
     | Znil, Znil -> cst
