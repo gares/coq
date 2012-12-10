@@ -56,6 +56,7 @@ module Hclosure : sig
   module Clos : sig
     val mk : ?subs:subs -> ?ctx:ctx -> hconstr -> closure
     val kind_of : closure -> dummy * subs * hconstr * ctx
+    val pp : int -> closure -> Pp.std_ppcmds
     module H : sig
       type hclosure
       val equal : hclosure -> hclosure -> bool
@@ -66,6 +67,7 @@ module Hclosure : sig
       val intern : closure -> hclosure
       val extern : hclosure -> closure
       val kind_of : hclosure -> dummy * subs * hconstr * ctx
+      val pp : int -> hclosure -> Pp.std_ppcmds
     end
   end
 
@@ -91,6 +93,54 @@ end = struct (* {{{ *)
     | LIFT  of hash * int * subs
   and closure = hash * subs * hconstr * ctx
 
+  open Pp
+  let rec ps m s =
+    if s = ESID 0 then str"-" else
+    let rec tol s = match s with
+    | SHIFT (_,n,s) -> `Shift n :: tol s
+    | ESID 0 -> []
+    | ESID n -> [`Id n]
+    | CONS (_,cv,s) -> `Cons cv :: tol s
+    | LIFT (_,n,s) -> `Lift n :: tol s in
+    str"{" ++ hv 0 (prlist_with_sep (fun () -> str";"++cut()) (function
+    | `Shift n -> str "S " ++ int n
+    | `Id n -> str"I " ++ int n
+    | `Lift n -> str"L " ++ int n
+    | `Cons v -> str"C " ++ pclv m v) (tol s)) ++ str"}"
+  and pclv m cv =
+    let s_of_cl cl = let _,s,_,_ = cl in s in
+    let s = s_of_cl cv.(0) in
+    if Array.for_all (fun cl -> s_of_cl cl == s) cv then
+      let pcl m cl =
+        let _,s,t,c = cl in
+        pcl m (0,ESID 0,t,c) in
+      str"/" ++ ps m s ++ str"/ on"++ spc() ++prvect_with_sep spc (pcl m) cv
+    else prvect_with_sep spc (pcl m) cv
+  and pc m c =
+    if c = Znil then str"-" else
+    let rec tol c = match c with
+    | Znil -> []
+    | Zapp (_,a,c) -> `App a :: tol c
+    | Zfix (_,f,c) -> `Fix f :: tol c
+    | Zcase (_,ci,t,br,c) -> `Case (t,br) :: tol c
+    | Zupdate (_,(_,i),c) -> `Up i :: tol c in
+    str"[" ++ hv 0 (prlist_with_sep (fun () -> str";"++cut()) (function 
+      | `App cv -> str"A " ++ pclv m cv
+      | `Fix c -> str"F " ++ pcl m c
+      | `Up i -> str"# " ++ int i
+      | `Case (p,br) -> str"M " ++ pcl m p ++ prvect_with_sep spc (pcl m) br
+      | `Shift n -> str"S "++int n) 
+      (tol c)) ++ str"]"
+  and pcl m cl = if m = 0 then str"…" else let m = m-1 in
+   let _,s,t,c = cl in
+   if s = ESID 0 && c = Znil then
+     hv 1 (str"(; " ++ Term.H.ll_pr_hconstr m [] t ++ str" ;)")
+   else
+     hv 1 (str"(" ++ ps m s ++ str";" ++ spc() ++
+                  Term.H.ll_pr_hconstr m [] t ++ str";" ++ spc() ++
+                  pc m c ++
+        str")")
+  
   type kind_of_ctx = ctx =
     | Znil
     | Zapp   of hash * closure array * ctx
@@ -327,10 +377,12 @@ end = struct (* {{{ *)
   let empty_ctx = Ctx.nil
   let mk ?(subs=empty_subs) ?(ctx=empty_ctx) t = no_hash, subs, t ,ctx
   let kind_of c = c
+  let pp m c = pcl m c
   module H = struct
   type hclosure = closure
   let intern = intern_closure
   let extern c = c
+  let pp m c = pcl m (extern c)
   let kind_of c = c
   let hash (h,_,_,_) = h
   let equal c1 c2 = c1 == c2
@@ -515,64 +567,12 @@ let fix_body subs fix =
 
 open Pp
 
+let print cmds = prerr_endline (string_of_ppcmds cmds)
+
 let ppt ?(depth=3) e x =
   Term.ll_pr_constr depth (Environ.rel_context e) x
 
-let pph ?depth e x = ppt?depth e (extern x)
-
-let print cmds = prerr_endline (string_of_ppcmds cmds)
-
-let rec ps m e s =
-  if Subs.kind_of s = ESID 0 then str"-" else
-  let rec tol s = match Subs.kind_of s with
-  | SHIFT (_,n,s) -> `Shift n :: tol s
-  | ESID 0 -> []
-  | ESID n -> [`Id n]
-  | CONS (_,cv,s) -> `Cons cv :: tol s
-  | LIFT (_,n,s) -> `Lift n :: tol s in
-  str"{" ++ hv 0 (prlist_with_sep (fun () -> str";"++cut()) (function
-  | `Shift n -> str "S " ++ int n
-  | `Id n -> str"I " ++ int n
-  | `Lift n -> str"L " ++ int n
-  | `Cons v -> str"C " ++ pclv m e v) (tol s)) ++ str"}"
-
-and pclv m e cv =
-  let s_of_cl cl = let _,s,_,_ = Clos.kind_of cl in s in
-  let s = s_of_cl cv.(0) in
-  if Array.for_all (fun cl -> s_of_cl cl == s) cv then
-    let pcl m e cl =
-      let _,s,t,c = Clos.kind_of cl in
-      pcl m e (Clos.mk ~ctx:c t) in
-    str"/" ++ ps m e s ++ str"/ on"++ spc() ++ prvect_with_sep spc (pcl m e) cv
-  else prvect_with_sep spc (pcl m e) cv
-
-and pc m e c =
-  if Ctx.kind_of c = Znil then str"-" else
-  let rec tol c = match Ctx.kind_of c with
-  | Znil -> []
-  | Zapp (_,a,c) -> `App a :: tol c
-  | Zfix (_,f,c) -> `Fix f :: tol c
-  | Zcase (_,ci,t,br,c) -> `Case (t,br) :: tol c
-  | Zupdate (_,(_,i),c) -> `Up i :: tol c in
-  str"[" ++ hv 0 (prlist_with_sep (fun () -> str";"++cut()) (function 
-    | `App cv -> str"A " ++ pclv m e cv
-    | `Fix c -> str"F " ++ pcl m e c
-    | `Up i -> str"# " ++ int i
-    | `Case (p,br) -> str"M " ++ pcl m e p ++ prvect_with_sep spc (pcl m e) br
-    | `Shift n -> str"S "++int n) 
-    (tol c)) ++ str"]"
-
-and pcl m e cl = if m = 0 then str"…" else let m = m-1 in
- let _,s,t,c = Clos.kind_of cl in
- if Subs.kind_of s = ESID 0 && Ctx.kind_of c = Znil then
-  hv 1 (str"(; " ++ ppt ~depth:m e (extern t) ++ str" ;)")
- else
-  hv 1 (str"(" ++ ps m e s ++ str";" ++ spc() ++
-                ppt ~depth:m e (extern t) ++ str";" ++ spc() ++
-                pc m e c ++
-      str")")
-
-let print_status e s t c = print(pcl 10 e (Clos.mk ~subs:s t ~ctx:c))
+let print_status s t c = print(Clos.pp 10 (Clos.mk ~subs:s t ~ctx:c))
 
 type options = { delta : bool }
 
