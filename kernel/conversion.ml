@@ -1044,10 +1044,18 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
     | Znil, Znil -> cst
     | Zupdate (_,_, c1), _ -> convert_stacks cv_pb cst c1 c2
     | _, Zupdate (_,_, c2) -> convert_stacks cv_pb cst c1 c2
-    | Zapp (_, a1, c1), Zapp (_, a2, c2) ->
-        (* Since I don't merge arrays, this may happen *)
+    | Zapp (_, a1, c1), Zapp (_, a2, c2) when same_len a1 a2 ->
         let cst = convert_stacks cv_pb cst c1 c2 in
-        assert(Array.length a1 = Array.length a2);
+        fold_right2 (convert_whdcl cv_pb) a1 a2 cst 
+    | Zapp (_, a1, c1), Zapp (_, a2, c2) ->
+        let la1, la2 = Array.length a1, Array.length a2 in
+        let a1, a2, c1, c2 =
+          if la1 < la2 then
+            a1, Array.sub a2 0 la1, c1, Ctx.app (Array.sub a2 la1 (la2-la1)) c2
+          else
+            Array.sub a1 0 la2, a2, Ctx.app (Array.sub a1 la2 (la1-la2)) c1, c2
+        in
+        let cst = convert_stacks cv_pb cst c1 c2 in
         fold_right2 (convert_whdcl cv_pb) a1 a2 cst 
     | Zcase (_, i1, p1, br1, c1), Zcase (_, i2, p2, br2, c2)
       when eq_ind i1.ci_ind i2.ci_ind ->
