@@ -614,9 +614,13 @@ let whd opt env evars c =
             (match assoc_opt var_context id with
             | Some t -> aux subs (intern t) ctx
             | None -> subs, hd, ctx)
-(*
-    | Evar k -> evars[k]
-*)
+    | HEvar (_,e,v) ->
+       (match (* Array.map not really needed here *)
+        try Some (EvarMap.existential_value evars (e,Array.map extern v))
+        with NotInstantiatedEvar -> None
+       with
+       | None -> subs, hd, ctx
+       | Some t -> aux subs (intern t) ctx)
     | HLetIn (_,_,t,_,bo) -> aux (Subs.cons [|Clos.mk ~subs t|] subs) bo ctx
     | HCast (_,t,_,_) -> aux subs t ctx
     | HApp (_,f,a) ->
