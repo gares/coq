@@ -285,10 +285,10 @@ end = struct (* {{{ *)
       if a0' != a0 then a.(0) <- a0';
       for i = 1 to Array.length a - 1 do
         let hi, si, ti, ci as ai = a.(i) in
-        let ai',h =
+        let ai', hi =
           if si == s0 && hi = no_hash then sh_rec (hi,s0',ti,ci)
           else sh_rec ai in
-        accu := combine !accu h;
+        accu := combine !accu hi;
         if ai' != ai then a.(i) <- ai';
       done;
       !accu
