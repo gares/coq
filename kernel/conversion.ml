@@ -600,16 +600,22 @@ let whd opt env evars c =
     | HRel i -> (match expand_rel i subs with
         | Inl(n,cl,update) ->
             let _,subs, t, c = Clos.kind_of cl in
+            if n = 0 then
 (*             let v,j = update in v.(j) <- Clos.mk (intern (mkProp)); *)
-            aux (Subs.shift n subs) t (Ctx.append c (Ctx.update update ctx))
-        | Inr(k,None) -> Subs.id 0, intern (mkRel k), ctx
+                    aux subs t (Ctx.append c (Ctx.update update ctx))
+            else
+                (* XXX still wrong, we should distribute it on c too *)
+                (* now I understand why it may be good to have hift in the stack
+                 * *)
+               aux (Subs.shift n subs) t c (* alternatively unshift *)
+        | Inr(k,None) -> prerr_endline ("K" ^string_of_int k);Subs.id 0, intern (mkRel k), ctx
         | Inr(k,Some p) ->
             (* XXX lookup not cached *)
             (match assoc_opt rel_context (rel_context_len - p) with
             | Some t -> 
                 let subs = Subs.shift (k-p) (Subs.id 0) in
                 aux subs (intern (lift p t)) ctx
-            | None -> Subs.id 0, intern(mkRel p), ctx))
+            | None -> Subs.id 0, intern(mkRel p), ctx)) (* or k? *)
     | HVar id ->
             (match assoc_opt var_context id with
             | Some t -> aux subs (intern t) ctx
