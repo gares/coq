@@ -748,12 +748,10 @@ let whd opt env evars c =
         (match bo with
         | None -> subs, hd, ctx
         | Some bo -> aux (*subs*)(Subs.id 0) (intern bo) ctx)
-    | HSort _ 
-    | HMeta _ 
-    | HProd _ 
-    | HInd _ 
-    | HCoFix _ -> subs, hd, ctx
-    | _ -> subs, hd, ctx
+    | HConst _ -> subs, hd, ctx
+    (* head normal terms *)
+    | HSort _ | HMeta _ | HProd _ | HInd _ -> subs, hd, ctx
+    | HCoFix _ -> assert false (* TODO *)
   in
   let _, s, t, c = Clos.kind_of c in
   let s, t, c = aux s t c in
