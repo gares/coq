@@ -808,12 +808,15 @@ let red_strong env evars t =
   | HMeta _ -> extern t
   | HEvar (_,k,a) -> mkEvar (k, Array.map (subs_aux s) a)
   | HCast (_,t,k,ty) -> mkCast (subs_aux s t, k, subs_aux s ty)
-  | HProd (_,n,t1,t2) -> mkProd (n, subs_aux s t1, subs_aux (Subs.lift 1 s) t2)
+  | HProd (_,n,t1,t2) ->
+      mkProd (n, red_aux (Clos.mk ~subs:s t1),
+        red_aux (Clos.mk ~subs:(Subs.lift 1 s) t2))
   | HLambda (_,n,t1,t2) ->
       mkLambda (n, red_aux (Clos.mk ~subs:s t1),
         red_aux (Clos.mk ~subs:(Subs.lift 1 s) t2))
-  | HLetIn (_,n, b,ty,t) ->
-      mkLetIn (n, subs_aux s b, subs_aux s ty, subs_aux (Subs.lift 1 s) t)
+  | HLetIn (_,n, b,ty,t) -> (* this may happen if one says no-z *)
+      mkLetIn (n, red_aux (Clos.mk ~subs:s b),
+        red_aux (Clos.mk ~subs:s ty), red_aux (Clos.mk ~subs:(Subs.lift 1 s) t))
   | HApp (_,f,a) -> mkApp (subs_aux s f, Array.map (subs_aux s) a)
   | HCase (_,ci,t,p,bs) ->
       mkCase (ci, subs_aux s t, subs_aux s p, Array.map (subs_aux s) bs)
@@ -825,7 +828,10 @@ let red_strong env evars t =
       | Inr (k, None) -> mkRel k
       | Inr (k, Some p) -> lift (k-p) (mkRel p)
   in
-    red_aux (Clos.mk (intern t))
+  reset ();
+  Clos.H.reset ();
+  UF.reset ();
+  red_aux (Clos.mk (intern t))
 
 exception NotConvertible
 
