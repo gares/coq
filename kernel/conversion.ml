@@ -633,7 +633,8 @@ let whd opt env evars c =
         aux subs t
         (* redo the optimization XXX *)
           (Ctx.case ci (Clos.mk ~subs p) (Array.map (Clos.mk ~subs) br) ctx)
-    | HFix (_,(_,rarg),_) ->
+    | HFix (_,(rargs,fixno),_) ->
+        let rarg = rargs.(fixno) in
         let rec fix_params n c = if n <= 0 then Ctx.nil else
           match Ctx.kind_of c with
           | Zapp (_, args, c) ->
@@ -656,7 +657,7 @@ let whd opt env evars c =
                   else c in
                 let _, s, t, c = Clos.kind_of args.(n) in
                 aux s t (Ctx.append c 
-                  (Ctx.fix (Clos.mk ~subs ~ctx:(fix_params (rarg-1) ctx) hd)
+                  (Ctx.fix (Clos.mk ~subs ~ctx:(fix_params rarg ctx) hd)
                   afterctx))
           | Zupdate (_,_,c) -> find_arg n c (* HERE WE SHOULD INSERT THE ZUPDATE
           *)
