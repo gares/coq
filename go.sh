@@ -33,8 +33,10 @@ mksanitytest() {
   
   Eval $1 in test1.
   Eval $1 in test2.
-  Eval $1 in (33 * 4 + 2 - 1).
+  Eval $1 in (3 * 4 + 2 - 1).
   Eval $1 in (f1 nat 4).
+  Eval $1 in (forall (f : nat -> Prop) (a b : nat), ((fun x => f x -> f x) (S b))).
+
 EOT
 }
 
