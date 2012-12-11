@@ -22,10 +22,19 @@ mksanitytest() {
   Definition test2 := 
      (fun (T : Type) (a b : T) (F G H : T -> T) (pair : T -> T -> T) => 
        (fun f x y => f (G y) x) (fun x y => pair (F x) a) a (H b)).
+  Fixpoint f1 (T : Type) n : nat :=
+    match n with
+    | 0 => 1
+    | S m => f2 T T m (f1 T m) end
+  with f2 (T1 T2 : Type) n : nat -> nat :=
+    match n with
+    | 0 => fun x => x
+    | S m => fun x => x + (f1 T1 m) end.
   
   Eval $1 in test1.
   Eval $1 in test2.
   Eval $1 in (33 * 4 + 2 - 1).
+  Eval $1 in (f1 nat 4).
 EOT
 }
 
