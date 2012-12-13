@@ -991,7 +991,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
          (*D* pp(lazy(str" UF: NO ")); *D*)
          raise NotConvertible
     | `Maybe -> 
-(*D* let eq_c = eq_constr (hclos_to_constr cl1) (hclos_to_constr cl1) in pp(lazy(str" UF: MAYBE " ++ bool eq_c)); try *D*)
+(*D* let eq_c = eq_constr (hclos_to_constr cl1) (hclos_to_constr cl2) in pp(lazy(str" UF: MAYBE " ++ bool eq_c)); try *D*)
     let cl1', cl2' = cl1, cl2 in
     let _, s1, t1, c1 = Clos.H.kind_of cl1' in
     let _, s2, t2, c2 = Clos.H.kind_of cl2' in
