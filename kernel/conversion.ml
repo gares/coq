@@ -950,13 +950,22 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
           the UF calls in convert_stacks
        3. sum_shifts is done here once
        4. new invariant, UF handles whnf-canonical-in-shifts-too
-       5. this would break an assert in whd on Case, but can be fixed *)
+       5. this would break an assert in whd on Case, but can be fixed
+       6. to be understood how to deal with updates in the stack, maybe it
+          is sufficient to fire them as in fapp_stack *)
+    (* XXX question: can we pass the ^4 into s and (apply it if t is Rel)?
+       1. this si consistent with clos_to_constr
+       2. easy to call on subterms when t is Lam/Prod/Evar/Fix
+       3. back to my original idea of not having Zshift, but we now know
+          it make sense to have it temporarily to avoid loosing
+          sharing / updates, but can always be eliminated  *)
     Clos.H.intern cl in
 
   let mk_whd_clos ?subs ?ctx t = whd (Clos.mk ?subs ?ctx t) in
 
   let same_len a1 a2 = Array.length a1 = Array.length a2 in
   let slift = Subs.lift 1 in
+  let sshift n = Subs.shift n in
   let fold_left2 = Util.Array.fold_left2 in
   let fold_right2 = Util.Array.fold_right2 in
 
@@ -986,17 +995,20 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
     let cl1', cl2' = cl1, cl2 in
     let _, s1, t1, c1 = Clos.H.kind_of cl1' in
     let _, s2, t2, c2 = Clos.H.kind_of cl2' in
+    (* TODO: pass that to conv_stack *)
+    let l1, l2 = sum_shifts c1, sum_shifts c2 in
     match kind_of t1, kind_of t2 with
     | HSort s1, HSort s2 -> sort_cmp cv_pb s1 s2 cst
     | HMeta n1, HMeta n2 when n1 = n2 ->
         congruence cv_pb cst cl1' cl2' c1 c2
     | HEvar (_,n1,a1), HEvar (_,n2,a2) when n1 = n2 && same_len a1 a2 ->
         (try
+          let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = fold_left2 (convert_whd cv_pb s1 s2) cst a1 a2 in
           let cst = convert_stacks cv_pb cst c1 c2 in
           UF.union cl1' cl2'; cst
         with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
-    | HRel n1, HRel n2 when n1 + sum_shifts c1 = n2 + sum_shifts c2 ->
+    | HRel n1, HRel n2 when n1 + l1 = n2 + l2 ->
         congruence cv_pb cst cl1' cl2' c1 c2
     | HVar n1, HVar n2 when n1 == n2 ->
         congruence cv_pb cst cl1' cl2' c1 c2
@@ -1006,6 +1018,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
         congruence cv_pb cst cl1' cl2' c1 c2
     | HLambda (_,_,ty1,bo1), HLambda (_,_,ty2,bo2) ->
         (try
+          let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
           let cst =
             convert_whd CONV (slift s1) (slift s2) cst bo1 bo2 in
@@ -1013,6 +1026,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
         with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
     | HProd (_,_,ty1,bo1), HProd (_,_,ty2,bo2) ->
         (try
+          let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
           let cst =
             convert_whd cv_pb (slift s1) (slift s2) cst bo1 bo2 in
@@ -1026,6 +1040,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
     | HFix(_,op1,(_,tys1,bos1)), HFix(_,op2,(_,tys2,bos2))
       when op1 = op2 && same_len tys1 tys2 && same_len bos1 bos2 ->
         (* WE CAN SAY DISTINCT BEFORE *)
+        let s1, s2 = sshift l1 s1, sshift l2 s2 in
         let cst = fold_left2 (convert_whd CONV s1 s2) cst tys1 tys2 in
 	let n = Array.length bos1 in
         let s1' = Subs.lift n s1 and s2' = Subs.lift n s2 in
@@ -1046,6 +1061,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
             | Some bo, None -> intern bo, t2
             | None, Some bo -> t1, intern bo
             | Some bo1, Some bo2 -> (*intern bo1*)t1, intern bo2 in
+          (* TODO: empty subst! *)
           let cl1'' = mk_whd_clos ~subs:s1 ~ctx:c1 bo1 in
           let cl2'' = mk_whd_clos ~subs:s2 ~ctx:c2 bo2 in
           UF.union cl1'' cl1';
@@ -1055,6 +1071,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
         (match unfold env k1 with
         | None -> UF.partition cl1' cl2'; raise NotConvertible
         | Some bo ->
+          (* TODO: empty subst! *)
             let cl1'' = mk_whd_clos ~subs:s1 ~ctx:c1 (intern bo) in
             UF.union cl1'' cl1';
             convert cv_pb cst cl1'' cl2')
@@ -1062,6 +1079,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
         (match unfold env k2 with
         | None -> UF.partition cl1' cl2'; raise NotConvertible
         | Some bo ->
+          (* TODO: empty subst! *)
             let cl2'' = mk_whd_clos ~subs:s2 ~ctx:c2 (intern bo) in
             UF.union cl2'' cl2';
             convert cv_pb cst cl1' cl2'')
