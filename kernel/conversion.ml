@@ -651,7 +651,7 @@ let whd opt env evars c =
 (*            let () = a.(i) <- Clos.mk (intern (mkProp)) in *)
             aux subs t (Ctx.append c (Ctx.update a i (Ctx.shift liftno ctx)))
         | `Var k ->
-            return (Subs.id 0) (intern (mkRel k)) ctx
+            return (Subs.id k) (intern (mkRel k)) ctx
         | `InEnv(liftno, k) ->
             (match assoc_opt rel_context (rel_context_len - k) with
             | Some t -> 
