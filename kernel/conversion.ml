@@ -1020,16 +1020,14 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
         (try
           let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
-          let cst =
-            convert_whd CONV (slift s1) (slift s2) cst bo1 bo2 in
+          let cst = convert_whd CONV (slift s1) (slift s2) cst bo1 bo2 in
           UF.union cl1' cl2'; cst
         with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
     | HProd (_,_,ty1,bo1), HProd (_,_,ty2,bo2) ->
         (try
           let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
-          let cst =
-            convert_whd cv_pb (slift s1) (slift s2) cst bo1 bo2 in
+          let cst = convert_whd cv_pb (slift s1) (slift s2) cst bo1 bo2 in
           UF.union cl1' cl2'; cst
         with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
 (* TODO:
