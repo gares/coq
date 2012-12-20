@@ -70,65 +70,127 @@ mktest() {
   Abort. 
 EOT
 }
+
 runcoq() {
-  OCAMLRUNPARAM='s=33554432,o=120,b' "$@"
+  OCAMLRUNPARAM='s=33554432,o=120,b' /usr/bin/time -o /tmp/time.log -f "%e" "$@"
 }
 
-print() {
-  echo "INFO: $@"
+print() { echo "INFO: $@"; }
+print_n() { echo -n "INFO: $@"; }
+print_begin_action(){ print_n "       $1"; }
+print_end_action(){ echo -e "\rINFO: [$1]"; }
+
+sanity_check() {
+  print 'running sanity check'
+  mksanitytest lazy
+  runcoq $COQBINARY -compile $TEST 2>/dev/null 1>/tmp/t1
+  mksanitytest mines
+  runcoq $COQBINARY -compile $TEST 2>/dev/null 1>/tmp/t2
+  diff /tmp/t1 /tmp/t2
 }
+
+parse_args() {
+  if [ "$1" = "bin/coqtop.byte" ]; then
+  	COQBINARY=bin/coqtop.byte
+  	OPT=1
+  else
+  	COQBINARY=bin/coqtop
+  	OPT=0
+  fi
+}
+
+compile() {
+  print "compiling kernel/* with profiling enabled"
+  build kernel/conversion
+  build kernel/closure
+  build kernel/reduction
+  
+  print "building coqtop"
+  if [ $OPT = 0 ]; then
+  	make -j2 bin/coqtop.byte > /tmp/coqlog 2>&1 || \
+  	(cat /tmp/coqlog; exit 1)
+  else
+  	make -j2 states bin/coqtop.byte > /tmp/coqlog 2>&1 || \
+  	(cat /tmp/coqlog; exit 1)
+  fi
+  grep -i warning /tmp/coqlog || true
+}
+
+bench_reduction() {
+  print "running test in $2 size $1"
+  if [ "$2" = "byte" ]; then EXT=.byte; fi
+  mktest $1 lazy
+  runcoq bin/coqtop$EXT -compile $TEST > /tmp/t1
+  grep ^Finished /tmp/t1
+  # print generating gprof.lazy.out
+  # gprof bin/coqtop > gprof.lazy.out
+  mktest $1 mines
+  runcoq bin/coqtop$EXT -compile $TEST > /tmp/t2
+  grep ^Finished /tmp/t2
+  # print generating gprof.mine.out
+  # gprof bin/coqtop > gprof.mine.out
+  diff <(grep -v ^Finished /tmp/t1) <(grep -v ^Finished /tmp/t2)
+  # print generating annot.out
+  # echo '(* vi' 'm:' 'set ft=ocaml: *)' > annot.out
+  # ocamlprof kernel/conversion.ml >> annot.out || true
+  # ocamlprof kernel/closure.ml >> annot.out || true
+  # ocamlprof kernel/reduction.ml >> annot.out || true
+  # print "type: gvim -o gprof.mine.out annot.out"
+}
+
+regression_check() {
+  print "regression check:"
+  for f in `sprt -n -k2 PASSED | cut -d ' ' -f 1`; do
+    print_begin_action "checking $f"
+    runcoq bin/coqtop -boot -run-conv-pbs today -compile $f 2> /tmp/run.log
+    if grep -q -F ERR /tmp/run.log; then
+      print_end_action "FAIL"
+      cat /tmp/run.log
+      exit 1
+    else
+      print_end_action "OK"
+    fi
+  done
+}
+
+run_all() {
+  local TOTAL=`find . -name \*.vc| wc -l|cut -d ' ' -f 1`
+  local PASSED=`wc -l PASSED|cut -d ' ' -f 1`
+  print "running all problems not passed yet (`expr \\( $TOTAL - $PASSED \\) \* 100 / $TOTAL`%):"
+  for f in `find theories -name \*.vc | sort; find plugins -name \*.vc`; do
+    f=`echo $f | sed -e 's/.vc$//' -e 's/^\.\///'`
+    if ! grep -q -F $f PASSED; then
+      print_begin_action "running $f  (`du -h $f.vc | cut -f1`)"
+      runcoq bin/coqtop -boot -run-conv-pbs today -compile $f 2> /tmp/run.log
+      if ! grep -q -F ERR /tmp/run.log; then
+	print_end_action "OK"
+        echo $f `cat /tmp/time.log` >> PASSED
+      else
+	print_end_action "FAIL"
+        cat /tmp/run.log
+	FAIL="$f $FAIL"
+      fi
+    fi
+  done
+}
+
 # -------------------------------------------------------------------
 
-print "compiling kernel/* with profiling enabled"
-build kernel/conversion
-build kernel/closure
-build kernel/reduction
-
-print "building coqtop"
-make -j2 states bin/coqtop.byte > /tmp/coqlog 2>&1 || \
-	(cat /tmp/coqlog; exit 1)
-grep -i warning /tmp/coqlog || true
-
-print 'running sanity check'
-mksanitytest lazy
-runcoq bin/coqtop -compile $TEST 2>/dev/null 1>/tmp/t1
-mksanitytest mines
-runcoq bin/coqtop -compile $TEST 2>/dev/null 1>/tmp/t2
-diff /tmp/t1 /tmp/t2
+parse_args "$@"
+compile
+sanity_check
 
 if [ $# -gt 0 ]; then
   print "running $@"
   runcoq "$@"
-  exit 0
+else
+  #bench_reduction 6 opt
+  #bench_reduction 4 byte
+  run_all
+  regression_check
+fi
+if [ ! -z "$FAIL" ]; then
+  print "$FAIL FAILED!"
+  exit 1
 fi
 
-OPT=4
-BYTE=4
-
-print "running test in opt size $OPT"
-mktest $OPT lazy
-runcoq bin/coqtop -compile $TEST > /tmp/t1
-grep ^Finished /tmp/t1
-# print generating gprof.lazy.out
-# gprof bin/coqtop > gprof.lazy.out
-mktest $OPT mines
-runcoq bin/coqtop -compile $TEST > /tmp/t2
-grep ^Finished /tmp/t2
-# print generating gprof.mine.out
-# gprof bin/coqtop > gprof.mine.out
-diff <(grep -v ^Finished /tmp/t1) <(grep -v ^Finished /tmp/t2)
-
-print "running test in byte size $BYTE"
-mktest $BYTE lazy
-runcoq bin/coqtop.byte -compile $TEST > /tmp/t1
-grep ^Finished /tmp/t1
-mktest $BYTE mines
-runcoq bin/coqtop.byte -compile $TEST > /tmp/t2
-grep ^Finished /tmp/t2
-diff <(grep -v ^Finished /tmp/t1) <(grep -v ^Finished /tmp/t2)
-# print generating annot.out
-# echo '(* vi' 'm:' 'set ft=ocaml: *)' > annot.out
-# ocamlprof kernel/conversion.ml >> annot.out || true
-# ocamlprof kernel/closure.ml >> annot.out || true
-# ocamlprof kernel/reduction.ml >> annot.out || true
-# print "type: gvim -o gprof.mine.out annot.out"
