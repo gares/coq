@@ -1010,7 +1010,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
         with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
     | HRel n1, HRel n2 when n1 + l1 = n2 + l2 ->
         congruence cv_pb cst cl1' cl2' c1 c2
-    | HVar n1, HVar n2 when n1 == n2 ->
+    | HVar n1, HVar n2 when n1 = n2 -> (* strings not shraed! *)
         congruence cv_pb cst cl1' cl2' c1 c2
     | HInd i1, HInd i2 when eq_ind i1 i2 ->
         congruence cv_pb cst cl1' cl2' c1 c2
