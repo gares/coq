@@ -332,6 +332,15 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
   (*D* let env = (env_of_infos (snd infos)) in *D*)
   (*D* pp(lazy("hd1="^ppterm env (term_of_lift_fconstr el1 hd1))); *D*)
   (*D* pp(lazy("hd2="^ppterm env (term_of_lift_fconstr el2 hd2))); *D*)
+(*
+  let term_of_lift_fconstr l t =
+    let t = term_of_lift_fconstr l t in
+    let safe_destApp t = try destApp t with Invalid_argument _ -> t, [||] in
+    fst (safe_destApp t) in
+  let env = (env_of_infos (snd infos)) in
+  prerr_endline((ppterm ~depth:1 env (term_of_lift_fconstr el1 hd1)) ^ " " ^ 
+                (ppterm ~depth:1 env (term_of_lift_fconstr el2 hd2)));
+*)
   match (fterm_of hd1, fterm_of hd2) with
     (* case of leaves *)
     | (FAtom a1, FAtom a2) ->
