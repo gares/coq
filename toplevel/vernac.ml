@@ -447,8 +447,9 @@ let compile verbosely f =
       Reduction.debug := true;
       Sys.catch_break true;
       let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
+      let n, strategy = if n < 0 then -n, `Regular else n, `New in
       let p = List.nth pbs n in
-      let time, ok1, ok2 = Reduction.run_cpb `New p in
+      let time, ok1, ok2 = Reduction.run_cpb strategy p in
       Printf.eprintf "( %d , %s %.3f , %b ) ;\n" n 
         (Reduction.print_cpb p) time (ok1 && ok2)
   | None ->
