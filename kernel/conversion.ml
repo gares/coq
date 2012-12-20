@@ -918,6 +918,34 @@ let __outside ?cmp_opt exc_opt =
 
 (* END TRACING INSTRUMENTATION *)
 
+let canon_closure cl =
+  let _, s, t, c = Clos.kind_of cl in
+  let n = sum_shifts c in
+  let rec distribute_shifts n c = match Ctx.kind_of c with
+  | Znil -> Ctx.nil
+  | Zshift (_,m,c) -> distribute_shifts (n - m) c
+  | Zapp (_,a,c) -> Ctx.app (shift_closure_array n a) (distribute_shifts n c)
+  | Zcase (_,ci,p,br,c) ->
+      Ctx.case ci (shift_closure n p) (shift_closure_array n br)
+        (distribute_shifts n c)
+  | Zfix (_,f,c) -> Ctx.fix (shift_closure n f) (distribute_shifts n c)
+  | Zupdate (_,_,_,c) -> distribute_shifts n c (* TODO: fire them bofe *) in
+  match kind_of t with
+  | HRel i -> Clos.mk (intern(mkRel (i+n))) ~ctx:(distribute_shifts n c)
+  | _ -> Clos.mk ~subs:(Subs.shift n s) t ~ctx:(distribute_shifts n c)
+
+let fire_clear_updates cl = (* this time we do that with closures *)
+  let _, subs, t, ctx = Clos.kind_of cl in
+  let rec fire f c = match Ctx.kind_of c with
+  | Znil -> Ctx.nil
+  | Zshift (_,n,c) -> Ctx.shift n (fire (fun c -> f (Ctx.shift n c)) c)
+  | Zupdate (_,a,i,c) -> a.(i) <- Clos.mk ~subs ~ctx:(f Ctx.nil) t; fire f c
+  | Zapp (_,a,c) -> Ctx.app a (fire (fun c -> f (Ctx.app a c)) c)
+  | Zfix (_,fx,c) -> Ctx.fix fx (fire (fun c -> f (Ctx.fix fx c)) c)
+  | Zcase (_,ci,p,br,c) ->
+       Ctx.case ci p br (fire (fun c -> f (Ctx.case ci p br c)) c) in
+  Clos.mk ~subs t ~ctx:(fire (fun x -> x) ctx)
+
 let fire_updates cl = (* this time we do that with closures *)
   let _, subs, t, ctx = Clos.kind_of cl in
   let rec fire f c = match Ctx.kind_of c with
