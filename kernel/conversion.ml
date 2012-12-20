@@ -756,8 +756,8 @@ let whd opt env evars c =
           | Zshift (_,s,c) -> find_iota nupds (totshift + s) c
           | Zcase (_,ci,p,br,_) ->
               let _, subs, b, c = Clos.kind_of br.(k-1) in
-              assert(c = Ctx.nil);
-              aux subs b (ctx_for_case totshift ci.ci_npar ctx)
+              (* c may contain a shift *)
+              aux subs b (Ctx.append c (ctx_for_case totshift ci.ci_npar ctx))
           | Zfix (_,fx,c) ->
               let _, fxsubs, fxbo, fctx = Clos.kind_of fx in
               let fisubs, fi = fix_body fxsubs fxbo in
