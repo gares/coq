@@ -995,12 +995,18 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
          (*D* pp(lazy(str" UF: NO ")); *D*)
          raise NotConvertible
     | `Maybe -> 
-(*D* let eq_c = eq_constr (hclos_to_constr cl1) (hclos_to_constr cl2) in pp(lazy(str" UF: MAYBE " ++ bool eq_c)); try *D*)
     let cl1', cl2' = cl1, cl2 in
     let _, s1, t1, c1 = Clos.H.kind_of cl1' in
     let _, s2, t2, c2 = Clos.H.kind_of cl2' in
-    (* TODO: pass that to conv_stack *)
     let l1, l2 = sum_shifts c1, sum_shifts c2 in
+(*D* let eq_c = eq_constr (hclos_to_constr cl1) (hclos_to_constr cl2) in pp(lazy(str" UF: MAYBE " ++ bool eq_c)); try *D*)
+    (* TODO: pass that to conv_stack *)
+(*
+  print(
+    let t1, t2 = lift l1 (apply_subs s1 t1),
+                 lift l2 (apply_subs s2 t2) in
+    ppt ~depth:1 env t1 ++ str" " ++ ppt ~depth:1 env t2); 
+*)
     match kind_of t1, kind_of t2 with
     | HSort s1, HSort s2 -> sort_cmp cv_pb s1 s2 cst
     | HMeta n1, HMeta n2 when n1 = n2 ->
@@ -1093,7 +1099,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
     | (HApp _,_)   | (_,HApp _)   -> assert false
     | (HCase _,_)  | (_,HCase _)  -> assert false
     | _ -> UF.partition cl1' cl2'; raise NotConvertible
-(*D*  with NotConvertible as e -> assert(eq_c = false); raise e  *D*)
+    (*D*  with NotConvertible as e -> if eq_c then print (ppt env (hclos_to_constr cl1) ++ spc() ++ ppt env (hclos_to_constr cl2) ++ spc() ++ Clos.H.pp 10 cl1 ++ spc() ++ Clos.H.pp 10 cl2); assert(eq_c = false); raise e  *D*)
 (*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
 
   and congruence cv_pb cst cl1 cl2 c1 c2 =
