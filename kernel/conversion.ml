@@ -918,6 +918,16 @@ let __outside ?cmp_opt exc_opt =
 
 (* END TRACING INSTRUMENTATION *)
 
+let fire_updates cl = (* this time we do that with closures *)
+  let _, subs, t, ctx = Clos.kind_of cl in
+  let rec fire f c = match Ctx.kind_of c with
+  | Znil -> ()
+  | Zshift (_,n,c) -> fire (fun c -> f (Ctx.shift n c)) c
+  | Zupdate (_,a,i,c) -> a.(i) <- Clos.mk ~subs ~ctx:(f Ctx.nil) t; fire f c
+  | Zapp (_,a,c) -> fire (fun c -> f (Ctx.app a c)) c
+  | Zfix (_,fx,c) -> fire (fun c -> f (Ctx.fix fx c)) c
+  | Zcase (_,ci,p,br,c) -> fire (fun c -> f (Ctx.case ci p br c)) c in
+  fire (fun x -> x) ctx
 
 let clos_fconv trans cv_pb l2r evars env t1 t2 =
   reset ();
