@@ -971,6 +971,10 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
 
 (*D* let hclos_to_constr c = clos_to_constr (Clos.H.extern c) in *D*)
 
+  let eta_expand_ctx c =
+    Ctx.append c
+      (Ctx.shift 1 (Ctx.app [|Clos.mk ~subs:(Subs.lift 1 (Subs.id 0)) (intern (mkRel 1))|] Ctx.nil)) in
+
   let _pr_status cl1 cl2 i =
        let pcl n e c = Clos.H.pp n c in
        let env = Environ.reset_context env in
@@ -1031,8 +1035,6 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
           UF.union cl1' cl2'; cst
         with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
 (* TODO:
-    | HLambda (_,_,ty1,bo1), _ -> eta
-    | _, HLambda (_,_,ty2,bo2) -> eta
     | CoFix, CoFix ->
  *)
     | HFix(_,op1,(_,tys1,bos1)), HFix(_,op2,(_,tys2,bos2))
@@ -1065,6 +1067,12 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
           UF.union cl1'' cl1';
           UF.union cl2'' cl2';
           convert cv_pb cst cl1'' cl2'')
+    | HLambda (_,_,_,bo1), _ -> (* XXX see msg on coq club *)
+        let eta_cl2 = Clos.mk ~subs:s2 t2 ~ctx:(eta_expand_ctx c2) in
+        convert CONV cst (mk_whd_clos ~subs:(slift s1) bo1) (whd eta_cl2)
+    | _, HLambda (_,_,_,bo2) ->
+        let eta_cl1 = Clos.mk ~subs:s1 t1 ~ctx:(eta_expand_ctx c1) in
+        convert CONV cst (whd eta_cl1) (mk_whd_clos ~subs:(slift s2) bo2)
     | HConst k1, _ ->
         (match unfold env k1 with
         | None -> UF.partition cl1' cl2'; raise NotConvertible
