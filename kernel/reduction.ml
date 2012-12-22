@@ -646,7 +646,7 @@ let trans_fconv strategy reds cv_pb l2r evars env t1 t2 time =
     else 
       let rc =
         if strategy = `New then
-          Conversion.clos_fconv reds cv_pb l2r evars env t1 t2 
+          Conversion.are_convertible reds cv_pb ~l2r evars env t1 t2 
         else clos_fconv reds cv_pb l2r evars env t1 t2 in
       time := __time () -. !time;
       dump reds cv_pb l2r evars env t1 t2 !time (Some rc);

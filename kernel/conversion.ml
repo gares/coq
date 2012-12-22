@@ -14,12 +14,13 @@ open Univ
 open Environ
 open Mini_evd
 
-let uf_table_size = 100003 (* reset costs 0.0072 *)
+(* With smaller hashtables it slows down. Reset costs a lot: 0.0072 *)
+let uf_table_size = 100003
 
 module Hclosure : sig
 
-  type ctx
   type closure
+  type ctx
   type subs
   type hconstr = Term.H.hconstr
 
@@ -40,11 +41,16 @@ module Hclosure : sig
                  be stored in a.(i) *)
     | Zshift  of dummy * int * ctx
               (* Zshift (_,s,_) means that the term should be lifted by s *)
+
   type kind_of_subs =
     | Eid    of int
+              (* Eid n is the identity subst of length n *)
     | Econs  of dummy * closure array * subs
+              (* Econs (_,ca,_) represents Array.length ca assignements *)
     | Eshift of dummy * int * subs
+              (* Eshift (_,n,_) lefts free Debruijn indexes of n *)
     | Elift  of dummy * int * subs
+              (* Elift (_,n,_) moves the subst under n lambdas *)
 
   module Ctx : sig
     val nil : ctx
@@ -664,10 +670,6 @@ end (* }}} *)
 open Hclosure
 open Term.H
 
-let rec len_subs s n = match Subs.kind_of s with
-  | Elift(_,_,s) |Econs (_,_,s) | Eshift(_,_,s) -> len_subs s (n+1)
-  | _ -> n
-
 let expand_rel k s =
   let rec aux_rel liftno k s = match Subs.kind_of s with
     | Econs (_,def,s) when k > Array.length def ->
@@ -721,8 +723,10 @@ and apply_subs s t = match kind_of t with
   | HMeta _ -> extern t
   | HEvar (_,k,a) -> mkEvar (k, Array.map (apply_subs s) a)
   | HCast (_,t,k,ty) -> mkCast (apply_subs s t, k, apply_subs s ty)
-  | HProd (_,n,t1,t2) -> mkProd (n, apply_subs s t1, apply_subs (Subs.lift 1 s) t2)
-  | HLambda (_,n,t1,t2) -> mkLambda (n, apply_subs s t1, apply_subs (Subs.lift 1 s) t2)
+  | HProd (_,n,t1,t2) ->
+      mkProd (n, apply_subs s t1, apply_subs (Subs.lift 1 s) t2)
+  | HLambda (_,n,t1,t2) ->
+      mkLambda (n, apply_subs s t1, apply_subs (Subs.lift 1 s) t2)
   | HLetIn (_,n, b,ty,t) ->
       mkLetIn (n, apply_subs s b, apply_subs s ty, apply_subs (Subs.lift 1 s) t)
   | HApp (_,f,a) -> mkApp (apply_subs s f, Array.map (apply_subs s) a)
@@ -761,16 +765,12 @@ let unfold env c =
 
 type options = { delta : bool }
 
+(* Since we assign subst elements, we can't build a new subst. We have to
+ * keep the same arrays. We could try to drop the head and the tail when
+ * they are not used and replace them by shift/id *)
 let opt_subst s t = s
 
-let sum_shifts ctx =
-  let rec sum_aux n c = match Ctx.kind_of c with
-  | Znil -> n
-  | Zshift(_,m,c) -> sum_aux (n+m) c
-  | Zupdate(_,_,_,c) | Zapp(_,_,c) | Zfix(_,_,c) | Zcase(_,_,_,_,c) ->
-      sum_aux n c in
-  sum_aux 0 ctx
-
+(* {{{ REDUCTION ************************************************************)
 let whd opt env evars c =
   (* TODO: make an array of closures to be updated, see also dummy array
      in HRel case, there we should stick in the Ctx.update the array
@@ -964,13 +964,12 @@ let whd opt env evars c =
   let _, s, t, c = Clos.kind_of c in
   let s, t, c = aux s t c in
   Clos.mk ~subs:s ~ctx:c t
+(* }}} END REDUCTION *********************************************************)
 
 let unwind c = clos_to_constr c
 
 let red_whd env evars t =
   reset ();
-  Clos.H.reset ();
-  UF.reset ();
   let c = Clos.mk (intern t) in
   let n = whd {delta = true} env evars.Mini_evd.evars c in
   unwind n
@@ -1021,13 +1020,11 @@ let red_strong env evars t =
       | `InEnv (k, p) -> lift (k-p) (mkRel p)
   in
   reset ();
-  Clos.H.reset ();
-  UF.reset ();
   red_aux (Clos.mk (intern t))
 
 exception NotConvertible
 
-(* BEGIN TRACING INSTRUMENTATION *)
+(* {{{ TRACING INSTRUMENTATION *)
 
 let debug = ref true
 let indent = ref "";;
@@ -1070,7 +1067,36 @@ let __outside ?cmp_opt exc_opt =
   end
 ;;
 
-(* END TRACING INSTRUMENTATION *)
+(* }}} TRACING INSTRUMENTATION *)
+
+let sum_shifts ctx =
+  let rec sum_aux n c = match Ctx.kind_of c with
+  | Znil -> n
+  | Zshift(_,m,c) -> sum_aux (n+m) c
+  | Zupdate(_,_,_,c) | Zapp(_,_,c) | Zfix(_,_,c) | Zcase(_,_,_,_,c) ->
+      sum_aux n c in
+  sum_aux 0 ctx
+
+(* XXX we could normalize the closure before interning it:
+           s, t, [ c1; ^1; c2; ^3; c3 ] --->
+           s, t, [ ^4; c1^4; c2^3; c3 ]
+   benefits:
+       1. the stack is ready for convert_stacks
+       2. this interning phase interns already the right closures for 
+          the UF calls in convert_stacks
+       3. sum_shifts is done here once
+       4. new invariant, UF handles whnf-canonical-in-shifts-too
+       5. this would break an assert in whd on Case, but can be fixed
+       6. to be understood how to deal with updates in the stack, maybe it
+          is sufficient to fire them as in fapp_stack
+   question: can we pass the ^4 into s and (apply it if t is Rel)?
+       1. this si consistent with clos_to_constr
+       2. easy to call on subterms when t is Lam/Prod/Evar/Fix
+       3. back to my original idea of not having Zshift, but we now know
+          it make sense to have it temporarily to avoid loosing
+          sharing / updates, but can always be eliminated 
+    problem: what to do about updates?
+       1. they get lost? I mean they can fired only once
 
 let canon_closure cl =
   let _, s, t, c = Clos.kind_of cl in
@@ -1083,7 +1109,7 @@ let canon_closure cl =
       Ctx.case ci (shift_closure n p) (shift_closure_array n br)
         (distribute_shifts n c)
   | Zfix (_,f,c) -> Ctx.fix (shift_closure n f) (distribute_shifts n c)
-  | Zupdate (_,_,_,c) -> distribute_shifts n c (* TODO: fire them bofe *) in
+  | Zupdate (_,_,_,c) -> distribute_shifts n c in
   match kind_of t with
   | HRel i -> Clos.mk (intern(mkRel (i+n))) ~ctx:(distribute_shifts n c)
   | _ -> Clos.mk ~subs:(Subs.shift n s) t ~ctx:(distribute_shifts n c)
@@ -1099,8 +1125,10 @@ let fire_clear_updates cl = (* this time we do that with closures *)
   | Zcase (_,ci,p,br,c) ->
        Ctx.case ci p br (fire (fun c -> f (Ctx.case ci p br c)) c) in
   Clos.mk ~subs t ~ctx:(fire (fun x -> x) ctx)
+*)
 
-let fire_updates cl = (* this time we do that with closures *)
+let fire_updates cl =
+ (* this time we do that with it CPS style, TODO: measure speed *)
   let _, subs, t, ctx = Clos.kind_of cl in
   let rec fire f c = match Ctx.kind_of c with
   | Znil -> ()
@@ -1111,7 +1139,11 @@ let fire_updates cl = (* this time we do that with closures *)
   | Zcase (_,ci,p,br,c) -> fire (fun c -> f (Ctx.case ci p br c)) c in
   fire (fun x -> x) ctx
 
-let clos_fconv trans cv_pb l2r evars env t1 t2 =
+(* {{{ CONVERSION ***********************************************************)
+
+let are_convertible trans cv_pb ~l2r evars env t1 t2 =
+  (* TODO: l2r = true -> unfold on the left *)
+
   let sort_cmp pb s0 s1 cuniv =
     match (s0,s1) with
     | (Prop c1, Prop c2) when pb = CUMUL ->
@@ -1129,28 +1161,9 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
 
   let whd cl =
     let cl = whd { delta=false } env evars cl in
-    (* XXX fire updates as in fapp_stack? *)
-    (* XXX we could also normalize the closure before interning it:
-           s, t, [ c1; ^1; c2; ^3; c3 ] --->
-           s, t, [ ^4; c1^4; c2^3; c3 ]
-       1. the stack is ready for convert_stacks
-       2. this interning phase interns already the right closures for 
-          the UF calls in convert_stacks
-       3. sum_shifts is done here once
-       4. new invariant, UF handles whnf-canonical-in-shifts-too
-       5. this would break an assert in whd on Case, but can be fixed
-       6. to be understood how to deal with updates in the stack, maybe it
-          is sufficient to fire them as in fapp_stack *)
-    (* XXX question: can we pass the ^4 into s and (apply it if t is Rel)?
-       1. this si consistent with clos_to_constr
-       2. easy to call on subterms when t is Lam/Prod/Evar/Fix
-       3. back to my original idea of not having Zshift, but we now know
-          it make sense to have it temporarily to avoid loosing
-          sharing / updates, but can always be eliminated  *)
+    (* XXX fire_updates as in fapp_stack? *)
     Clos.H.intern cl in
-
   let mk_whd_clos ?subs ?ctx t = whd (Clos.mk ?subs ?ctx t) in
-
   let same_len a1 a2 = Array.length a1 = Array.length a2 in
   let slift = Subs.lift 1 in
   let sshift n = Subs.shift n in
@@ -1160,8 +1173,10 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
 (*D* let hclos_to_constr c = clos_to_constr (Clos.H.extern c) in *D*)
 
   let eta_expand_ctx c =
-    Ctx.append c
-      (Ctx.shift 1 (Ctx.app [|Clos.mk ~subs:(Subs.lift 1 (Subs.id 0)) (intern (mkRel 1))|] Ctx.nil)) in
+    let eta_expand_suffix =
+      let r1 = Clos.mk ~subs:(Subs.lift 1 (Subs.id 0)) (intern (mkRel 1)) in
+      Ctx.shift 1 (Ctx.app [|r1|] Ctx.nil) in
+    Ctx.append c eta_expand_suffix in
 
   let _pr_status cl1 cl2 i =
        let pcl n e c = Clos.H.pp n c in
@@ -1183,9 +1198,8 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
          (*D* pp(lazy(str" UF: NO ")); *D*)
          raise NotConvertible
     | `Maybe -> 
-    let cl1', cl2' = cl1, cl2 in
-    let _, s1, t1, c1 = Clos.H.kind_of cl1' in
-    let _, s2, t2, c2 = Clos.H.kind_of cl2' in
+    let _, s1, t1, c1 = Clos.H.kind_of cl1 in
+    let _, s2, t2, c2 = Clos.H.kind_of cl2 in
     let l1, l2 = sum_shifts c1, sum_shifts c2 in
 (*D* let eq_c = eq_constr (hclos_to_constr cl1) (hclos_to_constr cl2) in pp(lazy(str" UF: MAYBE " ++ bool eq_c)); try *D*)
     (* TODO: pass that to conv_stack *)
@@ -1198,36 +1212,36 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
     match kind_of t1, kind_of t2 with
     | HSort s1, HSort s2 -> sort_cmp cv_pb s1 s2 cst
     | HMeta n1, HMeta n2 when n1 = n2 ->
-        congruence cv_pb cst cl1' cl2' c1 c2
+        congruence cv_pb cst cl1 cl2 c1 c2
     | HEvar (_,n1,a1), HEvar (_,n2,a2) when n1 = n2 && same_len a1 a2 ->
         (try
           let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = fold_left2 (convert_whd cv_pb s1 s2) cst a1 a2 in
           let cst = convert_stacks cv_pb cst c1 c2 in
-          UF.union cl1' cl2'; cst
-        with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
+          UF.union cl1 cl2; cst
+        with NotConvertible as e -> UF.partition cl1 cl2; raise e)
     | HRel n1, HRel n2 when n1 + l1 = n2 + l2 ->
-        congruence cv_pb cst cl1' cl2' c1 c2
-    | HVar n1, HVar n2 when n1 = n2 -> (* strings not shraed! *)
-        congruence cv_pb cst cl1' cl2' c1 c2
+        congruence cv_pb cst cl1 cl2 c1 c2
+    | HVar n1, HVar n2 when n1 = n2 -> (* XXX strings not shraed! *)
+        congruence cv_pb cst cl1 cl2 c1 c2
     | HInd i1, HInd i2 when eq_ind i1 i2 ->
-        congruence cv_pb cst cl1' cl2' c1 c2
+        congruence cv_pb cst cl1 cl2 c1 c2
     | HConstruct (i1,n1), HConstruct (i2,n2) when eq_ind i1 i2 && n1 = n2 ->
-        congruence cv_pb cst cl1' cl2' c1 c2
+        congruence cv_pb cst cl1 cl2 c1 c2
     | HLambda (_,_,ty1,bo1), HLambda (_,_,ty2,bo2) ->
         (try
           let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
           let cst = convert_whd CONV (slift s1) (slift s2) cst bo1 bo2 in
-          UF.union cl1' cl2'; cst
-        with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
+          UF.union cl1 cl2; cst
+        with NotConvertible as e -> UF.partition cl1 cl2; raise e)
     | HProd (_,_,ty1,bo1), HProd (_,_,ty2,bo2) ->
         (try
           let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
           let cst = convert_whd cv_pb (slift s1) (slift s2) cst bo1 bo2 in
-          UF.union cl1' cl2'; cst
-        with NotConvertible as e -> UF.partition cl1' cl2'; raise e)
+          UF.union cl1 cl2; cst
+        with NotConvertible as e -> UF.partition cl1 cl2; raise e)
 (* TODO:
     | CoFix, CoFix ->
  *)
@@ -1240,27 +1254,26 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
         let s1' = Subs.lift n s1 and s2' = Subs.lift n s2 in
         let cst =
           fold_left2 (convert_whd CONV s1' s2') cst bos1 bos2 in
-        congruence cv_pb cst cl1' cl2' c1 c2
+        congruence cv_pb cst cl1 cl2 c1 c2
     | HConst k1, HConst k2 ->
         (try
           if not (eq_constant k1 k2) then raise NotConvertible
           else
             let cst = convert_stacks cv_pb cst c1 c2 in
-            UF.union cl1' cl2';
+            UF.union cl1 cl2;
             cst
-        with NotConvertible -> (* we could set delta=true in some cases *)
+        with NotConvertible ->
           let bo1, bo2 =
             match unfold env k1, unfold env k2 with
-            | None, None -> UF.partition cl1' cl2'; raise NotConvertible
+            | None, None -> UF.partition cl1 cl2; raise NotConvertible
             | Some bo, None -> intern bo, t2
             | None, Some bo -> t1, intern bo
             | Some bo1, Some bo2 -> (*intern bo1*)t1, intern bo2 in
-          (* TODO: empty subst! *)
-          let cl1'' = mk_whd_clos ~subs:s1 ~ctx:c1 bo1 in
-          let cl2'' = mk_whd_clos ~subs:s2 ~ctx:c2 bo2 in
-          UF.union cl1'' cl1';
-          UF.union cl2'' cl2';
-          convert cv_pb cst cl1'' cl2'')
+          let cl1' = mk_whd_clos ~ctx:c1 bo1 in
+          let cl2' = mk_whd_clos ~ctx:c2 bo2 in
+          UF.union cl1' cl1;
+          UF.union cl2' cl2;
+          convert cv_pb cst cl1' cl2')
     | HLambda (_,_,_,bo1), _ -> (* XXX see msg on coq club *)
         let eta_cl2 = Clos.mk ~subs:s2 t2 ~ctx:(eta_expand_ctx c2) in
         convert CONV cst (mk_whd_clos ~subs:(slift s1) bo1) (whd eta_cl2)
@@ -1269,24 +1282,22 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
         convert CONV cst (whd eta_cl1) (mk_whd_clos ~subs:(slift s2) bo2)
     | HConst k1, _ ->
         (match unfold env k1 with
-        | None -> UF.partition cl1' cl2'; raise NotConvertible
+        | None -> UF.partition cl1 cl2; raise NotConvertible
         | Some bo ->
-          (* TODO: empty subst! *)
-            let cl1'' = mk_whd_clos ~subs:s1 ~ctx:c1 (intern bo) in
-            UF.union cl1'' cl1';
-            convert cv_pb cst cl1'' cl2')
+            let cl1' = mk_whd_clos ~ctx:c1 (intern bo) in
+            UF.union cl1' cl1;
+            convert cv_pb cst cl1' cl2)
     | _, HConst k2 ->
         (match unfold env k2 with
-        | None -> UF.partition cl1' cl2'; raise NotConvertible
+        | None -> UF.partition cl1 cl2; raise NotConvertible
         | Some bo ->
-          (* TODO: empty subst! *)
-            let cl2'' = mk_whd_clos ~subs:s2 ~ctx:c2 (intern bo) in
-            UF.union cl2'' cl2';
-            convert cv_pb cst cl1' cl2'')
+            let cl2' = mk_whd_clos ~ctx:c2 (intern bo) in
+            UF.union cl2' cl2;
+            convert cv_pb cst cl1 cl2')
     | (HLetIn _,_) | (_,HLetIn _) -> assert false
     | (HApp _,_)   | (_,HApp _)   -> assert false
     | (HCase _,_)  | (_,HCase _)  -> assert false
-    | _ -> UF.partition cl1' cl2'; raise NotConvertible
+    | _ -> UF.partition cl1 cl2; raise NotConvertible
     (*D*  with NotConvertible as e -> if eq_c then print (ppt env (hclos_to_constr cl1) ++ spc() ++ ppt env (hclos_to_constr cl2) ++ spc() ++ Clos.H.pp 10 cl1 ++ spc() ++ Clos.H.pp 10 cl2); assert(eq_c = false); raise e  *D*)
 (*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
 
@@ -1304,7 +1315,6 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
    * this requires a compare_stack_shape to avoid stupid comparisons *)
   and convert_stacks cv_pb cst c1 c2 =
     let convert_whdcl cv_pb l1 l2 cl1 cl2 cst =
-      (* TODO: if Clos.H.equal cl1 cl2 then cst else *)
       convert cv_pb cst
         (whd (shift_closure l1 cl1)) (whd (shift_closure l2 cl2)) in
 
@@ -1353,5 +1363,7 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
   let t1 = intern t1 in
   let t2 = intern t2 in
   convert_whd cv_pb (Subs.id 0) (Subs.id 0) empty_constraint t1 t2
+
+(* }}} END CONVERSION *******************************************************)
 
 (* vim:set foldmethod=marker: *)

@@ -8,10 +8,10 @@
 
 exception NotConvertible
 
-val clos_fconv : 
-  Names.Idpred.t * Names.Cpred.t ->
-  Mini_evd.conv_pb ->
-  bool ->
+val are_convertible : 
+  Names.transparent_state ->
+  Mini_evd.conv_pb -> (* CONV | CUMUL *)
+  l2r:bool ->
   Mini_evd.EvarMap.t ->
   Environ.env -> Term.constr -> Term.constr -> Univ.constraints
 
