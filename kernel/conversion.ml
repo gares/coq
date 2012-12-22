@@ -14,6 +14,8 @@ open Univ
 open Environ
 open Mini_evd
 
+let uf_table_size = 100003 (* reset costs 0.0072 *)
+
 module Hclosure : sig
 
   type ctx
@@ -81,7 +83,11 @@ module Hclosure : sig
     end
   end
 
-  module Table : Hashtbl.S with type key = Clos.H.hclosure
+  module type HashtblEx = sig
+    include Hashtbl.S with type key = Clos.H.hclosure
+    val reset : int -> 'a t -> unit
+  end
+  module Table : HashtblEx
 
 end = struct (* {{{ *)
 
@@ -266,8 +272,8 @@ end = struct (* {{{ *)
       [] (Array.to_list table.data)
   end
 
-  let clos_table = HashsetClos.create 100003
-  let reset () = HashsetClos.reset 100003 clos_table
+  let clos_table = HashsetClos.create uf_table_size
+  let reset () = HashsetClos.reset uf_table_size clos_table
 
   let no_hash = 0
 
@@ -416,11 +422,159 @@ end = struct (* {{{ *)
   end
   end
 
-  module Table = Hashtbl.Make(struct
-    type t = Clos.H.hclosure
-    let equal = Clos.H.equal
-    let hash = Clos.H.hash
-  end)
+  module type HashtblEx = sig
+    include Hashtbl.S with type key = Clos.H.hclosure
+    val reset : int -> 'a t -> unit
+  end
+
+  module Table : HashtblEx = struct
+    type key = Clos.H.hclosure
+    type 'a t =
+      { mutable size: int;
+        mutable data: 'a bucketlist array }
+    and 'a bucketlist =
+        Empty
+      | Cons of key * 'a * 'a bucketlist
+
+    let create initial_size =
+      let s = min (max 1 initial_size) Sys.max_array_length in
+      { size = 0; data = Array.make s Empty }
+
+    let clear h =
+      for i = 0 to Array.length h.data - 1 do
+        h.data.(i) <- Empty
+      done;
+      h.size <- 0
+
+    let reset s h =
+      let h' = create s in
+      h.size <- h'.size; h.data <- h'.data
+
+    let copy h =
+      { size = h.size;
+        data = Array.copy h.data }
+
+    let resize hashfun tbl =
+      let odata = tbl.data in
+      let osize = Array.length odata in
+      let nsize = min (2 * osize + 1) Sys.max_array_length in
+      if nsize <> osize then begin
+        let ndata = Array.create nsize Empty in
+        let rec insert_bucket = function
+            Empty -> ()
+          | Cons(key, data, rest) ->
+              insert_bucket rest; (* preserve original order of elements *)
+              let nidx = (hashfun key) mod nsize in
+              ndata.(nidx) <- Cons(key, data, ndata.(nidx)) in
+        for i = 0 to osize - 1 do
+          insert_bucket odata.(i)
+        done;
+        tbl.data <- ndata;
+      end
+    
+    let length h = h.size
+
+    let safehash key = (Clos.H.hash key) land max_int
+
+    let add h key info =
+      let i = (safehash key) mod (Array.length h.data) in
+      let bucket = Cons(key, info, h.data.(i)) in
+      h.data.(i) <- bucket;
+      h.size <- succ h.size;
+      if h.size > Array.length h.data lsl 1 then resize safehash h
+
+    let remove h key =
+      let rec remove_bucket = function
+          Empty ->
+            Empty
+        | Cons(k, i, next) ->
+            if Clos.H.equal k key
+            then begin h.size <- pred h.size; next end
+            else Cons(k, i, remove_bucket next) in
+      let i = (safehash key) mod (Array.length h.data) in
+      h.data.(i) <- remove_bucket h.data.(i)
+
+    let rec find_rec key = function
+        Empty ->
+          raise Not_found
+      | Cons(k, d, rest) ->
+          if Clos.H.equal key k then d else find_rec key rest
+
+    let find h key =
+      match h.data.((safehash key) mod (Array.length h.data)) with
+        Empty -> raise Not_found
+      | Cons(k1, d1, rest1) ->
+          if Clos.H.equal key k1 then d1 else
+          match rest1 with
+            Empty -> raise Not_found
+          | Cons(k2, d2, rest2) ->
+              if Clos.H.equal key k2 then d2 else
+              match rest2 with
+                Empty -> raise Not_found
+              | Cons(k3, d3, rest3) ->
+                  if Clos.H.equal key k3 then d3 else find_rec key rest3
+
+    let find_all h key =
+      let rec find_in_bucket = function
+        Empty ->
+          []
+      | Cons(k, d, rest) ->
+          if Clos.H.equal k key
+          then d :: find_in_bucket rest
+          else find_in_bucket rest in
+      find_in_bucket h.data.((safehash key) mod (Array.length h.data))
+
+    let replace h key info =
+      let rec replace_bucket = function
+          Empty ->
+            raise Not_found
+        | Cons(k, i, next) ->
+            if Clos.H.equal k key
+            then Cons(k, info, next)
+            else Cons(k, i, replace_bucket next) in
+      let i = (safehash key) mod (Array.length h.data) in
+      let l = h.data.(i) in
+      try
+        h.data.(i) <- replace_bucket l
+      with Not_found ->
+        h.data.(i) <- Cons(key, info, l);
+        h.size <- succ h.size;
+        if h.size > Array.length h.data lsl 1 then resize safehash h
+
+    let mem h key =
+      let rec mem_in_bucket = function
+      | Empty ->
+          false
+      | Cons(k, d, rest) ->
+          Clos.H.equal k key || mem_in_bucket rest in
+      mem_in_bucket h.data.((safehash key) mod (Array.length h.data))
+
+    let iter f h =
+      let rec do_bucket = function
+          Empty ->
+            ()
+        | Cons(k, d, rest) ->
+            f k d; do_bucket rest in
+      let d = h.data in
+      for i = 0 to Array.length d - 1 do
+        do_bucket d.(i)
+      done
+    
+    let fold f h init =
+      let rec do_bucket b accu =
+        match b with
+          Empty ->
+            accu
+        | Cons(k, d, rest) ->
+            do_bucket rest (f k d accu) in
+      let d = h.data in
+      let accu = ref init in
+      for i = 0 to Array.length d - 1 do
+        accu := do_bucket d.(i) !accu
+      done;
+      !accu
+
+  end
 
 end (* }}} *)
 
@@ -439,8 +593,8 @@ end = struct (* {{{ *)
   open Hclosure
   module HT = Hclosure.Table
 
-  let rank : int HT.t = HT.create 100003
-  let father : Clos.H.hclosure HT.t = HT.create 100003
+  let rank : int HT.t = HT.create uf_table_size
+  let father : Clos.H.hclosure HT.t = HT.create uf_table_size
 
   let father_of t =
     try HT.find father t with Not_found -> HT.replace father t t; t
@@ -463,7 +617,7 @@ end = struct (* {{{ *)
       Clos.H.compare rx ry
   end)
     
-  let partitions : UFCset.t HT.t = HT.create 100003
+  let partitions : UFCset.t HT.t = HT.create uf_table_size
 
   let diff_of rx = try HT.find partitions rx with Not_found -> UFCset.empty
 
@@ -482,9 +636,9 @@ end = struct (* {{{ *)
     else `Maybe
 
   let reset () =
-    HT.clear rank;
-    HT.clear father;
-    HT.clear partitions
+    HT.reset uf_table_size rank;
+    HT.reset uf_table_size father;
+    HT.reset uf_table_size partitions
 
   let union x y =
     let rx = find x in
@@ -958,10 +1112,6 @@ let fire_updates cl = (* this time we do that with closures *)
   fire (fun x -> x) ctx
 
 let clos_fconv trans cv_pb l2r evars env t1 t2 =
-  reset ();
-  Clos.H.reset ();
-  UF.reset ();
-
   let sort_cmp pb s0 s1 cuniv =
     match (s0,s1) with
     | (Prop c1, Prop c2) when pb = CUMUL ->
@@ -1197,6 +1347,9 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
 
   in
 (*D* pp(lazy(ppt env ~depth:9 t1++str" VS "++spc()++ppt env ~depth:9 t2)); *D*)
+  reset ();
+  Clos.H.reset ();
+  UF.reset ();
   let t1 = intern t1 in
   let t2 = intern t2 in
   convert_whd cv_pb (Subs.id 0) (Subs.id 0) empty_constraint t1 t2
