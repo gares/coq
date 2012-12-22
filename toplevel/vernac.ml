@@ -433,13 +433,14 @@ let compile verbosely f =
       let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
       let stats = open_out (long_f_dot_v ^ ".stats." ^ ext) in
       Util.List.iteri (fun i x ->
-        Printf.fprintf stats "( %d , %s" i (Reduction.print_cpb x);
+        Printf.fprintf stats "{ %d , %s" i (Reduction.print_cpb x);
         flush stats;
         let strategy = if ext = "regular" then `Regular else `New in
-        let time, ok1, ok2 = Reduction.run_cpb strategy x in
+        let time, ok1, ok2 = Reduction.run_cpb 10 strategy x in
+        if time < 0.0 then prerr_endline ("ERR timeout " ^ string_of_int i);
         if not ok1 then prerr_endline ("ERR " ^ string_of_int i);
         if not ok2 then prerr_endline ("ERR univ " ^ string_of_int i);
-        Printf.fprintf stats "%.3f , %b ) ;\n" time (ok1 && ok2))
+        Printf.fprintf stats "%.3f , %b } ;\n" time (time >= 0.0 && ok1 && ok2))
       pbs;
       close_out stats;
   | None -> match !Flags.run_conv_pb with
@@ -449,9 +450,9 @@ let compile verbosely f =
       let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
       let n, strategy = if n < 0 then -n, `Regular else n, `New in
       let p = List.nth pbs n in
-      let time, ok1, ok2 = Reduction.run_cpb strategy p in
-      Printf.eprintf "( %d , %s %.3f , %b ) ;\n" n 
-        (Reduction.print_cpb p) time (ok1 && ok2)
+      let time, ok1, ok2 = Reduction.run_cpb 60 strategy p in
+      Printf.eprintf "{ %d , %s %.3f , %b } ;\n" n 
+        (Reduction.print_cpb p) time (time >= 0.0 && ok1 && ok2)
   | None ->
       (match !Flags.dump_conv_pbs with
       | Some limit -> Reduction.set_dump_cpbs limit (long_f_dot_v ^ "c")

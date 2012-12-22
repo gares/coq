@@ -656,14 +656,20 @@ let trans_fconv strategy reds cv_pb l2r evars env t1 t2 time =
     dump reds cv_pb l2r evars env t1 t2 !time None;
     raise e
 
-let run_cpb strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
+let run_cpb timeout strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
   let time = ref (__time ()) in
+  ignore(Unix.sigprocmask Unix.SIG_UNBLOCK [Sys.sigalrm]);
+  Sys.set_signal
+    Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Errors.Timeout));
+  ignore(Unix.alarm timeout);
   try
     let u = trans_fconv strategy reds cv_pb l2r evars env t1 t2 time in
     match rc with
     | None -> !time, false, true
     | Some rc -> !time, true, Univ.compare_constraints rc u
-  with NotConvertible | Conversion.NotConvertible -> !time, None = rc, true
+  with 
+  | NotConvertible | Conversion.NotConvertible -> !time, None = rc, true
+  | Errors.Timeout -> -1.0, true, true
   | e -> prerr_endline (Printexc.to_string e); !time, false, true
 
 let trans_fconv reds cv_pb l2r evars env t1 t2 =
