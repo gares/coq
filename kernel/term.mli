@@ -698,6 +698,7 @@ module H : sig
 
   val intern : constr -> hconstr
   val extern : hconstr -> constr
+  val extern_array : hconstr array -> constr array
 
   val mkHFix : (int array * int) * (hconstr,hconstr) rec_declaration -> hconstr
   val iter_constr : (hconstr -> unit) -> hconstr -> unit

@@ -1656,6 +1656,7 @@ module H = struct
     | HRel n -> combinesmall 16 n
 
   let extern x = x
+  let extern_array x = x
 
   let intern, hash_term_array =
     let (sh_sort,sh_ci,sh_construct,sh_ind,sh_con,sh_na,sh_id) =
