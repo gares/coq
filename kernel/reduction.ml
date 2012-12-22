@@ -669,7 +669,7 @@ let run_cpb timeout strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
     | Some rc -> !time, true, Univ.compare_constraints rc u
   with 
   | NotConvertible | Conversion.NotConvertible -> !time, None = rc, true
-  | Errors.Timeout -> -1.0, true, true
+  | Errors.Timeout -> -. (float_of_int timeout), true, true
   | e -> prerr_endline (Printexc.to_string e); !time, false, true
 
 let trans_fconv reds cv_pb l2r evars env t1 t2 =
