@@ -92,10 +92,10 @@ sanity_check() {
 parse_args() {
   if [ "$1" = "bin/coqtop.byte" ]; then
   	COQBINARY=bin/coqtop.byte
-  	OPT=1
+  	OPT=0
   else
   	COQBINARY=bin/coqtop
-  	OPT=0
+  	OPT=1
   fi
 }
 
@@ -138,11 +138,14 @@ bench_reduction() {
   # print "type: gvim -o gprof.mine.out annot.out"
 }
 
+IMPL=today
+#IMPL=regular
+
 regression_check() {
   print "regression check:"
-  for f in `sprt -n -k2 PASSED | cut -d ' ' -f 1`; do
+  for f in `sort -n -k2 PASSED | cut -d ' ' -f 1`; do
     print_begin_action "checking $f"
-    runcoq bin/coqtop -boot -run-conv-pbs today -compile $f 2> /tmp/run.log
+    runcoq bin/coqtop -boot -run-conv-pbs $IMPL -compile $f 2> /tmp/run.log
     if grep -q -F ERR /tmp/run.log; then
       print_end_action "FAIL"
       cat /tmp/run.log
@@ -161,7 +164,7 @@ run_all() {
     f=`echo $f | sed -e 's/.vc$//' -e 's/^\.\///'`
     if ! grep -q -F $f PASSED; then
       print_begin_action "running $f  (`du -h $f.vc | cut -f1`)"
-      runcoq bin/coqtop -boot -run-conv-pbs today -compile $f 2> /tmp/run.log
+      runcoq bin/coqtop -boot -run-conv-pbs $IMPL -compile $f 2> /tmp/run.log
       if ! grep -q -F ERR /tmp/run.log; then
 	print_end_action "OK"
         echo $f `cat /tmp/time.log` >> PASSED
