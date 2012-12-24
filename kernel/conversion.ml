@@ -674,7 +674,7 @@ open Term.H
 (* This gives the meaning to an explicit substitution. Output:
    - `Var is bound by the subst to a Rel
    - `InEnv escapes the subst
-   - `Code is assigned by the subts *)
+   - `Code is assigned by the subst *)
 let expand_rel k s =
   let rec aux_rel liftno k s = match Subs.kind_of s with
     | Econs (_,def,s) when k > Array.length def ->
@@ -1133,6 +1133,7 @@ let fire_clear_updates cl = (* this time we do that with closures *)
 *)
 
 (* this is the equivalent of "let _ = fapp_stack ..." in reduction.ml *)
+(* XXX: we could also intern/extern the closures we assign *)
 let fire_updates cl =
   (* this time we do that in CPS style *)
   (* TODO: measure speed w.r.t. List.rev and retraversing the list *)
@@ -1196,14 +1197,13 @@ let are_convertible trans cv_pb ~l2r evars env t1 t2 =
   and convert cv_pb cst cl1 cl2 =
 (*D* __inside "convert"; try let __rc = pp(lazy(_pr_status cl1 cl2 1)); *D*)
     match UF.same cl1 cl2 with
-    | `Yes   -> (*D* pp(lazy(str" UF: YES ")); *D*) cst
-    | `No    -> (*D* pp(lazy(str" UF: NO "));  *D*) raise NotConvertible
+    | `Yes   -> (*D* pp(lazy(str" UF: YES")); *D*) cst
+    | `No    -> (*D* pp(lazy(str" UF: NO"));  *D*) raise NotConvertible
     | `Maybe ->
     let _, s1, t1, c1 = Clos.H.kind_of cl1 in
     let _, s2, t2, c2 = Clos.H.kind_of cl2 in
     let l1, l2 = sum_shifts c1, sum_shifts c2 in
 (*D* let eq_c = eq_constr (hclos_to_constr cl1) (hclos_to_constr cl2) in pp(lazy(str" UF: MAYBE " ++ bool eq_c)); try *D*)
-    (* TODO: pass that to conv_stack *)
 (*
   print(
     let t1, t2 = lift l1 (apply_subs s1 t1),
@@ -1320,7 +1320,7 @@ let are_convertible trans cv_pb ~l2r evars env t1 t2 =
    * this changes a lot, so measure it independently.
    * moreover it is easy if closures on the context are already shifted.
    * this requires a compare_stack_shape to avoid stupid comparisons *)
-  and convert_stacks_aux cv_pb cst l1 c1 l2 c2 =
+  and convert_stacks cv_pb cst l1 c1 l2 c2 =
 (*D* __inside "stack"; try let __rc =  *D*)
     match Ctx.kind_of c1, Ctx.kind_of c2 with
     | Znil, Znil -> cst
