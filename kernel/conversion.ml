@@ -696,7 +696,11 @@ let assoc_opt l v =
   with Not_found -> None
 
 let unfold env c =
-  try Some (constant_value env c) with NotEvaluableConst _ -> None
+  try
+    let bo = constant_value env c in
+    if eq_constr bo (mkConst c) then None (* XXX WTF! XXX *)
+    else Some bo
+  with Not_found | NotEvaluableConst _ -> None
 
 let shift_closure_array k clv =
   if k = 0 then clv else
