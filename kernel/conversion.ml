@@ -852,9 +852,9 @@ let whd opt env evars c =
           (Ctx.case ci (Clos.mk ~subs p) (Array.map (Clos.mk ~subs) br) ctx)
     | HFix (_,(rargs,fixno),_) ->
         let rarg = rargs.(fixno) in
-        let rec fix_params n c = if n <= 0 then Ctx.nil else
+        let rec fix_params n c =
           match Ctx.kind_of c with
-          | Zapp (_, args, c) ->
+          | Zapp (_, args, c) -> if n <= 0 then Ctx.nil else
               let nargs = Array.length args in
               if n >= nargs then Ctx.app args (fix_params (n - nargs) c)
               else Ctx.app (Array.sub args 0 n) Ctx.nil
