@@ -134,7 +134,8 @@ end = struct (* {{{ *)
   and pclv m cv =
     let s_of_cl cl = let _,s,_,_ = cl in s in
     let s = s_of_cl cv.(0) in
-    if Array.for_all (fun cl -> s_of_cl cl == s) cv && m > 0 then
+    if Array.for_all (fun cl -> s_of_cl cl == s) cv && m > 0
+    && Array.length cv > 1 then
       let pcl m cl =
         let _,s,t,c = cl in
         pcl m (0,Eid 0,t,c) in
