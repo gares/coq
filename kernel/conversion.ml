@@ -816,7 +816,7 @@ let whd opt env evars c =
             aux subs t (Ctx.append c (Ctx.update a i (Ctx.shift liftno ctx)))
         | `Var k ->
             return (Subs.id k) (intern (mkRel k)) ctx
-        | `InEnv(liftno, k) ->
+        | `InEnv(liftno, k) -> (* TODO: stop if opt.delta = false *)
             (match assoc_opt rel_context (rel_context_len - k) with
             | Some t ->
                 (* XXX see TODO above*)
@@ -825,7 +825,7 @@ let whd opt env evars c =
                  (Ctx.update a i (Ctx.shift (liftno - k) ctx))
             | None -> (* mkRel(k + (liftno - k)) = mkRel liftno *)
                 return (Subs.id 0) (intern(mkRel (liftno))) ctx))
-    | HVar id ->
+    | HVar id -> (* TODO: stop if opt.delta = false *)
             (match assoc_opt var_context id with
             | Some t -> aux subs (intern t) ctx
             | None -> return subs hd ctx)
@@ -1169,7 +1169,7 @@ let sort_cmp pb s0 s1 cuniv =
 
 (* {{{ CONVERSION ***********************************************************)
 
-let are_convertible trans cv_pb ~l2r evars env t1 t2 =
+let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
   (* TODO: l2r = true -> unfold on the left *)
 
   let whd cl =
@@ -1183,6 +1183,8 @@ let are_convertible trans cv_pb ~l2r evars env t1 t2 =
   let fold_left2 = Util.Array.fold_left2 in
   let fold_right2 = Util.Array.fold_right2 in
 (*D* let hclos_to_constr c = clos_to_constr (Clos.H.extern c) in *D*)
+  let unfold e k = if Cpred.mem k trans_def then unfold e k else None in
+  let oracle k1 k2 = Conv_oracle.oracle_order l2r (ConstKey k1) (ConstKey k2) in
 
   let eta_expand_ctx c =
     let eta_expand_suffix =
@@ -1229,6 +1231,7 @@ let are_convertible trans cv_pb ~l2r evars env t1 t2 =
     | HRel n1, HRel n2 when n1 + l1 = n2 + l2 ->
         congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
     | HVar n1, HVar n2 when n1 = n2 -> (* XXX strings not shraed! *)
+        (* XXX TODO: we should block that in reduction and behave like Const *)
         congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
     | HInd i1, HInd i2 when eq_ind i1 i2 ->
         congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
@@ -1270,12 +1273,14 @@ let are_convertible trans cv_pb ~l2r evars env t1 t2 =
             UF.union cl1 cl2;
             cst
         with NotConvertible ->
+          (* TODO: inefficient, we always lookup both constants *)
           let bo1, bo2 =
             match unfold env k1, unfold env k2 with
             | None, None -> UF.partition cl1 cl2; raise NotConvertible
             | Some bo, None -> intern bo, t2
             | None, Some bo -> t1, intern bo
-            | Some bo1, Some bo2 -> (*intern bo1*)t1, intern bo2 in
+            | Some bo1, Some bo2 ->
+                if oracle k1 k2 then intern bo1, t2 else t1, intern bo2 in
           (* TODO: call this only when needed *)
           let cl1' = mk_whd_clos ~ctx:c1 bo1 in
           let cl2' = mk_whd_clos ~ctx:c2 bo2 in
