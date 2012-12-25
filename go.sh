@@ -57,6 +57,8 @@ mktest() {
      ((fun (f:nat -> nat) (x : nat) => ( ( (f (f (f (f x))))))) s)
      o.
   Let test6 := (fun x => x - x) (fact_s n_s).
+  Let test7 := (fun x f => f x) 
+    (let aux := fix n : nat := match n with O => O | S m => m end in aux)
   
   Goal True.
   Time Eval $2 in test.
@@ -66,6 +68,7 @@ mktest() {
   Time Eval $2 in (test4 S).
   Time Eval $2 in (test4 S 0).
   Time Eval $2 in test6.
+  Time Eval $2 in test7.
   
   Abort. 
 EOT
@@ -164,8 +167,11 @@ run_all() {
     f=`echo $f | sed -e 's/.vc$//' -e 's/^\.\///'`
     if ! grep -q -F $f PASSED; then
       print_begin_action "running $f  (`du -h $f.vc | cut -f1`)"
+      set +e
       runcoq bin/coqtop -boot -run-conv-pbs $IMPL -compile $f 2> /tmp/run.log
-      if ! grep -q -F ERR /tmp/run.log; then
+      RC=$?
+      set -e
+      if [ $RC = 0 ] && ! grep -q -F ERR /tmp/run.log; then
 	print_end_action "OK"
         echo $f `cat /tmp/time.log` >> PASSED
       else
