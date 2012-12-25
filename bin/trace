@@ -1,13 +1,34 @@
 #!/bin/sh
 
+usage(){
+	echo "usage: $0 (on|off) letter file.ml"
+	echo "Example: $0 on D kernel/conversion.ml"
+	exit 1
+}
+
+# This sed line reads the whole file into the pattern space
+#    :a; N; $!ba;
+# :a is the label, N glues the current line; b branches
+# to a if not EOF
+
+if [ $# -lt 3 ]; then usage; fi
+
 case $1 in
 on) 
-	sed -i 's/(\*D\* \(.*\) \*D\*)/(*D*)\1(*D*)/' $2
+	sed -i '
+        :a; N; $!ba;
+	s/(\*'$2'\* /(*'$2'<*)/g
+	s/ \*'$2'\*)/(*'$2'>*)/g
+	' $3
 ;;
 off)
-	sed -i 's/(\*D\*)\(.*\)(\*D\*)/(*D* \1 *D*)/' $2
+	sed -i '
+        :a; N; $!ba;
+	s/(\*'$2'<\*)/(*'$2'* /g
+	s/(\*'$2'>\*)/ *'$2'*)/g
+	' $3
 ;;
 *)
-	echo "usage: $0 (on|off) file.ml"
+	usage
 ;;
 esac
