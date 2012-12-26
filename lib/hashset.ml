@@ -27,6 +27,7 @@ module type S = sig
   val create : int -> t
   val reset : int -> t -> unit
   val repr : int -> elt -> t -> elt
+  val mem : int -> elt -> t -> bool
   val distribution : t -> (elt * int) list list
 end
 
@@ -82,6 +83,31 @@ module Make (E : EqType) =
 	if hash == h && E.equal key k then k else aux rest
     in
     aux bucket
+
+  let mem_rec hash key table bucket =
+    let rec aux = function
+      | Empty -> false
+      | Cons (k, h, rest) -> if hash == h && key == k then true else aux rest
+    in
+    aux bucket
+
+  let mem hash key table =
+    let odata = table.data in
+    let osize = Array.length odata in
+    let i = abs hash mod osize in
+    match odata.(i) with
+      |	Empty -> false
+      | Cons (k1, h1, rest1) ->
+	if hash == h1 && key == k1 then true else
+	  match rest1 with
+            | Empty -> false
+	    | Cons (k2, h2, rest2) ->
+              if hash == h2 && key == k2 then true else
+		match rest2 with
+		  | Empty -> false
+		  | Cons (k3, h3, rest3) ->
+		    if hash == h2 && key == k3 then true
+		    else mem_rec hash key table rest3
 
   let repr hash key table =
     let odata = table.data in

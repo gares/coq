@@ -35,6 +35,7 @@ module type S = sig
       specific representation that is stored in [set]. Otherwise,
       [constr] is stored in [set] and will be used as the canonical
       representation of this value in the future. *)
+  val mem : int -> elt -> t -> bool
   val distribution : t -> (elt * int) list list
 end
 
