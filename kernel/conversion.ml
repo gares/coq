@@ -692,17 +692,6 @@ let expand_rel k s =
   in
    aux_rel 0 k s
 
-let assoc_opt l v =
-  try Some (List.assoc v l)
-  with Not_found -> None
-
-let unfold env c =
-  try
-    let bo = constant_value env c in
-    if eq_constr bo (mkConst c) then None (* XXX WTF! XXX *)
-    else Some bo
-  with Not_found | NotEvaluableConst _ -> None
-
 let shift_closure_array k clv =
   if k = 0 then clv else
   let cshift = Ctx.shift k Ctx.nil in
@@ -773,19 +762,65 @@ let ppt ?(depth=3) e x =
 
 let print_status s t c = print(Clos.pp 10 (Clos.mk ~subs:s t ~ctx:c))
 
-type options = { delta : bool }
+type options = {
+  beta  : bool; (* App(Lambda _,_) reduction *)
+  iota  : bool; (* Fix and CoFix unfolding; Case analysis *)
+  zeta  : bool; (* LetIn reduction *)
+  delta_rel : bool;    (* Rel unfolding *)
+  delta_var : Idpred.t; (* Var unfolding *) 
+  delta_con : Cpred.t;  (* Const unfolding *)
+}
 
-(* Since we assign subst elements, we can't build a new subst. We have to
- * keep the same arrays. We could try to drop the head and the tail when
- * they are not used and replace them by shift/id *)
-let opt_subst s t = s
+let betadeltaiotazeta = {
+  beta = true;
+  iota = true;
+  zeta = true;
+  delta_rel = true;
+  delta_var = Idpred.full;
+  delta_con = Cpred.full;
+}
 
-(* {{{ REDUCTION ************************************************************)
-let whd opt env evars c =
+let betaiotazeta = {
+  beta = true;
+  iota = true;
+  zeta = true;
+  delta_rel = false;
+  delta_var = Idpred.empty;
+  delta_con = Cpred.empty;
+}
+
+type env_cache = {
+  env_def : env; cache_def : (constant, H.hconstr) Hashtbl.t;
+  env_rel : int * (int * constr) list;
+  env_var : (identifier * constr) list;
+}
+
+(* XXX reduction does not really need intern *)
+let unfold, unfold_intern =
+  let lookup env c = (* TODO: lookup cache (w intern) *)
+  try
+    match c with
+    | RelKey n ->
+        let len, ctx = env.env_rel in
+        let t = lift n (List.assoc (len - n) ctx) in
+        Some t
+    | VarKey id ->
+        let t = List.assoc id env.env_var in
+        Some t
+    | ConstKey k ->
+        let t = constant_value env.env_def k in
+        if eq_constr t (mkConst k) then None (* XXX WTF! *) else
+        Some t
+  with Not_found | NotEvaluableConst _ -> None
+  in
+  (* lookup *)(fun e c -> Option.map intern (lookup e c)),
+  (fun e c -> Option.map intern (lookup e c))
+
+let create_env_cache env =
   (* TODO: make an array of closures to be updated, see also dummy array
      in HRel case, there we should stick in the Ctx.update the array
      representing the context *)
-  let rel_context_len, rel_context =
+  let rel_env_len, rel_context =
     Sign.fold_rel_context
       (fun (id,b,t) (i,subs) ->
 	 match b with
@@ -800,13 +835,30 @@ let whd opt env evars c =
 	   | None -> e
 	   | Some body -> (id, body)::e)
        (named_context env) ~init:[] in
+  { env_def = env; cache_def = Hashtbl.create 17;
+    env_rel = rel_env_len, rel_context;
+    env_var = var_context }
 
-  let return s t c = s, t, c in
+
+(* Since we assign subst elements, we can't build a new subst. We have to
+ * keep the same arrays. We could try to drop the head and the tail when
+ * they are not used and replace them by shift/id *)
+let opt_subst s t = s
+
+type why = Whnf | Opts
+
+(* {{{ REDUCTION ************************************************************)
+
+(* TODO: now works on hconstr, but could work on constr *)
+let whd opt env evars c =
+  (* Two exists: because in whnf or because opt says so *)
+  let return s t c = s, t, c, Whnf in
+  let stop_at s t c = s, t, c, Opts in
 
   let rec aux subs hd ctx =
 (*
    print_status subs hd ctx;
-   print (ppt ~depth:100 env (clos_to_constr (Clos.mk ~subs hd ~ctx)));
+   print (ppt ~depth:100 env.env_def (clos_to_constr (Clos.mk ~subs hd ~ctx)));
 *)
     match kind_of hd with
     | HRel i -> (match expand_rel i subs with
@@ -816,19 +868,21 @@ let whd opt env evars c =
             aux subs t (Ctx.append c (Ctx.update a i (Ctx.shift liftno ctx)))
         | `Var k ->
             return (Subs.id k) (intern (mkRel k)) ctx
-        | `InEnv(liftno, k) -> (* TODO: stop if opt.delta = false *)
-            (match assoc_opt rel_context (rel_context_len - k) with
+        | `InEnv(liftno, k) when opt.delta_rel = false ->
+            stop_at (Subs.id 0) (intern (mkRel k)) (Ctx.shift (liftno - k) ctx)
+        | `InEnv(liftno, k) ->
+            (match unfold env (RelKey k) with
             | Some t ->
                 (* XXX see TODO above*)
                 let a,i = [|Clos.mk (intern mkProp)|], 0 in
-                aux (Subs.id 0) (intern (lift k t))
-                 (Ctx.update a i (Ctx.shift (liftno - k) ctx))
+                aux (Subs.id 0) t (Ctx.update a i (Ctx.shift (liftno - k) ctx))
             | None -> (* mkRel(k + (liftno - k)) = mkRel liftno *)
                 return (Subs.id 0) (intern(mkRel (liftno))) ctx))
-    | HVar id -> (* TODO: stop if opt.delta = false *)
-            (match assoc_opt var_context id with
-            | Some t -> aux subs (intern t) ctx
-            | None -> return subs hd ctx)
+    | HVar id when not (Idpred.mem id opt.delta_var) -> stop_at subs hd ctx
+    | HVar id ->
+            (match unfold env (VarKey id) with
+            | Some t -> aux subs t ctx
+            | None -> return (Subs.id 0) hd ctx)
     | HEvar (_,e,v) ->
        (match
         try Some (EvarMap.existential_value evars (e, extern_array v))
@@ -836,6 +890,7 @@ let whd opt env evars c =
        with
        | None -> return subs hd ctx
        | Some t -> aux subs (intern t) ctx)
+    | HLetIn _ when opt.zeta = false -> stop_at subs hd ctx
     | HLetIn (_,_,t,_,bo) -> aux (Subs.cons [|Clos.mk ~subs t|] subs) bo ctx
     | HCast (_,t,_,_) -> aux subs t ctx
     | HApp (_,f,a) ->
@@ -882,6 +937,7 @@ let whd opt env evars c =
           | Zcase _ -> assert false
           | Zfix _ -> assert false in
         find_arg rarg ctx
+    | HConstruct _ when opt.iota = false -> stop_at subs hd ctx
     | HConstruct (ind, k) ->
         (* TODO: coded in an inefficient way, measure if an acc made of a list
          * + List.rev is faster that re-traversing ctx many times (exp for
@@ -934,6 +990,7 @@ let whd opt env evars c =
           | Znil -> return subs hd ctx
         in
           find_iota 0 0 ctx
+    | HLambda _ when opt.beta = false -> stop_at subs hd ctx
     | HLambda (_,_,_,t) -> (* XXX n-ary lambdas in hconstr too! *)
         let rec nlam n acc t = match kind_of t with
           | HLambda (_,_,_,bo) -> nlam (n+1) (t::acc) bo
@@ -962,18 +1019,18 @@ let whd opt env evars c =
                 let after = Array.sub args (nlam - n) (nargs - (nlam - n)) in
                 aux (opt_subst (Subs.cons before subs) bo) bo (Ctx.app after c) in
         eat_lam subs 0 ctx
-    | HConst c when opt.delta ->
-        (match unfold env c with
-        | None -> return subs hd ctx
-        | Some bo -> aux (Subs.id 0) (intern bo) ctx)
-    | HConst _ -> return subs hd ctx
+    | HConst c when not(Cpred.mem c opt.delta_con) -> stop_at (Subs.id 0) hd ctx
+    | HConst c ->
+        (match unfold env (ConstKey c) with
+        | None -> return (Subs.id 0) hd ctx
+        | Some bo -> aux (Subs.id 0) bo ctx)
     (* head normal terms *)
     | HSort _ | HMeta _ | HProd _ | HInd _ -> return subs hd ctx
     | HCoFix _ -> assert false (* TODO *)
   in
   let _, s, t, c = Clos.kind_of c in
-  let s, t, c = aux s t c in
-  Clos.mk ~subs:s ~ctx:c t
+  let s, t, c, why = aux s t c in
+  Clos.mk ~subs:s ~ctx:c t, why
 (* }}} END REDUCTION *********************************************************)
 
 let unwind c = clos_to_constr c
@@ -981,13 +1038,15 @@ let unwind c = clos_to_constr c
 let red_whd env evars t =
   reset ();
   let c = Clos.mk (intern t) in
-  let n = whd {delta = true} env evars.Mini_evd.evars c in
+  let n, _ =
+    whd betadeltaiotazeta (create_env_cache env) evars.Mini_evd.evars c in
   unwind n
 
 let red_strong env evars t =
+  let env = create_env_cache env in
   let rec red_aux cl =
-    let n =
-      whd {delta = true} env evars.Mini_evd.evars cl in
+    let n, _ =
+      whd betadeltaiotazeta env evars.Mini_evd.evars cl in
     let _, s, t, c = Clos.kind_of n in
     let t = subs_aux s t in
     unzip_aux t c
@@ -1170,21 +1229,35 @@ let sort_cmp pb s0 s1 cuniv =
 (* {{{ CONVERSION ***********************************************************)
 
 let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
-  (* TODO: l2r = true -> unfold on the left *)
-
+  let env = create_env_cache env in
   let whd cl =
-    let cl = whd { delta=false } env evars cl in
+    let cl, why = whd betaiotazeta env evars cl in
     (* XXX fire_updates as in fapp_stack? *)
-    Clos.H.intern cl in
+    Clos.H.intern cl, why in
   let mk_whd_clos ?subs ?ctx t = whd (Clos.mk ?subs ?ctx t) in
   let same_len a1 a2 = Array.length a1 = Array.length a2 in
   let slift = Subs.lift 1 in
   let sshift n = Subs.shift n in
   let fold_left2 = Util.Array.fold_left2 in
   let fold_right2 = Util.Array.fold_right2 in
-(*D* let hclos_to_constr c = clos_to_constr (Clos.H.extern c) in *D*)
-  let unfold e k = if Cpred.mem k trans_def then unfold e k else None in
-  let oracle k1 k2 = Conv_oracle.oracle_order l2r (ConstKey k1) (ConstKey k2) in
+(*A* let hclos_to_constr c = clos_to_constr (Clos.H.extern c) in *A*)
+  let unfold_flex e t = match kind_of t with
+    | HRel n -> unfold_intern e (RelKey n) (* TODO: lookup up every time *)
+    | HVar id when Idpred.mem id trans_var -> unfold_intern e (VarKey id)
+    | HConst k when Cpred.mem k trans_def -> unfold_intern e (ConstKey k)
+    | _ -> None in
+  let eq_flex l1 t1 l2 t2 = match kind_of t1, kind_of t2 with
+    | HRel n1, HRel n2 -> n1 + l1 = n2 + l2
+    | HVar id1, HVar id2 -> id1 = id2 (* XXX should be shared but are not*)
+    | HConst k1, HConst k2 -> eq_constant k1 k2
+    | _ -> assert false in
+  let oracle_flex t1 t2 =
+    let oracle = Conv_oracle.oracle_order l2r in
+    match kind_of t1, kind_of t2 with
+    | HRel n1, HRel n2 -> oracle (RelKey n1) (RelKey n2)
+    | HVar id1, HVar id2 -> oracle (VarKey id1) (VarKey id2)
+    | HConst k1, HConst k2 -> oracle (ConstKey k1) (ConstKey k2)
+    | _ -> assert false in
 
   let eta_expand_ctx c =
     let eta_expand_suffix =
@@ -1194,17 +1267,18 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
 
   let _pr_status cl1 cl2 i =
        let pcl n e c = Clos.H.pp n c in
-       let env = Environ.reset_context env in
+       let env = Environ.reset_context env.env_def in
     hv 0 (pcl i env cl1 ++ spc()++
            str "=?"++str"="++spc()++ pcl i env cl2) in
   let _pr_heads l1 s1 t1 l2 s2 t2 =
     let t1, t2 = lift l1 (apply_subs s1 t1), lift l2 (apply_subs s2 t2) in
-    print(ppt ~depth:1 env t1 ++ str" " ++ ppt ~depth:1 env t2) in
+    print(ppt ~depth:1 env.env_def t1 ++ str" " ++
+          ppt ~depth:1 env.env_def t2) in
 
   let rec convert_whd cv_pb s1 s2 cst t1 t2 =
     convert cv_pb cst (mk_whd_clos ~subs:s1 t1) (mk_whd_clos ~subs:s2 t2)
 
-  and convert cv_pb cst cl1 cl2 =
+  and convert cv_pb cst (cl1, why1 as lhs) (cl2, why2 as rhs) =
 (*D* __inside "convert"; try let __rc = pp(lazy(_pr_status cl1 cl2 1)); *D*)
     match UF.same cl1 cl2 with
     | `Yes   -> (*D* pp(lazy(str" UF: YES")); *D*) cst
@@ -1228,10 +1302,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
           let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
           UF.union cl1 cl2; cst
         with NotConvertible as e -> UF.partition cl1 cl2; raise e)
-    | HRel n1, HRel n2 when n1 + l1 = n2 + l2 ->
-        congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
-    | HVar n1, HVar n2 when n1 = n2 -> (* XXX strings not shraed! *)
-        (* XXX TODO: we should block that in reduction and behave like Const *)
+    | HRel n1, HRel n2 when why1 = Whnf && why2 = Whnf && n1 + l1 = n2 + l2 ->
         congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
     | HInd i1, HInd i2 when eq_ind i1 i2 ->
         congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
@@ -1265,9 +1336,11 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
           let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
           UF.union cl1 cl2; cst
         with NotConvertible as e -> UF.partition cl1 cl2; raise e)
-    | HConst k1, HConst k2 ->
+    | HRel _, HRel _
+    | HVar _, HVar _
+    | HConst _, HConst _ ->
         (try
-          if not (eq_constant k1 k2) then raise NotConvertible
+          if not (eq_flex l1 t1 l2 t2) then raise NotConvertible
           else
             let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
             UF.union cl1 cl2;
@@ -1275,46 +1348,46 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
         with NotConvertible ->
           (* TODO: inefficient, we always lookup both constants *)
           let bo1, bo2 =
-            match unfold env k1, unfold env k2 with
+            match unfold_flex env t1, unfold_flex env t2 with
             | None, None -> UF.partition cl1 cl2; raise NotConvertible
-            | Some bo, None -> intern bo, t2
-            | None, Some bo -> t1, intern bo
+            | Some bo, None -> bo, t2
+            | None, Some bo -> t1, bo
             | Some bo1, Some bo2 ->
-                if oracle k1 k2 then intern bo1, t2 else t1, intern bo2 in
+                if oracle_flex t1 t2 then bo1, t2 else t1, bo2 in
           (* TODO: call this only when needed *)
-          let cl1' = mk_whd_clos ~ctx:c1 bo1 in
-          let cl2' = mk_whd_clos ~ctx:c2 bo2 in
+          let cl1', _ as lhs = mk_whd_clos ~ctx:c1 bo1 in
+          let cl2', _ as rhs = mk_whd_clos ~ctx:c2 bo2 in
           UF.union cl1' cl1;
           UF.union cl2' cl2;
-          convert cv_pb cst cl1' cl2')
+          convert cv_pb cst lhs rhs)
     | HLambda (_,_,_,bo1), _ -> (* XXX see msg on coq club *)
         let eta_cl2 = Clos.mk ~subs:s2 t2 ~ctx:(eta_expand_ctx c2) in
         convert CONV cst (mk_whd_clos ~subs:(slift s1) bo1) (whd eta_cl2)
     | _, HLambda (_,_,_,bo2) ->
         let eta_cl1 = Clos.mk ~subs:s1 t1 ~ctx:(eta_expand_ctx c1) in
         convert CONV cst (whd eta_cl1) (mk_whd_clos ~subs:(slift s2) bo2)
-    | HConst k1, _ ->
-        (match unfold env k1 with
-        | None -> UF.partition cl1 cl2; raise NotConvertible
+    | (HConst _ | HRel _ | HVar _), _
+    | _, (HConst _ | HRel _ | HVar _) ->
+        (match unfold_flex env t1 with
         | Some bo ->
-            let cl1' = mk_whd_clos ~ctx:c1 (intern bo) in
+            let cl1',_ as lhs = mk_whd_clos ~ctx:c1 bo in
             UF.union cl1' cl1;
-            convert cv_pb cst cl1' cl2)
-    | _, HConst k2 ->
-        (match unfold env k2 with
-        | None -> UF.partition cl1 cl2; raise NotConvertible
-        | Some bo ->
-            let cl2' = mk_whd_clos ~ctx:c2 (intern bo) in
-            UF.union cl2' cl2;
-            convert cv_pb cst cl1 cl2')
+            convert cv_pb cst lhs rhs
+        | None ->
+            (match unfold_flex env t2 with
+            | Some bo ->
+                let cl2', _ as rhs = mk_whd_clos ~ctx:c2 bo in
+                UF.union cl2' cl2;
+                convert cv_pb cst lhs rhs
+            | None -> UF.partition cl1 cl2; raise NotConvertible))
     | (HLetIn _,_) | (_,HLetIn _) -> assert false
     | (HApp _,_)   | (_,HApp _)   -> assert false
     | (HCase _,_)  | (_,HCase _)  -> assert false
     | _ -> UF.partition cl1 cl2; raise NotConvertible
 (*A*  with NotConvertible as e ->
         if eq_c then
-          print (ppt env (hclos_to_constr cl1) ++ spc() ++
-                 ppt env (hclos_to_constr cl2) ++ spc() ++
+          print (ppt env.env_def (hclos_to_constr cl1) ++ spc() ++
+                 ppt env.env_def (hclos_to_constr cl2) ++ spc() ++
                  Clos.H.pp 10 cl1 ++ spc() ++ Clos.H.pp 10 cl2);
         assert(eq_c = false); raise e *A*)
 (*D*  in __outside None; __rc with exn -> __outside (Some exn); raise exn *D*)
@@ -1370,7 +1443,8 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
 (*D*  in __outside None; __rc with exn -> __outside (Some exn); raise exn *D*)
 
   in
-(*D* pp(lazy(ppt env ~depth:9 t1++str" VS "++spc()++ppt env ~depth:9 t2)); *D*)
+(*D* pp(lazy(ppt env.env_def ~depth:9 t1++str" VS "++spc()++
+              ppt env.env_def ~depth:9 t2)); *D*)
   reset ();
   Clos.H.reset ();
   UF.reset ();
