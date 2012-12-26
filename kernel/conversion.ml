@@ -1246,11 +1246,9 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
     | HVar id when Idpred.mem id trans_var -> unfold_intern e (VarKey id)
     | HConst k when Cpred.mem k trans_def -> unfold_intern e (ConstKey k)
     | _ -> None in
-  let eq_flex l1 t1 l2 t2 = match kind_of t1, kind_of t2 with
-    | HRel n1, HRel n2 -> n1 + l1 = n2 + l2
-    | HVar id1, HVar id2 -> id1 = id2 (* XXX should be shared but are not*)
-    | HConst k1, HConst k2 -> eq_constant k1 k2
-    | _ -> assert false in
+  let eq_flex l1 t1 l2 t2 = match kind_of t1 with (* t1/t2 of the same kind *)
+    | HRel _ -> Term.H.equal t1 t2 && l1 = l2
+    | _ -> Term.H.equal t1 t2 (* Var or Const *) in 
   let oracle_flex t1 t2 =
     let oracle = Conv_oracle.oracle_order l2r in
     match kind_of t1, kind_of t2 with

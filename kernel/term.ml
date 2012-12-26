@@ -1664,12 +1664,18 @@ module H = struct
 
     let rec hash_term_array t =
       let accu = ref 0 in
+      (* If we hash in place, when we reset we may leave terms
+       * with non 0 hash around, since the subterm could be shared *)
+      (* Alternatively we could check if the term with non 0 hash is
+       * inside the table of canonical repr. If it is not we continue as
+       * if it has 0 hash *)
+      let t' = Array.copy t in
       for i = 0 to Array.length t - 1 do
         let x, h = sh_rec t.(i) in
         accu := combine !accu h;
-        t.(i) <- x
+        t'.(i) <- x
       done;
-      !accu
+      t', !accu
 
     and hash_term = function
       | HVar i ->
@@ -1697,13 +1703,13 @@ module H = struct
 	let c, hc = sh_rec c in
         let h = combinesmall 6 (combine3 hb ht hc) in
 	HLetIn (h, sh_na na, b, t, c), h
-      | HApp (h, c,l) as orig -> if h <> no_hash then (orig, h) else
+      | HApp (h, c, l) as orig -> if h <> no_hash then (orig, h) else
 	let c, hc = sh_rec c in
-	let hl = hash_term_array l in
+	let l, hl = hash_term_array l in
         let h = combinesmall 7 (combine hl hc) in
 	HApp (h, c, l), h
       | HEvar (h, e,l) as orig -> if h <> no_hash then (orig, h) else
-	let hl = hash_term_array l in
+	let l, hl = hash_term_array l in
         let h = combinesmall 8 (combine (genhash e) hl) in
         HEvar (h, e, l), h
       | HConst c ->
@@ -1718,20 +1724,20 @@ module H = struct
       | HCase (h, ci,p,c,bl) as orig -> if h <> no_hash then (orig, h) else
 	let p, hp = sh_rec p
 	and c, hc = sh_rec c in
-	let hbl = hash_term_array bl in
+	let bl, hbl = hash_term_array bl in
 	let hbl = combine (combine hc hp) hbl in
         let h = combinesmall 11 hbl in
 	HCase (h, sh_ci ci, p, c, bl), h
       | HFix (h, ln,(lna,tl,bl)) as orig -> if h <> no_hash then (orig, h) else
               (* XXX why ln is not used!!! *)
-	let hbl = hash_term_array  bl in
-	let htl = hash_term_array  tl in
+	let bl, hbl = hash_term_array  bl in
+	let tl, htl = hash_term_array  tl in
 	Array.iteri (fun i x -> lna.(i) <- sh_na x) lna;
         let h = combinesmall 13 (combine (genhash lna) (combine hbl htl)) in
 	HFix (h, ln,(lna,tl,bl)), h
       | HCoFix(h, ln,(lna,tl,bl)) as orig -> if h <> no_hash then (orig, h) else
-	let hbl = hash_term_array bl in
-	let htl = hash_term_array tl in
+	let bl, hbl = hash_term_array bl in
+	let tl, htl = hash_term_array tl in
 	Array.iteri (fun i x -> lna.(i) <- sh_na x) lna;
         let h = combinesmall 14 (combine (genhash lna) (combine hbl htl)) in
 	HCoFix(h, ln,(lna,tl,bl)), h
