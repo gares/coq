@@ -329,7 +329,7 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
   (* compute the lifts that apply to the head of the term (hd1 and hd2) *)
   let el1 = el_stack lft1 v1 in
   let el2 = el_stack lft2 v2 in
-(*D* 
+(*H* 
   let term_of_lift_fconstr l t =
     let t = term_of_lift_fconstr l t in
     let safe_destApp t = try destApp t with Invalid_argument _ -> t, [||] in
@@ -337,7 +337,7 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
   let env = (env_of_infos (snd infos)) in
   prerr_endline((ppterm ~depth:1 env (term_of_lift_fconstr el1 hd1)) ^ " " ^ 
                 (ppterm ~depth:1 env (term_of_lift_fconstr el2 hd2)));
- *D*)
+ *H*)
   match (fterm_of hd1, fterm_of hd2) with
     (* case of leaves *)
     | (FAtom a1, FAtom a2) ->

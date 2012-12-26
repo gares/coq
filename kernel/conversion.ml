@@ -1308,7 +1308,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
 (*A* let eq_c = eq_constr (hclos_to_constr cl1) (hclos_to_constr cl2) in
       pp(lazy(str" UF: MAYBE " ++ bool eq_c));
       try *A*)
-(*D* _pr_heads l1 s1 t1 l2 s2 t2; *D*)
+(*H* _pr_heads l1 s1 t1 l2 s2 t2; *H*)
     match kind_of t1, kind_of t2 with
     | HSort s1, HSort s2 -> sort_cmp cv_pb s1 s2 cst
     | HMeta n1, HMeta n2 when n1 = n2 ->
