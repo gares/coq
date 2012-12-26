@@ -1594,23 +1594,12 @@ module H = struct
 
   let equals_constr t1 t2 =
     match t1, t2 with
-      | HRel n1, HRel n2 -> n1 == n2
-      | HMeta m1, HMeta m2 -> m1 == m2
-      | HVar id1, HVar id2 -> id1 == id2
-      | HSort s1, HSort s2 -> s1 == s2
-      | HCast (_,c1,k1,t1), HCast (_,c2,k2,t2) ->
-        c1 == c2 && k1 == k2 && t1 == t2
       | HProd (_,_,t1,c1), HProd (_,_,t2,c2) -> t1 == t2 && c1 == c2
       | HLambda (_,_,t1,c1), HLambda (_,_,t2,c2) -> t1 == t2 && c1 == c2
       | HLetIn (_,_,b1,t1,c1), HLetIn (_,_,b2,t2,c2) ->
         b1 == b2 && t1 == t2 && c1 == c2
       | HApp (_,c1,l1), HApp (_,c2,l2) -> c1 == c2 && array_eqeq l1 l2
       | HEvar (_,e1,l1), HEvar (_,e2,l2) -> e1 = e2 && array_eqeq l1 l2
-      | HConst _, HConst _
-      | HInd _, HInd _
-      | HConstruct _, HConstruct _ -> eq_constr t1 t2 (* CHECK *)
-      | HCase (_,ci1,p1,c1,bl1), HCase (_,ci2,p2,c2,bl2) ->
-        ci1 == ci2 && p1 == p2 && c1 == c2 && array_eqeq bl1 bl2
       | HFix (_,ln1,(lna1,tl1,bl1)), HFix (_,ln2,(lna2,tl2,bl2)) ->
         ln1 = ln2
         && array_eqeq lna1 lna2
@@ -1621,6 +1610,16 @@ module H = struct
         && array_eqeq lna1 lna2
         && array_eqeq tl1 tl2
         && array_eqeq bl1 bl2
+      (* TODO: Check if == is ok for k1 and ci1 *)
+      | HCast (_,c1,k1,t1), HCast (_,c2,k2,t2) ->
+        c1 == c2 && k1 == k2 && t1 == t2
+      | HCase (_,ci1,p1,c1,bl1), HCase (_,ci2,p2,c2,bl2) ->
+        ci1 == ci2 && p1 == p2 && c1 == c2 && array_eqeq bl1 bl2
+      (* Since we do not rehahcons the atoms (strings, kn, etc) that
+       * we load from a .vo file, here we can't use == *)
+      | HRel _, HRel _ | HMeta _, HMeta _ | HVar _, HVar _
+      | HSort _, HSort _ | HConst _, HConst _ | HInd _, HInd _
+      | HConstruct _, HConstruct _ -> eq_constr t1 t2
       | _ -> false
 
   module HashsetTerm = Hashset.Make(
