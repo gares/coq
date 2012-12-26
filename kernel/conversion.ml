@@ -845,19 +845,21 @@ let create_env_cache env =
  * they are not used and replace them by shift/id *)
 let opt_subst s t = s
 
-type why = Whnf | Opts
+type why =
+  | Stuck   (* Whnf reached *)
+  | Stopped (* Stopped by a disabled reduction rule *)
 
 (* {{{ REDUCTION ************************************************************)
 
 (* TODO: now works on hconstr, but could work on constr *)
 let whd opt env evars c =
   (* Two exists: because in whnf or because opt says so *)
-  let return s t c = s, t, c, Whnf in
-  let stop_at s t c = s, t, c, Opts in
+  let return s t c = s, t, c, Stuck in
+  let stop_at s t c = s, t, c, Stopped in
 
   let rec aux subs hd ctx =
+(*    print_status subs hd ctx; *)
 (*
-   print_status subs hd ctx;
    print (ppt ~depth:100 env.env_def (clos_to_constr (Clos.mk ~subs hd ~ctx)));
 *)
     match kind_of hd with
@@ -868,16 +870,19 @@ let whd opt env evars c =
             aux subs t (Ctx.append c (Ctx.update a i (Ctx.shift liftno ctx)))
         | `Var k ->
             return (Subs.id k) (intern (mkRel k)) ctx
-        | `InEnv(liftno, k) when opt.delta_rel = false ->
-            stop_at (Subs.id 0) (intern (mkRel k)) (Ctx.shift (liftno - k) ctx)
-        | `InEnv(liftno, k) ->
+        | `InEnv(real, k) when opt.delta_rel = false ->
+            (* XXX see TODO create_env_cache *)
+            let a,i = [|Clos.mk (intern mkProp)|], 0 in
+            stop_at (Subs.id 0) (intern (mkRel k))
+              (Ctx.update a i (Ctx.shift (real - k) ctx))
+        | `InEnv(real, k) ->
             (match unfold env (RelKey k) with
             | Some t ->
-                (* XXX see TODO above*)
+                (* XXX see TODO create_env_cache *)
                 let a,i = [|Clos.mk (intern mkProp)|], 0 in
-                aux (Subs.id 0) t (Ctx.update a i (Ctx.shift (liftno - k) ctx))
-            | None -> (* mkRel(k + (liftno - k)) = mkRel liftno *)
-                return (Subs.id 0) (intern(mkRel (liftno))) ctx))
+                aux (Subs.id 0) t (Ctx.update a i (Ctx.shift (real - k) ctx))
+            | None -> (* mkRel(k + (real - k)) = mkRel real *)
+                return (Subs.id 0) (intern(mkRel real)) ctx))
     | HVar id when not (Idpred.mem id opt.delta_var) -> stop_at subs hd ctx
     | HVar id ->
             (match unfold env (VarKey id) with
@@ -1241,21 +1246,19 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
   let fold_left2 = Util.Array.fold_left2 in
   let fold_right2 = Util.Array.fold_right2 in
 (*A* let hclos_to_constr c = clos_to_constr (Clos.H.extern c) in *A*)
-  let unfold_flex e t = match kind_of t with
+  let unfold_flex e t why = if why = Stuck then None else match kind_of t with
     | HRel n -> unfold_intern e (RelKey n) (* TODO: lookup up every time *)
     | HVar id when Idpred.mem id trans_var -> unfold_intern e (VarKey id)
     | HConst k when Cpred.mem k trans_def -> unfold_intern e (ConstKey k)
     | _ -> None in
-  let eq_flex l1 t1 l2 t2 = match kind_of t1 with (* t1/t2 of the same kind *)
-    | HRel _ -> Term.H.equal t1 t2 && l1 = l2
+  let eq_flex l1 t1 l2 t2 = match kind_of t1, kind_of t2 with
+    | HRel n1, HRel n2  -> n1 + l1 = n2 + l2
     | _ -> Term.H.equal t1 t2 (* Var or Const *) in 
   let oracle_flex t1 t2 =
-    let oracle = Conv_oracle.oracle_order l2r in
-    match kind_of t1, kind_of t2 with
-    | HRel n1, HRel n2 -> oracle (RelKey n1) (RelKey n2)
-    | HVar id1, HVar id2 -> oracle (VarKey id1) (VarKey id2)
-    | HConst k1, HConst k2 -> oracle (ConstKey k1) (ConstKey k2)
-    | _ -> assert false in
+    let key_of_flex t = match kind_of t with
+      | HRel n -> RelKey n | HVar id -> VarKey id | HConst k -> ConstKey k
+      | _ -> assert false in
+    Conv_oracle.oracle_order l2r (key_of_flex t1) (key_of_flex t2) in
 
   let eta_expand_ctx c =
     let eta_expand_suffix =
@@ -1263,11 +1266,14 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
       Ctx.shift 1 (Ctx.app [|r1|] Ctx.nil) in
     Ctx.append c eta_expand_suffix in
 
-  let _pr_status cl1 cl2 i =
+  let _pr_status (cl1, why1) (cl2, why2) i =
        let pcl n e c = Clos.H.pp n c in
        let env = Environ.reset_context env.env_def in
     hv 0 (pcl i env cl1 ++ spc()++
-           str "=?"++str"="++spc()++ pcl i env cl2) in
+           (if why1 = Stuck then str"." else str"") ++
+           str "=?="++
+           (if why2 = Stuck then str"." else str"") ++
+           spc()++ pcl i env cl2) in
   let _pr_heads l1 s1 t1 l2 s2 t2 =
     let t1, t2 = lift l1 (apply_subs s1 t1), lift l2 (apply_subs s2 t2) in
     print(ppt ~depth:1 env.env_def t1 ++ str" " ++
@@ -1275,9 +1281,23 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
 
   let rec convert_whd cv_pb s1 s2 cst t1 t2 =
     convert cv_pb cst (mk_whd_clos ~subs:s1 t1) (mk_whd_clos ~subs:s2 t2)
+          
+  and unfold_in_order cv_pb cst  t1 why1 c1 cl1 rhs  t2 why2 c2 cl2 lhs =
+    match unfold_flex env t1 why1 with
+    | Some bo1 ->
+        let cl1',_ as lhs = mk_whd_clos ~ctx:c1 bo1 in
+        UF.union cl1' cl1;
+        convert cv_pb cst lhs rhs
+    | None ->
+        match unfold_flex env t2 why2 with
+        | Some bo2 ->
+            let cl2', _ as rhs = mk_whd_clos ~ctx:c2 bo2 in
+            UF.union cl2' cl2;
+            convert cv_pb cst lhs rhs
+        | None -> UF.partition cl1 cl2; raise NotConvertible
 
   and convert cv_pb cst (cl1, why1 as lhs) (cl2, why2 as rhs) =
-(*D* __inside "convert"; try let __rc = pp(lazy(_pr_status cl1 cl2 1)); *D*)
+(*D* __inside "convert"; try let __rc = pp(lazy(_pr_status lhs rhs 1)); *D*)
     match UF.same cl1 cl2 with
     | `Yes   -> (*D* pp(lazy(str" UF: YES")); *D*) cst
     | `No    -> (*D* pp(lazy(str" UF: NO"));  *D*) raise NotConvertible
@@ -1300,7 +1320,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
           let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
           UF.union cl1 cl2; cst
         with NotConvertible as e -> UF.partition cl1 cl2; raise e)
-    | HRel n1, HRel n2 when why1 = Whnf && why2 = Whnf && n1 + l1 = n2 + l2 ->
+    | HRel n1, HRel n2 when why1 = Stuck && why2 = Stuck && n1 + l1 = n2 + l2 ->
         congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
     | HInd i1, HInd i2 when eq_ind i1 i2 ->
         congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
@@ -1334,9 +1354,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
           let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
           UF.union cl1 cl2; cst
         with NotConvertible as e -> UF.partition cl1 cl2; raise e)
-    | HRel _, HRel _
-    | HVar _, HVar _
-    | HConst _, HConst _ ->
+    | (HConst _ | HRel _ | HVar _), (HConst _ | HRel _ | HVar _) ->
         (try
           if not (eq_flex l1 t1 l2 t2) then raise NotConvertible
           else
@@ -1344,20 +1362,10 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
             UF.union cl1 cl2;
             cst
         with NotConvertible ->
-          (* TODO: inefficient, we always lookup both constants *)
-          let bo1, bo2 =
-            match unfold_flex env t1, unfold_flex env t2 with
-            | None, None -> UF.partition cl1 cl2; raise NotConvertible
-            | Some bo, None -> bo, t2
-            | None, Some bo -> t1, bo
-            | Some bo1, Some bo2 ->
-                if oracle_flex t1 t2 then bo1, t2 else t1, bo2 in
-          (* TODO: call this only when needed *)
-          let cl1', _ as lhs = mk_whd_clos ~ctx:c1 bo1 in
-          let cl2', _ as rhs = mk_whd_clos ~ctx:c2 bo2 in
-          UF.union cl1' cl1;
-          UF.union cl2' cl2;
-          convert cv_pb cst lhs rhs)
+          if oracle_flex t1 t2 then
+            unfold_in_order cv_pb cst  t1 why1 c1 cl1 rhs  t2 why2 c2 cl2 lhs
+          else
+            unfold_in_order cv_pb cst  t2 why2 c2 cl2 lhs  t1 why1 c1 cl1 rhs)
     | HLambda (_,_,_,bo1), _ -> (* XXX see msg on coq club *)
         let eta_cl2 = Clos.mk ~subs:s2 t2 ~ctx:(eta_expand_ctx c2) in
         convert CONV cst (mk_whd_clos ~subs:(slift s1) bo1) (whd eta_cl2)
@@ -1366,18 +1374,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
         convert CONV cst (whd eta_cl1) (mk_whd_clos ~subs:(slift s2) bo2)
     | (HConst _ | HRel _ | HVar _), _
     | _, (HConst _ | HRel _ | HVar _) ->
-        (match unfold_flex env t1 with
-        | Some bo ->
-            let cl1',_ as lhs = mk_whd_clos ~ctx:c1 bo in
-            UF.union cl1' cl1;
-            convert cv_pb cst lhs rhs
-        | None ->
-            (match unfold_flex env t2 with
-            | Some bo ->
-                let cl2', _ as rhs = mk_whd_clos ~ctx:c2 bo in
-                UF.union cl2' cl2;
-                convert cv_pb cst lhs rhs
-            | None -> UF.partition cl1 cl2; raise NotConvertible))
+        unfold_in_order cv_pb cst  t1 why1 c1 cl1 rhs  t2 why2 c2 cl2 lhs
     | (HLetIn _,_) | (_,HLetIn _) -> assert false
     | (HApp _,_)   | (_,HApp _)   -> assert false
     | (HCase _,_)  | (_,HCase _)  -> assert false
