@@ -1282,7 +1282,11 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
   let rec convert_whd cv_pb s1 s2 cst t1 t2 =
     convert cv_pb cst (mk_whd_clos ~subs:s1 t1) (mk_whd_clos ~subs:s2 t2)
           
-  and unfold_in_order cv_pb cst  t1 why1 c1 cl1 rhs  t2 why2 c2 cl2 lhs =
+  and unfold_in_order cv_pb cst b t1 why1 c1 cl1 rhs t2 why2 c2 cl2 lhs =
+    let         t1, why1, c1, cl1, rhs, t2, why2, c2, cl2, lhs =
+      if b then t1, why1, c1, cl1, rhs, t2, why2, c2, cl2, lhs
+           else t2, why2, c2, cl2, lhs, t1, why1, c1, cl1, rhs in
+    let convert = if b then convert else fun p c x y -> convert p c y x in
     match unfold_flex env t1 why1 with
     | Some bo1 ->
         let cl1',_ as lhs = mk_whd_clos ~ctx:c1 bo1 in
@@ -1362,10 +1366,8 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
             UF.union cl1 cl2;
             cst
         with NotConvertible ->
-          if oracle_flex t1 t2 then
-            unfold_in_order cv_pb cst  t1 why1 c1 cl1 rhs  t2 why2 c2 cl2 lhs
-          else
-            unfold_in_order cv_pb cst  t2 why2 c2 cl2 lhs  t1 why1 c1 cl1 rhs)
+          let b = oracle_flex t1 t2 in
+          unfold_in_order cv_pb cst b t1 why1 c1 cl1 rhs t2 why2 c2 cl2 lhs)
     | HLambda (_,_,_,bo1), _ -> (* XXX see msg on coq club *)
         let eta_cl2 = Clos.mk ~subs:s2 t2 ~ctx:(eta_expand_ctx c2) in
         convert CONV cst (mk_whd_clos ~subs:(slift s1) bo1) (whd eta_cl2)
@@ -1374,7 +1376,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
         convert CONV cst (whd eta_cl1) (mk_whd_clos ~subs:(slift s2) bo2)
     | (HConst _ | HRel _ | HVar _), _
     | _, (HConst _ | HRel _ | HVar _) ->
-        unfold_in_order cv_pb cst  t1 why1 c1 cl1 rhs  t2 why2 c2 cl2 lhs
+        unfold_in_order cv_pb cst true t1 why1 c1 cl1 rhs t2 why2 c2 cl2 lhs
     | (HLetIn _,_) | (_,HLetIn _) -> assert false
     | (HApp _,_)   | (_,HApp _)   -> assert false
     | (HCase _,_)  | (_,HCase _)  -> assert false
