@@ -1048,6 +1048,7 @@ let red_whd env evars t =
   unwind n
 
 let red_strong env evars t =
+  reset ();
   let env = create_env_cache env in
   let rec red_aux cl =
     let n, _ =
@@ -1093,7 +1094,6 @@ let red_strong env evars t =
       | Bound k -> mkRel k
       | InEnv (k, p) -> lift (k-p) (mkRel p)
   in
-  reset ();
   red_aux (Clos.mk (intern t))
 
 exception NotConvertible
@@ -1234,6 +1234,10 @@ let sort_cmp pb s0 s1 cuniv =
 (* {{{ CONVERSION ***********************************************************)
 
 let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
+  reset ();
+  Clos.H.reset ();
+  UF.reset ();
+
   let env = create_env_cache env in
   let whd cl =
     let cl, why = whd betaiotazeta env evars cl in
@@ -1446,9 +1450,6 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
   in
 (*D* pp(lazy(ppt env.env ~depth:9 t1++str" VS "++spc()++
              ppt env.env ~depth:9 t2)); *D*)
-  reset ();
-  Clos.H.reset ();
-  UF.reset ();
   let t1 = intern t1 in
   let t2 = intern t2 in
   convert_whd cv_pb (Subs.id 0) (Subs.id 0) empty_constraint t1 t2
