@@ -858,9 +858,9 @@ let whd opt env evars c =
   let stop_at s t c = s, t, c, Stopped in
 
   let rec aux subs hd ctx =
-(*    print_status subs hd ctx; *)
+(*R* print_status subs hd ctx; *R*)
 (*
-   print (ppt ~depth:100 env.env_def (clos_to_constr (Clos.mk ~subs hd ~ctx)));
+   print (ppt ~depth:100 env.env (clos_to_constr (Clos.mk ~subs hd ~ctx)));
 *)
     match kind_of hd with
     | HRel i -> (match expand_rel i subs with
@@ -1268,7 +1268,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
 
   let _pr_status (cl1, why1) (cl2, why2) i =
        let pcl n e c = Clos.H.pp n c in
-       let env = Environ.reset_context env.env_def in
+       let env = Environ.reset_context env.env in
     hv 0 (pcl i env cl1 ++ spc()++
            (if why1 = Stuck then str"." else str"") ++
            str "=?="++
@@ -1276,8 +1276,8 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
            spc()++ pcl i env cl2) in
   let _pr_heads l1 s1 t1 l2 s2 t2 =
     let t1, t2 = lift l1 (apply_subs s1 t1), lift l2 (apply_subs s2 t2) in
-    print(ppt ~depth:1 env.env_def t1 ++ str" " ++
-          ppt ~depth:1 env.env_def t2) in
+    print(ppt ~depth:1 env.env t1 ++ str" " ++
+          ppt ~depth:1 env.env t2) in
 
   let rec convert_whd cv_pb s1 s2 cst t1 t2 =
     convert cv_pb cst (mk_whd_clos ~subs:s1 t1) (mk_whd_clos ~subs:s2 t2)
@@ -1387,8 +1387,8 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
     | _ -> UF.partition cl1 cl2; raise NotConvertible
 (*A*  with NotConvertible as e ->
         if eq_c then
-          print (ppt env.env_def (hclos_to_constr cl1) ++ spc() ++
-                 ppt env.env_def (hclos_to_constr cl2) ++ spc() ++
+          print (ppt env.env (hclos_to_constr cl1) ++ spc() ++
+                 ppt env.env (hclos_to_constr cl2) ++ spc() ++
                  Clos.H.pp 10 cl1 ++ spc() ++ Clos.H.pp 10 cl2);
         assert(eq_c = false); raise e *A*)
 (*D*  in __outside None; __rc with exn -> __outside (Some exn); raise exn *D*)
@@ -1444,8 +1444,8 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
 (*D*  in __outside None; __rc with exn -> __outside (Some exn); raise exn *D*)
 
   in
-(*D* pp(lazy(ppt env.env_def ~depth:9 t1++str" VS "++spc()++
-              ppt env.env_def ~depth:9 t2)); *D*)
+(*D* pp(lazy(ppt env.env ~depth:9 t1++str" VS "++spc()++
+             ppt env.env ~depth:9 t2)); *D*)
   reset ();
   Clos.H.reset ();
   UF.reset ();
