@@ -672,10 +672,13 @@ end (* }}} *)
 open Hclosure
 open Term.H
 
-(* This gives the meaning to an explicit substitution. Output:
-   - `Var is bound by the subst to a Rel
-   - `InEnv escapes the subst
-   - `Code is assigned by the subst *)
+(* expand_rel gives meaning to an explicit substitution:
+     Bound n              = bound variable n
+     InEnv (real, canon)  = Rel canon in the initial context, Rel real here
+     Code (l, code, a, i) = code to be lifted by l and updated to a.(i)      *)
+type expansion =
+  | Bound of int | InEnv of int * int
+  | Code of int * closure * closure array * int
 let expand_rel k s =
   let rec aux_rel liftno k s = match Subs.kind_of s with
     | Econs (_,def,s) when k > Array.length def ->
@@ -683,12 +686,12 @@ let expand_rel k s =
     | Econs (_,def,_) ->
         let def_len = Array.length def in
         let idx = def_len - k in
-        `Code(liftno, def.(idx), def, idx)
+        Code(liftno, def.(idx), def, idx)
     | Elift (_,n,s) when k > n -> aux_rel (liftno + n) (k - n) s
-    | Elift (_,n,_) -> `Var (liftno + k)
+    | Elift (_,n,_) -> Bound (liftno + k)
     | Eshift (_,n,s) -> aux_rel (liftno + n) k s
-    | Eid n when k > n -> `InEnv(liftno + k, k - n)
-    | Eid _ -> `Var (liftno + k)
+    | Eid n when k > n -> InEnv(liftno + k, k - n)
+    | Eid _ -> Bound (liftno + k)
   in
    aux_rel 0 k s
 
@@ -746,9 +749,9 @@ and apply_subs s t = match kind_of t with
   | HCoFix c -> extern t (* XXX *)
   | HRel i ->
       match expand_rel i s with
-      | `Code (n, t, _, _) -> lift n (clos_to_constr t)
-      | `Var k -> mkRel k
-      | `InEnv (k, p) -> lift (k-p) (mkRel p)
+      | Code (n, t, _, _) -> lift n (clos_to_constr t)
+      | Bound k -> mkRel k
+      | InEnv (k, p) -> lift (k-p) (mkRel p)
 and clos_to_constr c =
   let _,s,t,c = Clos.kind_of c in
   unzip (apply_subs s t) c
@@ -864,18 +867,17 @@ let whd opt env evars c =
 *)
     match kind_of hd with
     | HRel i -> (match expand_rel i subs with
-        | `Code(liftno, cl, a, i) ->
+        | Code(liftno, cl, a, i) ->
             let _,subs, t, c = Clos.kind_of cl in
 (*            let () = a.(i) <- Clos.mk (intern (mkProp)) in *)
             aux subs t (Ctx.append c (Ctx.update a i (Ctx.shift liftno ctx)))
-        | `Var k ->
+        | Bound k ->
             return (Subs.id k) (intern (mkRel k)) ctx
-        | `InEnv(real, k) when opt.delta_rel = false ->
+        | InEnv(real, k) when opt.delta_rel = false ->
             (* XXX see TODO create_env_cache *)
             let a,i = [|Clos.mk (intern mkProp)|], 0 in
             stop_at (Subs.id 0) (intern (mkRel k))
               (Ctx.update a i (Ctx.shift (real - k) ctx))
-        | `InEnv(real, k) ->
             (match unfold env (RelKey k) with
             | Some t ->
                 (* XXX see TODO create_env_cache *)
@@ -883,6 +885,7 @@ let whd opt env evars c =
                 aux (Subs.id 0) t (Ctx.update a i (Ctx.shift (real - k) ctx))
             | None -> (* mkRel(k + (real - k)) = mkRel real *)
                 return (Subs.id 0) (intern(mkRel real)) ctx))
+        | InEnv(real, k) ->
     | HVar id when not (Idpred.mem id opt.delta_var) -> stop_at subs hd ctx
     | HVar id ->
             (match unfold env (VarKey id) with
@@ -1089,9 +1092,9 @@ let red_strong env evars t =
   | HCoFix c -> extern t (* XXX *)
   | HRel i ->
       match expand_rel i s with
-      | `Code (n, t, _, _) -> lift n (red_aux t) (* XXX no updates *)
-      | `Var k -> mkRel k
-      | `InEnv (k, p) -> lift (k-p) (mkRel p)
+      | Code (n, t, _, _) -> lift n (red_aux t) (* XXX no updates *)
+      | Bound k -> mkRel k
+      | InEnv (k, p) -> lift (k-p) (mkRel p)
   in
   reset ();
   red_aux (Clos.mk (intern t))
