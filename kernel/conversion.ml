@@ -793,54 +793,51 @@ let betaiotazeta = {
 }
 
 type env_cache = {
-  env_def : env; cache_def : (constant, H.hconstr) Hashtbl.t;
-  env_rel : int * (int * constr) list;
-  env_var : (identifier * constr) list;
+  env : env;
+  cache : (int tableKey, (closure array * int)) Hashtbl.t;
 }
+
+(* TODO if we cache is_normal then we can avoid putting stupid updates *)
+let create_env_cache env =
+  let cache = Hashtbl.create 91 in
+  let _, _, map, subs =
+    Sign.fold_rel_context_reverse
+      (fun (i, j, map, subs) (id, b, _) ->
+	 match b with
+	 | None -> i+1, j, map, subs
+         | Some body -> i+1, j+1, (i, j) :: map,
+             Clos.mk (*~ctx:(Ctx.shift i Ctx.nil)*) (intern (lift i body)) :: subs)
+      ~init:(1,0,[],[]) (rel_context env) in
+  let rel_context = Array.of_list (List.rev subs) in
+  List.iter (fun (i,j) -> Hashtbl.replace cache (RelKey i) (rel_context,j)) map;
+  let _, map, subs =
+    Sign.fold_named_context_reverse
+      (fun (i, map, subs) (id, b, _) ->
+       match b with
+       | None -> i, map, subs
+       | Some body -> i+1, (id, i) :: map, Clos.mk (intern body) :: subs)
+     ~init:(0,[],[]) (named_context env) in
+  let var_context = Array.of_list (List.rev subs) in
+  List.iter (fun (v,i) -> Hashtbl.replace cache (VarKey v) (var_context,i)) map;
+  { env = env; cache = cache }
 
 (* XXX reduction does not really need intern *)
 let unfold, unfold_intern =
-  let lookup env c = (* TODO: lookup cache (w intern) *)
-  try
-    match c with
-    | RelKey n ->
-        let len, ctx = env.env_rel in
-        let t = lift n (List.assoc (len - n) ctx) in
-        Some t
-    | VarKey id ->
-        let t = List.assoc id env.env_var in
-        Some t
+  let lookup env c =
+    try Some (Hashtbl.find env.cache c)
+    with Not_found -> match c with
+    | RelKey _ -> None
+    | VarKey _ -> None
     | ConstKey k ->
-        let t = constant_value env.env_def k in
-        if eq_constr t (mkConst k) then None (* XXX WTF! *) else
-        Some t
-  with Not_found | NotEvaluableConst _ -> None
+        try
+          let t = constant_value env.env k in
+          if eq_constr t (mkConst k) then None (* XXX WTF! *) else
+          let update = [| Clos.mk (intern t) |], 0 in
+          Hashtbl.replace env.cache c update;
+          Some update
+        with NotEvaluableConst _ -> None
   in
-  (* lookup *)(fun e c -> Option.map intern (lookup e c)),
-  (fun e c -> Option.map intern (lookup e c))
-
-let create_env_cache env =
-  (* TODO: make an array of closures to be updated, see also dummy array
-     in HRel case, there we should stick in the Ctx.update the array
-     representing the context *)
-  let rel_env_len, rel_context =
-    Sign.fold_rel_context
-      (fun (id,b,t) (i,subs) ->
-	 match b with
-	   | None -> (i+1, subs)
-	   | Some body -> (i+1, (i,body) :: subs))
-      (rel_context env) ~init:(0,[]) in
-  (* TODO: the same *)
-  let var_context =
-    Sign.fold_named_context
-      (fun (id,b,_) e ->
-	 match b with
-	   | None -> e
-	   | Some body -> (id, body)::e)
-       (named_context env) ~init:[] in
-  { env_def = env; cache_def = Hashtbl.create 17;
-    env_rel = rel_env_len, rel_context;
-    env_var = var_context }
+  lookup, lookup
 
 
 (* Since we assign subst elements, we can't build a new subst. We have to
@@ -874,22 +871,20 @@ let whd opt env evars c =
         | Bound k ->
             return (Subs.id k) (intern (mkRel k)) ctx
         | InEnv(real, k) when opt.delta_rel = false ->
-            (* XXX see TODO create_env_cache *)
-            let a,i = [|Clos.mk (intern mkProp)|], 0 in
-            stop_at (Subs.id 0) (intern (mkRel k))
-              (Ctx.update a i (Ctx.shift (real - k) ctx))
-            (match unfold env (RelKey k) with
-            | Some t ->
-                (* XXX see TODO create_env_cache *)
-                let a,i = [|Clos.mk (intern mkProp)|], 0 in
-                aux (Subs.id 0) t (Ctx.update a i (Ctx.shift (real - k) ctx))
-            | None -> (* mkRel(k + (real - k)) = mkRel real *)
-                return (Subs.id 0) (intern(mkRel real)) ctx))
+            stop_at (Subs.id 0) (intern (mkRel k)) (Ctx.shift (real - k) ctx)
         | InEnv(real, k) ->
+           (match unfold env (RelKey k) with
+           | Some (a, i) ->
+              let _, s, t, c = Clos.kind_of a.(i) in
+              aux s t (Ctx.append c (Ctx.update a i (Ctx.shift (real - k) ctx)))
+           | None ->                   (* mkRel real = mkRel(k + (real - k)) *)
+              return (Subs.id 0) (intern (mkRel real)) ctx))
     | HVar id when not (Idpred.mem id opt.delta_var) -> stop_at subs hd ctx
     | HVar id ->
             (match unfold env (VarKey id) with
-            | Some t -> aux subs t ctx
+            | Some (a, i) ->
+                let _, s, t, c = Clos.kind_of a.(i) in
+                aux s t (Ctx.append c (Ctx.update a i ctx))
             | None -> return (Subs.id 0) hd ctx)
     | HEvar (_,e,v) ->
        (match
@@ -1031,7 +1026,9 @@ let whd opt env evars c =
     | HConst c ->
         (match unfold env (ConstKey c) with
         | None -> return (Subs.id 0) hd ctx
-        | Some bo -> aux (Subs.id 0) bo ctx)
+        | Some (a, i) ->
+            let _, s, t, c = Clos.kind_of a.(i) in
+            aux s t (Ctx.append c (Ctx.update a i ctx)))
     (* head normal terms *)
     | HSort _ | HMeta _ | HProd _ | HInd _ -> return subs hd ctx
     | HCoFix _ -> assert false (* TODO *)
@@ -1291,14 +1288,18 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
            else t2, why2, c2, cl2, lhs, t1, why1, c1, cl1, rhs in
     let convert = if b then convert else fun p c x y -> convert p c y x in
     match unfold_flex env t1 why1 with
-    | Some bo1 ->
-        let cl1',_ as lhs = mk_whd_clos ~ctx:c1 bo1 in
+    | Some (a, i) ->
+        let _, s, t, c = Clos.kind_of a.(i) in
+        let cl1',_ as lhs =
+          mk_whd_clos ~subs:s t ~ctx:(Ctx.append c (Ctx.update a i c1)) in
         UF.union cl1' cl1;
         convert cv_pb cst lhs rhs
     | None ->
         match unfold_flex env t2 why2 with
-        | Some bo2 ->
-            let cl2', _ as rhs = mk_whd_clos ~ctx:c2 bo2 in
+        | Some (a, i) ->
+            let _, s, t, c = Clos.kind_of a.(i) in
+            let cl2', _ as rhs =
+              mk_whd_clos ~subs:s t ~ctx:(Ctx.append c (Ctx.update a i c2)) in
             UF.union cl2' cl2;
             convert cv_pb cst lhs rhs
         | None -> UF.partition cl1 cl2; raise NotConvertible
