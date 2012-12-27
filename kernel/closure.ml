@@ -842,8 +842,33 @@ and knht e t stk =
 
 (************************************************************************)
 
+(* PP *)
+let pr_constr h e c =
+  Term.ll_pr_constr h (Environ.rel_context e) c
+
+open Pp
+let pr_id id = str (string_of_id id)
+let pr_name = function
+  | Name id -> pr_id id
+  | Anonymous -> str "_"
+
+let ppctx e = 
+  let opt e = function None -> str "" | Some t -> str" := " ++ pr_constr 10 e t in
+  string_of_ppcmds (hv 1 (List.fold_left (fun acc (id,ob,t) -> 
+        pr_id id ++ opt e ob ++ str " : " ++ pr_constr 10 e t ++ spc() ++ acc)
+      (str"") (Environ.named_context e)
+      ++ str"---"++spc()++
+      Environ.fold_rel_context (fun e (id,ob,t) acc -> acc ++ spc() ++
+        pr_name id ++ opt e ob ++ str " : " ++ pr_constr 10 e t)
+      e ~init:(str"")
+      ))
+
+let ppterm ?(depth=3) e x = string_of_ppcmds (pr_constr depth e x)
+(* END PP *)
+
 (* Computes a weak head normal form from the result of knh. *)
 let rec knr info m stk =
+  (*R* prerr_endline(ppterm info.i_env (term_of_fconstr m)); *R*)
   match m.term with
   | FLambda(n,tys,f,e) when red_set info.i_flags fBETA ->
       (match get_args n tys f e stk with
