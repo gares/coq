@@ -269,7 +269,7 @@ end = struct (* {{{ *)
                   match rest2 with
                     | Empty -> add hash key table; key
                     | Cons (k3, h3, rest3) ->
-                      if hash == h2 && equal_closure key k3 then k3
+                      if hash == h3 && equal_closure key k3 then k3
                       else find_rec hash key table rest3
 
     let distribution table =

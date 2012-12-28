@@ -106,7 +106,7 @@ module Make (E : EqType) =
 		match rest2 with
 		  | Empty -> false
 		  | Cons (k3, h3, rest3) ->
-		    if hash == h2 && key == k3 then true
+		    if hash == h3 && key == k3 then true
 		    else mem_rec hash key table rest3
 
   let repr hash key table =
@@ -124,7 +124,7 @@ module Make (E : EqType) =
 		match rest2 with
 		  | Empty -> add hash key table; key
 		  | Cons (k3, h3, rest3) ->
-		    if hash == h2 && E.equal key k3 then k3
+		    if hash == h3 && E.equal key k3 then k3
 		    else find_rec hash key table rest3
 
   let distribution table =
