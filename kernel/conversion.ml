@@ -934,7 +934,7 @@ let whd opt env evars c =
                   (Ctx.fix (Clos.mk ~subs ~ctx:(fix_params rarg ctx) hd)
                   afterctx))
           | Zshift (_,_,c) -> find_arg n c
-          | Zupdate (_,_,_,c) -> find_arg n c
+          | Zupdate (_,_,_,c) -> find_arg n c (* TODO: fire update, check rat.v *)
           | Zcase _ -> assert false
           | Zfix _ -> assert false in
         find_arg rarg ctx
@@ -1241,7 +1241,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
   let env = create_env_cache env in
   let whd cl =
     let cl, why = whd betaiotazeta env evars cl in
-    (* XXX fire_updates as in fapp_stack? *)
+    (* XXX fire_updates as in fapp_stack? STUDY rat 3422, more than that :-/ *)
     Clos.H.intern cl, why in
   let mk_whd_clos ?subs ?ctx t = whd (Clos.mk ?subs ?ctx t) in
   let same_len a1 a2 = Array.length a1 = Array.length a2 in
