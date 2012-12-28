@@ -863,9 +863,9 @@ let whd opt env evars c =
     match kind_of hd with
     | HRel i -> (match expand_rel i subs with
         | Code(liftno, cl, a, i) ->
-            let _,subs, t, c = Clos.kind_of cl in
+            let _, s, t, c = Clos.kind_of cl in
 (*            let () = a.(i) <- Clos.mk (intern (mkProp)) in *)
-            aux subs t (Ctx.append c (Ctx.update a i (Ctx.shift liftno ctx)))
+            aux s t (Ctx.append c (Ctx.update a i (Ctx.shift liftno ctx)))
         | Bound k ->
             return (Subs.id k) (intern (mkRel k)) ctx
         | InEnv(real, k) when opt.delta_rel = false ->
