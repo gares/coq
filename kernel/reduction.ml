@@ -668,7 +668,7 @@ let run_cpb timeout strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
     let u = trans_fconv strategy reds cv_pb l2r evars env t1 t2 time in
     match rc with
     | None -> !time, false, true
-    | Some rc -> !time, true, Univ.compare_constraints rc u
+    | Some rc -> !time, true, Univ.compare_constraints_symmetric rc u
   with 
   | NotConvertible | Conversion.NotConvertible -> !time, None = rc, true
   | Errors.Timeout -> -. (float_of_int timeout), true, true
