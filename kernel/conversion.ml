@@ -763,8 +763,6 @@ let print cmds = prerr_endline (string_of_ppcmds cmds)
 let ppt ?(depth=3) e x =
   Term.ll_pr_constr depth (Environ.rel_context e) x
 
-let print_status s t c = print(Clos.pp 10 (Clos.mk ~subs:s t ~ctx:c))
-
 type options = {
   beta  : bool; (* App(Lambda _,_) reduction *)
   iota  : bool; (* Fix and CoFix unfolding; Case analysis *)
@@ -858,7 +856,7 @@ let whd opt env evars c =
   let stop_at s t c = s, t, c, Stopped in
 
   let rec aux subs hd ctx =
-(*R* print_status subs hd ctx; *R*)
+(*R* print(Clos.pp 1 (Clos.mk ~subs hd ~ctx)); *R*)
 (*
    print (ppt ~depth:100 env.env (clos_to_constr (Clos.mk ~subs hd ~ctx)));
 *)
