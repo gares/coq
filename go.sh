@@ -162,8 +162,11 @@ regression_check() {
 run_all() {
   local TOTAL=`find . -name \*.vc| wc -l|cut -d ' ' -f 1`
   local PASSED=`wc -l PASSED|cut -d ' ' -f 1`
-  print "running all problems not passed yet (`expr \\( $TOTAL - $PASSED \\) \* 100 / $TOTAL`%):"
-  for f in `find theories -name \*.vc | sort; find plugins -name \*.vc`; do
+  print "running all problems not passed yet" \
+	  "(`expr \\( $TOTAL - $PASSED \\) \* 100 / $TOTAL`%):"
+  > /tmp/todo
+  for f in `find . -name \*.vc`; do echo "`du $f`" >> /tmp/todo; done
+  for f in `sort -n -k 1 /tmp/todo | cut -f 2`; do
     f=`echo $f | sed -e 's/.vc$//' -e 's/^\.\///'`
     if ! grep -q -F $f PASSED; then
       print_begin_action "running $f  (`du -h $f.vc | cut -f1`)"
