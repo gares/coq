@@ -252,6 +252,8 @@ type conv_pb = Mini_evd.conv_pb =
   | CONV
   | CUMUL
 
+let print cmds = prerr_endline (string_of_ppcmds cmds)
+
 let sort_cmp pb s0 s1 cuniv =
   match (s0,s1) with
     | (Prop c1, Prop c2) when pb = CUMUL ->
@@ -263,8 +265,10 @@ let sort_cmp pb s0 s1 cuniv =
     | (Type u1, Type u2) ->
 	assert (is_univ_variable u2);
 	(match pb with
-           | CONV -> enforce_eq u1 u2 cuniv
-	   | CUMUL -> enforce_leq u1 u2 cuniv)
+         | CONV -> (*U* print(Univ.pr_uni u1++str" = "++Univ.pr_uni u2); *U*)
+              enforce_eq u1 u2 cuniv
+         | CUMUL -> (*U* print(Univ.pr_uni u1++str" ≤ "++Univ.pr_uni u2); *U*)
+              enforce_leq u1 u2 cuniv)
     | (_, _) -> raise NotConvertible
 
 
