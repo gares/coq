@@ -1657,6 +1657,10 @@ module H = struct
   let extern x = x
   let extern_array x = x
 
+  let is_shared t =
+    let h = hash_of_term t in
+    h <> no_hash && HashsetTerm.mem h t hconstr_table
+
   let intern, hash_term_array =
     let (sh_sort,sh_ci,sh_construct,sh_ind,sh_con,sh_na,sh_id) =
       (hcons_sorts, hcons_caseinfo, hcons_construct,
