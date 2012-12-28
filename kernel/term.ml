@@ -1626,8 +1626,8 @@ module H = struct
     struct type t = constr let equal = equals_constr end)
 
   let size = 19991
-  let term_table = HashsetTerm.create size
-  let distribution () = HashsetTerm.distribution term_table
+  let hconstr_table = HashsetTerm.create size
+  let distribution () = HashsetTerm.distribution hconstr_table
 
   let alpha = 65599
   let beta  = 7
@@ -1667,7 +1667,7 @@ module H = struct
        hcons_ind, hcons_con, hcons_name, hcons_ident) in
 
     (* Since we hash in place and reset we have to be resilient *)
-    let is_sh h t = h <> no_hash && HashsetTerm.mem h t term_table in
+    let is_sh h t = h <> no_hash && HashsetTerm.mem h t hconstr_table in
 
     let rec hash_term_array t =
       let accu = ref 0 in
@@ -1749,7 +1749,7 @@ module H = struct
 
     and sh_rec t =
       let (y, h) = hash_term t in
-      (HashsetTerm.repr h y term_table, h)
+      (HashsetTerm.repr h y hconstr_table, h)
 
   in
   (* Make sure our statically allocated Rels (1 to 16) are considered
@@ -1759,7 +1759,7 @@ module H = struct
   (fun t -> fst (sh_rec t)), hash_term_array
   
   let reset () =
-    HashsetTerm.reset size term_table;
+    HashsetTerm.reset size hconstr_table;
     ignore(hash_term_array rels)
 
   let equal = (==)
