@@ -1,8 +1,8 @@
 #!/bin/sh
 
 usage(){
-	echo "usage: $0 (on|off) letter file.ml"
-	echo "Example: $0 on D kernel/conversion.ml"
+	echo "usage: $0 (on|off) letters files"
+	echo "Example: $0 on DH kernel/conversion.ml kernel/reduction.ml"
 	exit 1
 }
 
@@ -13,20 +13,33 @@ usage(){
 
 if [ $# -lt 3 ]; then usage; fi
 
-case $1 in
+ACTION="$1"
+FLAGS="`echo $2 | sed 's/\(.\)/\1 /g'`"
+shift
+shift
+
+case $ACTION in
 on) 
-	sed -i '
-        :a; N; $!ba;
-	s/(\*'$2'\* /(*'$2'<*)/g
-	s/ \*'$2'\*)/(*'$2'>*)/g
-	' $3
+	for file in "$@"; do
+	       for flag in $FLAGS; do 	
+			sed -i '
+        		:a; N; $!ba;
+			s/(\*'$flag'\* /(*'$flag'<*)/g
+			s/ \*'$flag'\*)/(*'$flag'>*)/g
+			' $file
+		done
+	done
 ;;
 off)
-	sed -i '
-        :a; N; $!ba;
-	s/(\*'$2'<\*)/(*'$2'* /g
-	s/(\*'$2'>\*)/ *'$2'*)/g
-	' $3
+	for file in "$@"; do
+	       for flag in $FLAGS; do 	
+			sed -i '
+        		:a; N; $!ba;
+			s/(\*'$flag'<\*)/(*'$flag'* /g
+			s/(\*'$flag'>\*)/ *'$flag'*)/g
+			' $file
+		done
+	done
 ;;
 *)
 	usage
