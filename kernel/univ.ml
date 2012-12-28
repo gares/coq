@@ -510,9 +510,32 @@ module Constraint = Set.Make(
 	if i' <> 0 then i'
 	else UniverseLevel.compare v v'
   end)
+module Constraint2 = Set.Make(
+  struct
+    type t = univ_constraint
+    let compare (u,c,v) (u',c',v') =
+      let i = Pervasives.compare c c' in
+      if i <> 0 then i
+      else
+        if c <> Eq then
+	  let i' = UniverseLevel.compare u u' in
+	  if i' <> 0 then i'
+	  else UniverseLevel.compare v v'
+        else
+	  let i' = UniverseLevel.compare u u' in
+	  if i' <> 0 then
+            if UniverseLevel.compare u v' = 0 && UniverseLevel.compare v u' = 0
+            then 0
+            else i'
+	  else UniverseLevel.compare v v'
+
+  end)
 
 type constraints = Constraint.t
 let compare_constraints = Constraint.equal
+let compare_constraints_symmetric c1 c2 =
+  let conv x = Constraint.fold Constraint2.add x Constraint2.empty in
+  Constraint2.equal (conv c1) (conv c2)
 
 let empty_constraint = Constraint.empty
 let is_empty_constraint = Constraint.is_empty
