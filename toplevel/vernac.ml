@@ -428,6 +428,11 @@ let compile verbosely f =
   Dumpglob.start_dump_glob long_f_dot_v;
   Dumpglob.dump_string ("F" ^ Names.string_of_dirpath ldir ^ "\n");
   if !Flags.xml_export then !xml_start_library ();
+  let dump_single x i =
+    prerr_endline ("DUMPING " ^ (long_f_dot_v ^ "c." ^ string_of_int i));
+    let oc = open_out_bin (long_f_dot_v ^ "c." ^ string_of_int i) in
+    Marshal.to_channel oc [x] [];
+    close_out oc in
   match !Flags.run_conv_pbs with
   | Some ext ->
       let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
@@ -439,20 +444,35 @@ let compile verbosely f =
         let time, ok1, ok2 = Reduction.run_cpb 10 strategy x in
         if time < 0.0 then prerr_endline ("ERR timeout " ^ string_of_int i);
         if not ok1 then prerr_endline ("ERR " ^ string_of_int i);
-        if not ok2 then prerr_endline ("ERR univ " ^ string_of_int i);
-        Printf.fprintf stats "%.3f , %b } ;\n" time (time >= 0.0 && ok1 && ok2))
+        if not (ok2 = 0) then
+          prerr_endline ("ERR univ " ^string_of_int i ^" "^ string_of_int ok2);
+        if not (time>= 0.0) then dump_single x i;
+        Printf.fprintf stats "%.3f , %b } ;\n" time (time>= 0.0 && ok1 &&ok2=0))
       pbs;
       close_out stats;
   | None -> match !Flags.run_conv_pb with
   | Some n ->
       Reduction.debug := true;
       Sys.catch_break true;
-      let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
       let n, strategy = if n < 0 then -n -1, `Regular else n, `New in
-      let p = List.nth pbs n in
-      let time, ok1, ok2 = Reduction.run_cpb 60 strategy p in
+      let p, dump =
+        try
+          let pbs = Reduction.load_dump (long_f_dot_v ^"c."^ string_of_int n) in
+          List.hd pbs, false
+        with Sys_error _ ->
+          let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
+          List.nth pbs n, true in
+      let time, ok1, ok2 =
+        let time, ok1, ok2 = ref 0.0, ref true, ref 0 in
+        for i = 1 to 100 do
+          let t, o1, o2 = Reduction.run_cpb 60 strategy p in
+          time := !time +. t; ok1 := !ok1 && o1; ok2 := !ok2 + o2; 
+        done;
+        !time, !ok1, !ok2
+        in
+      if dump then dump_single p n;
       Printf.eprintf "{ %d , %s %.3f , %b } ;\n" n 
-        (Reduction.print_cpb p) time (time >= 0.0 && ok1 && ok2)
+        (Reduction.print_cpb p) time (time >= 0.0 && ok1 && ok2 = 0)
   | None ->
       (match !Flags.dump_conv_pbs with
       | Some limit -> Reduction.set_dump_cpbs limit (long_f_dot_v ^ "c")
