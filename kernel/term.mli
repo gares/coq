@@ -702,6 +702,7 @@ module H : sig
   val is_shared : constr -> bool
 
   val mkHFix : (int array * int) * (hconstr,hconstr) rec_declaration -> hconstr
+  val mkHCoFix : int * (hconstr,hconstr) rec_declaration -> hconstr
   val iter_constr : (hconstr -> unit) -> hconstr -> unit
   val iter_constr_with_binders : ('a -> 'a) -> ('a -> hconstr -> unit) -> 'a -> hconstr -> unit
 

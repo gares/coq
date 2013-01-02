@@ -1773,6 +1773,7 @@ module H = struct
   let hash = hash_of_term
 
   let mkHFix (x,y) = intern (HFix (0,x,y))
+  let mkHCoFix (x,y) = intern (HCoFix (0,x,y))
   let iter_constr = iter_constr
   let iter_constr_with_binders = iter_constr_with_binders
 
