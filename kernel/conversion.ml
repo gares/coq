@@ -717,6 +717,11 @@ let fix_body subs fix =
   let nfix = Array.length bds in
   Subs.cons (Array.init nfix make_body) subs, bds.(i)
 
+let cofix_body subs (_,i,(_,_,bds as rdcl)) =
+  let ncofix = Array.length bds in
+  let make_body j = Clos.mk ~subs (mkHCoFix (j,rdcl)) in  
+  Subs.cons (Array.init ncofix make_body) subs, bds.(i)
+
 let rec unzip t c = match Ctx.kind_of c with
   | Znil -> t
   | Zapp (_,a,ctx) -> unzip (mkApp (t, Array.map clos_to_constr a)) ctx
@@ -938,6 +943,37 @@ let whd opt env evars c =
           | Zcase _ -> assert false
           | Zfix _ -> assert false in
         find_arg rarg ctx
+    | HCoFix _  when opt.iota = false -> stop_at subs hd ctx
+    | HCoFix cf  -> (* almost same functions as below *)
+        (* this is really tricky! the cofix unfolding could escape the match
+         * context if we don't filter *)
+        let rec filter_updates c = match Ctx.kind_of c with
+          | Znil -> Ctx.nil
+          | Zupdate (_,_,_,c) -> filter_updates c
+          | Zcase _ -> c
+          | Zshift (_,n,c) -> Ctx.shift n (filter_updates c)
+          | Zapp (_,a,c) -> Ctx.app a (filter_updates c)
+          | Zfix (_,f,c) -> Ctx.fix f (filter_updates c) in
+        let rec ctx_for_update n c = match Ctx.kind_of c with
+          | Zupdate _ when n = 0 -> Ctx.nil
+          | Zupdate (_,_,_,c) -> ctx_for_update (n-1) c
+          | Zapp (_,a,c) -> Ctx.app a (ctx_for_update n c)
+          | Zshift (_,s,c) -> Ctx.shift s (ctx_for_update n c)
+          | _ -> assert false in
+        let rec find_iota nupds c = match Ctx.kind_of c with
+          | Zapp (_,_,c) -> find_iota nupds c
+          | Zshift (_,_,c) -> find_iota nupds c
+          | Zcase _ ->
+              let s, bo = cofix_body subs cf in
+              aux s bo (filter_updates ctx)
+          | Zupdate (_,a,i,c) ->
+              let hnf = Clos.mk ~subs ~ctx:(ctx_for_update nupds ctx) hd in
+              a.(i) <- hnf;
+              find_iota (nupds + 1) c
+          | Zfix _ -> return subs hd ctx
+          | Znil -> return subs hd ctx
+        in
+          find_iota 0 ctx
     | HConstruct _ when opt.iota = false -> stop_at subs hd ctx
     | HConstruct (ind, k) ->
         (* TODO: coded in an inefficient way, measure if an acc made of a list
@@ -1029,7 +1065,6 @@ let whd opt env evars c =
             aux s t (Ctx.append c (Ctx.update a i ctx)))
     (* head normal terms *)
     | HSort _ | HMeta _ | HProd _ | HInd _ -> return subs hd ctx
-    | HCoFix _ -> assert false (* TODO *)
   in
   let _, s, t, c = Clos.kind_of c in
   let s, t, c, why = aux s t c in
@@ -1352,12 +1387,14 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
           let cst = convert_whd cv_pb (slift s1) (slift s2) cst bo1 bo2 in
           UF.union cl1 cl2; cst
         with NotConvertible as e -> UF.partition cl1 cl2; raise e)
-(* TODO:
-    | CoFix, CoFix ->
- *)
-    | HFix(_,op1,(_,tys1,bos1)), HFix(_,op2,(_,tys2,bos2))
-      when op1 = op2 && same_len tys1 tys2 && same_len bos1 bos2 ->
+    | HCoFix (_,op1,(_,tys1,bos1)), HCoFix (_,op2,(_,tys2,bos2))
+    | HFix(_,(_,op1),(_,tys1,bos1)), HFix(_,(_,op2),(_,tys2,bos2))
+      when op1 = op2 && same_len tys1 tys2 (*&& same_len bos1 bos2*) ->
         (try
+          (match kind_of t1, kind_of t2 with
+          | HFix (_,(ra1,_),_), HFix(_,(ra2,_),_) ->
+              if ra1 <> ra2 then raise NotConvertible
+          | _ -> ());
           let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = fold_left2 (convert_whd CONV s1 s2) cst tys1 tys2 in
 	  let n = Array.length bos1 in
