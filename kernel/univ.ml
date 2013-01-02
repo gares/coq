@@ -535,7 +535,7 @@ type constraints = Constraint.t
 let compare_constraints = Constraint.equal
 let compare_constraints_symmetric c1 c2 =
   let conv x = Constraint.fold Constraint2.add x Constraint2.empty in
-  Constraint2.equal (conv c1) (conv c2)
+  Constraint2.compare (conv c1) (conv c2)
 
 let empty_constraint = Constraint.empty
 let is_empty_constraint = Constraint.is_empty
