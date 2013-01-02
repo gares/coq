@@ -667,12 +667,12 @@ let run_cpb timeout strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
   try
     let u = trans_fconv strategy reds cv_pb l2r evars env t1 t2 time in
     match rc with
-    | None -> !time, false, true
+    | None -> !time, false, 0
     | Some rc -> !time, true, Univ.compare_constraints_symmetric rc u
   with 
-  | NotConvertible | Conversion.NotConvertible -> !time, None = rc, true
-  | Errors.Timeout -> -. (float_of_int timeout), true, true
-  | e -> prerr_endline (Printexc.to_string e); !time, false, true
+  | NotConvertible | Conversion.NotConvertible -> !time, None = rc, 0
+  | Errors.Timeout -> -. (float_of_int timeout), true, 0
+  | e -> prerr_endline (Printexc.to_string e); !time, false, 0
 
 let trans_fconv reds cv_pb l2r evars env t1 t2 =
   let time = ref (__time ()) in
