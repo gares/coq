@@ -15,6 +15,8 @@ open Environ
 open Mini_evd
 
 (* With smaller hashtables it slows down. Reset costs a lot: 0.0072 *)
+(* TODO: given there was a nasty bug in the hashconsing code, this may
+ * have changed *)
 let uf_table_size = 100003
 
 module Hclosure : sig
@@ -35,8 +37,8 @@ module Hclosure : sig
               (* Zcase (_,ci,p,br,_) is just the zipper for a Case's head *)
     | Zfix    of dummy * closure * ctx
               (* Zfix (_,(_,_,_,c as cl),_) cl is the fix and its params
-                 are already prepared in the context c, morally to be
-                 prepended to the recarg and the actual term context *)
+                 which are already prepared in the context c, morally to be
+                 prepended to the recarg and the actual head term context *)
     | Zupdate of dummy * closure array * int * ctx
               (* Zupdate (_,a,i,_) means that the whnf of the term must
                  be stored in a.(i) *)
@@ -202,6 +204,7 @@ end = struct (* {{{ *)
   let equal_closure (_,s1,t1,c1) (_,s2,t2,c2) =
     Term.H.equal t1 t2 && equal_subs s1 s2 && equal_ctx c1 c2
 
+    (* TODO: use the regular hashcons set, this code is copy paste *)
   module HashsetClos = struct
 
     type elt = closure
@@ -293,6 +296,7 @@ end = struct (* {{{ *)
   let combinesmall x y =
     let h = beta * x + y in
     if h = no_hash then no_hash + 1 else h
+    (* End of copy pasted code *)
 
   let intern_closure =
     let rec hash_closure (h,s,t,c) =
@@ -435,6 +439,7 @@ end = struct (* {{{ *)
     val reset : int -> 'a t -> unit
   end
 
+  (* Again copy pasted to add "reset" since clear is slow *)
   module Table : HashtblEx = struct
     type key = Clos.H.hclosure
     type 'a t =
@@ -590,7 +595,7 @@ module UF : sig
 
   open Hclosure.Clos.H
 
-  val find : hclosure -> hclosure
+(*   val find : hclosure -> hclosure *)
   val union : hclosure -> hclosure -> unit
   val partition : hclosure -> hclosure -> unit
   val same : hclosure -> hclosure -> [`Yes | `No | `Maybe]
@@ -673,7 +678,7 @@ open Hclosure
 open Term.H
 
 (* expand_rel gives meaning to an explicit substitution:
-     Bound n              = bound variable n
+     Bound n              = bound variable n (bound to a Lambda we traversed)
      InEnv (real, canon)  = Rel canon in the initial context, Rel real here
      Code (l, code, a, i) = code to be lifted by l and updated to a.(i)      *)
 type expansion =
@@ -695,6 +700,9 @@ let expand_rel k s =
   in
    aux_rel 0 k s
 
+(* TODO: this is correct, but we "unshare" the whole context.
+ * Is there a better solution? Put a shift in the tuple,
+ * initially set to 0? *)
 let shift_closure_array k clv =
   if k = 0 then clv else
   let cshift = Ctx.shift k Ctx.nil in
@@ -750,8 +758,8 @@ and apply_subs s t = match kind_of t with
   | HApp (_,f,a) -> mkApp (apply_subs s f, Array.map (apply_subs s) a)
   | HCase (_,ci,t,p,bs) ->
       mkCase (ci, apply_subs s t, apply_subs s p, Array.map (apply_subs s) bs)
-  | HFix f -> extern t (* XXX *)
-  | HCoFix c -> extern t (* XXX *)
+  | HFix f -> extern t (* TODO XXX *)
+  | HCoFix c -> extern t (* TODO XXX *)
   | HRel i ->
       match expand_rel i s with
       | Code (n, t, _, _) -> lift n (clos_to_constr t)
@@ -809,7 +817,7 @@ let create_env_cache env =
 	 match b with
 	 | None -> i+1, j, map, subs
          | Some body -> i+1, j+1, (i, j) :: map,
-             Clos.mk (*~ctx:(Ctx.shift i Ctx.nil)*) (intern (lift i body)) :: subs)
+             Clos.mk (intern (lift i body)) :: subs)
       ~init:(1,0,[],[]) (rel_context env) in
   let rel_context = Array.of_list (List.rev subs) in
   List.iter (fun (i,j) -> Hashtbl.replace cache (RelKey i) (rel_context,j)) map;
@@ -824,7 +832,8 @@ let create_env_cache env =
   List.iter (fun (v,i) -> Hashtbl.replace cache (VarKey v) (var_context,i)) map;
   { env = env; cache = cache }
 
-(* XXX reduction does not really need intern *)
+(* TODO reduction does not really need intern, we could implement
+ * two different functions *)
 let unfold, unfold_intern =
   let lookup env c =
     try Some (Hashtbl.find env.cache c)
@@ -834,7 +843,8 @@ let unfold, unfold_intern =
     | ConstKey k ->
         try
           let t = constant_value env.env k in
-          if eq_constr t (mkConst k) then None (* XXX WTF! *) else
+          (* XXX WTF! it happens! XXX *) 
+          if eq_constr t (mkConst k) then None else
           let update = [| Clos.mk (intern t) |], 0 in
           Hashtbl.replace env.cache c update;
           Some update
@@ -843,11 +853,14 @@ let unfold, unfold_intern =
   lookup, lookup
 
 
-(* Since we assign subst elements, we can't build a new subst. We have to
- * keep the same arrays. We could try to drop the head and the tail when
+(* The old code shrinks the  substitution to the minimal set of free variables.
+ * Since we assign subst elements, we can't build a new subst. We have to
+ * keep the same arrays.
+ * TODO We could try to drop the head and the tail when
  * they are not used and replace them by shift/id *)
 let opt_subst s t = s
 
+(* ... the machine stopped? *)
 type why =
   | Stuck   (* Whnf reached *)
   | Stopped (* Stopped by a disabled reduction rule *)
@@ -856,20 +869,19 @@ type why =
 
 (* TODO: now works on hconstr, but could work on constr *)
 let whd opt env evars c =
-  (* Two exists: because in whnf or because opt says so *)
+  (* Two possible exits: because in whnf or because opt says so *)
   let return s t c = s, t, c, Stuck in
   let stop_at s t c = s, t, c, Stopped in
 
   let rec aux subs hd ctx =
-(*R* print(Clos.pp 1 (Clos.mk ~subs hd ~ctx)); *R*)
-(*
-   print (ppt ~depth:100 env.env (clos_to_constr (Clos.mk ~subs hd ~ctx)));
-*)
+(*R* print(Clos.pp 2 (Clos.mk ~subs hd ~ctx)); *R*)
+(* print(ppt ~depth:3 env.env (extern hd)); *)
+(* print (ppt ~depth:100 env.env (clos_to_constr (Clos.mk ~subs hd ~ctx))); *)
     match kind_of hd with
     | HRel i -> (match expand_rel i subs with
         | Code(liftno, cl, a, i) ->
             let _, s, t, c = Clos.kind_of cl in
-(*            let () = a.(i) <- Clos.mk (intern (mkProp)) in *)
+(* TODO (to help GC): let () = a.(i) <- Clos.mk (intern (mkProp)) in *)
             aux s t (Ctx.append c (Ctx.update a i (Ctx.shift liftno ctx)))
         | Bound k ->
             return (Subs.id k) (intern (mkRel k)) ctx
@@ -900,11 +912,13 @@ let whd opt env evars c =
     | HLetIn (_,_,t,_,bo) -> aux (Subs.cons [|Clos.mk ~subs t|] subs) bo ctx
     | HCast (_,t,_,_) -> aux subs t ctx
     | HApp (_,f,a) ->
-       let clos_mk ~subs t = match kind_of t with
-         | HConst _ | HVar _ | HInd _ | HConstruct _ | HSort _ | HMeta _ ->
-             Clos.mk t
-         | _ -> Clos.mk ~subs t in
-       aux subs f (Ctx.app (Array.map (clos_mk ~subs) a) ctx)
+       (* tiny opt: we drop the subst if the term is trivially closed *)
+       let is_closed t = match kind_of t with
+         | HConst _ | HVar _ | HInd _ | HConstruct _ | HSort _ | HMeta _ -> true
+         | _ -> false in
+       (* TODO: we could destructure the term before putting it in the subst *)
+       let mkc ~subs t = if is_closed t then Clos.mk t else Clos.mk ~subs t in
+       aux subs f (Ctx.app (Array.map (mkc ~subs) a) ctx)
     | HCase (_,ci,p,t,br) ->
         (* TODO: we could store in Ctx case the branches as hconstr, then
            since the subs is in p, take it out and apply it to the right branch
@@ -939,14 +953,14 @@ let whd opt env evars c =
                   (Ctx.fix (Clos.mk ~subs ~ctx:(fix_params rarg ctx) hd)
                   afterctx))
           | Zshift (_,_,c) -> find_arg n c
-          | Zupdate (_,_,_,c) -> find_arg n c (* TODO: fire update, check rat.v *)
+          | Zupdate (_,_,_,c) -> find_arg n c (* TODO: fire update *)
           | Zcase _ -> assert false
           | Zfix _ -> assert false in
         find_arg rarg ctx
     | HCoFix _  when opt.iota = false -> stop_at subs hd ctx
-    | HCoFix cf  -> (* almost same functions as below *)
-        (* this is really tricky! the cofix unfolding could escape the match
-         * context if we don't filter *)
+    | HCoFix cf  ->
+        (* This is really tricky!
+         * CoFix unfolding could escape the match context if we don't filter *)
         let rec filter_updates c = match Ctx.kind_of c with
           | Znil -> Ctx.nil
           | Zupdate (_,_,_,c) -> filter_updates c
@@ -954,31 +968,24 @@ let whd opt env evars c =
           | Zshift (_,n,c) -> Ctx.shift n (filter_updates c)
           | Zapp (_,a,c) -> Ctx.app a (filter_updates c)
           | Zfix (_,f,c) -> Ctx.fix f (filter_updates c) in
-        let rec ctx_for_update n c = match Ctx.kind_of c with
-          | Zupdate _ when n = 0 -> Ctx.nil
-          | Zupdate (_,_,_,c) -> ctx_for_update (n-1) c
-          | Zapp (_,a,c) -> Ctx.app a (ctx_for_update n c)
-          | Zshift (_,s,c) -> Ctx.shift s (ctx_for_update n c)
-          | _ -> assert false in
-        let rec find_iota nupds c = match Ctx.kind_of c with
-          | Zapp (_,_,c) -> find_iota nupds c
-          | Zshift (_,_,c) -> find_iota nupds c
+        (* In the next case there are many implementations of find_iota, they
+         * all perform the same, it seems, so we copy here the simplest one *)
+        let (@) f i = fun c -> f (i c) in
+        let rec find_iota f c = match Ctx.kind_of c with
           | Zcase _ ->
               let s, bo = cofix_body subs cf in
               aux s bo (filter_updates ctx)
+          | Zshift (_,n,c) -> find_iota (f @ (Ctx.shift n)) c
+          | Zapp (_,a,c) -> find_iota (f @ (Ctx.app a)) c
           | Zupdate (_,a,i,c) ->
-              let hnf = Clos.mk ~subs ~ctx:(ctx_for_update nupds ctx) hd in
-              a.(i) <- hnf;
-              find_iota (nupds + 1) c
+              a.(i) <- Clos.mk ~ctx:(f Ctx.nil) hd;
+              find_iota f c
           | Zfix _ -> return subs hd ctx
           | Znil -> return subs hd ctx
         in
-          find_iota 0 ctx
+          find_iota (fun x -> x) ctx
     | HConstruct _ when opt.iota = false -> stop_at subs hd ctx
     | HConstruct (ind, k) ->
-        (* TODO: coded in an inefficient way, measure if an acc made of a list
-         * + List.rev is faster that re-traversing ctx many times (exp for
-         * updates *)
         let rec ctx_for_case totshift n c = match Ctx.kind_of c with
           | Zapp (_,args,c) when n = 0 ->
               let args = shift_closure_array totshift args in
@@ -995,6 +1002,8 @@ let whd opt env evars c =
           | Zshift (_,s,c) -> ctx_for_case (totshift - s) n c
           | Znil -> assert false
           | Zfix _ -> assert false in
+
+        (* First attempt: ugly *)
         let rec ctx_for_fix_arg args = match Ctx.kind_of args with
           | Zfix (_,_,c) -> Ctx.nil
           | Zapp (_,a,c) -> Ctx.app a (ctx_for_fix_arg c)
@@ -1013,7 +1022,6 @@ let whd opt env evars c =
           | Zshift (_,s,c) -> find_iota nupds (totshift + s) c
           | Zcase (_,ci,p,br,_) ->
               let _, subs, b, c = Clos.kind_of br.(k-1) in
-              (* c may contain a shift *)
               aux subs b (Ctx.append c (ctx_for_case totshift ci.ci_npar ctx))
           | Zfix (_,fx,c) ->
               let _, fxsubs, fxbo, fctx = Clos.kind_of fx in
@@ -1024,9 +1032,61 @@ let whd opt env evars c =
               let hnf = Clos.mk ~ctx:(ctx_for_update nupds ctx) hd in
               a.(i) <- hnf;
               find_iota (nupds + 1) totshift  c
-          | Znil -> return subs hd ctx
-        in
-          find_iota 0 0 ctx
+          | Znil -> return subs hd ctx in
+        (* Second attempt: nice but CPS *)
+        let (@) f i = fun c -> f (i c) in
+        let rec find_iota totshift f c = match Ctx.kind_of c with
+          | Zcase (_,ci,p,br,_) ->
+              let _, subs, b, c = Clos.kind_of br.(k-1) in
+              aux subs b (Ctx.append c (ctx_for_case totshift ci.ci_npar ctx))
+          | Zfix (_,fx,c) ->
+              let _, fxsubs, fxbo, fctx = Clos.kind_of fx in
+              let fisubs, fi = fix_body fxsubs fxbo in
+              aux fisubs fi (Ctx.append fctx
+                (Ctx.app [|Clos.mk ~ctx:(f Ctx.nil) hd|] c))
+          | Zshift (_,n,c) -> find_iota (totshift+n) (f @ (Ctx.shift n)) c
+          | Zapp (_,a,c) -> find_iota totshift (f @ (Ctx.app a)) c
+          | Zupdate (_,a,i,c) ->
+              a.(i) <- Clos.mk ~ctx:(f Ctx.nil) hd;
+              find_iota totshift f c
+          | Znil -> return subs hd ctx in
+        (* Third attempt: LISP with auxiliary data types *)
+        let back l = List.fold_left (fun c -> function
+          | `Shift n -> Ctx.shift n c
+          | `App a -> Ctx.app a c) Ctx.nil l in
+        let rec find_iota totshift l c = match Ctx.kind_of c with
+          | Zcase (_,ci,p,br,_) ->
+              let _, subs, b, c = Clos.kind_of br.(k-1) in
+              aux subs b (Ctx.append c (ctx_for_case totshift ci.ci_npar ctx))
+          | Zfix (_,fx,c) ->
+              let _, fxsubs, fxbo, fctx = Clos.kind_of fx in
+              let fisubs, fi = fix_body fxsubs fxbo in
+              aux fisubs fi (Ctx.append fctx
+                (Ctx.app [|Clos.mk ~ctx:(back l) hd|] c))
+          | Zshift (_,n,c) -> find_iota (totshift+n) (`Shift n :: l) c
+          | Zapp (_,a,c) -> find_iota totshift (`App a :: l) c
+          | Zupdate (_,a,i,c) ->
+              a.(i) <- Clos.mk ~ctx:(back l) hd;
+              find_iota totshift l c
+          | Znil -> return subs hd ctx in
+        (* Forth attempt: LISP with closures *)
+        let back l = List.fold_left (fun c f -> f c) Ctx.nil l in
+        let rec find_iota totshift l c = match Ctx.kind_of c with
+          | Zcase (_,ci,p,br,_) ->
+              let _, subs, b, c = Clos.kind_of br.(k-1) in
+              aux subs b (Ctx.append c (ctx_for_case totshift ci.ci_npar ctx))
+          | Zfix (_,fx,c) ->
+              let _, fxsubs, fxbo, fctx = Clos.kind_of fx in
+              let fisubs, fi = fix_body fxsubs fxbo in
+              aux fisubs fi (Ctx.append fctx
+                (Ctx.app [|Clos.mk ~ctx:(back l) hd|] c))
+          | Zshift (_,n,c) -> find_iota (totshift+n) (Ctx.shift n :: l) c
+          | Zapp (_,a,c) -> find_iota totshift (Ctx.app a :: l) c
+          | Zupdate (_,a,i,c) ->
+              a.(i) <- Clos.mk ~ctx:(back l) hd;
+              find_iota totshift l c
+          | Znil -> return subs hd ctx in
+        find_iota 0 [] ctx
     | HLambda _ when opt.beta = false -> stop_at subs hd ctx
     | HLambda (_,_,_,t) -> (* XXX n-ary lambdas in hconstr too! *)
         let rec nlam n acc t = match kind_of t with
@@ -1054,8 +1114,9 @@ let whd opt env evars c =
               else
                 let before = Array.sub args 0 (nlam - n) in
                 let after = Array.sub args (nlam - n) (nargs - (nlam - n)) in
-                aux (opt_subst (Subs.cons before subs) bo) bo (Ctx.app after c) in
-        eat_lam subs 0 ctx
+                aux (opt_subst (Subs.cons before subs) bo) bo (Ctx.app after c)
+        in
+         eat_lam subs 0 ctx
     | HConst c when not(Cpred.mem c opt.delta_con) -> stop_at (Subs.id 0) hd ctx
     | HConst c ->
         (match unfold env (ConstKey c) with
@@ -1063,7 +1124,6 @@ let whd opt env evars c =
         | Some (a, i) ->
             let _, s, t, c = Clos.kind_of a.(i) in
             aux s t (Ctx.append c (Ctx.update a i ctx)))
-    (* head normal terms *)
     | HSort _ | HMeta _ | HProd _ | HInd _ -> return subs hd ctx
   in
   let _, s, t, c = Clos.kind_of c in
@@ -1113,7 +1173,7 @@ let red_strong env evars t =
   | HLambda (_,n,t1,t2) ->
       mkLambda (n, red_aux (Clos.mk ~subs:s t1),
         red_aux (Clos.mk ~subs:(Subs.lift 1 s) t2))
-  | HLetIn (_,n, b,ty,t) -> (* this may happen if one says no-z *)
+  | HLetIn (_,n, b,ty,t) ->
       mkLetIn (n, red_aux (Clos.mk ~subs:s b),
         red_aux (Clos.mk ~subs:s ty), red_aux (Clos.mk ~subs:(Subs.lift 1 s) t))
   | HApp (_,f,a) -> mkApp (subs_aux s f, Array.map (subs_aux s) a)
@@ -1221,7 +1281,7 @@ let canon_closure cl =
   | HRel i -> Clos.mk (intern(mkRel (i+n))) ~ctx:(distribute_shifts n c)
   | _ -> Clos.mk ~subs:(Subs.shift n s) t ~ctx:(distribute_shifts n c)
 
-let fire_clear_updates cl = (* this time we do that with closures *)
+let fire_clear_updates cl =
   let _, subs, t, ctx = Clos.kind_of cl in
   let rec fire f c = match Ctx.kind_of c with
   | Znil -> Ctx.nil
@@ -1234,16 +1294,15 @@ let fire_clear_updates cl = (* this time we do that with closures *)
   Clos.mk ~subs t ~ctx:(fire (fun x -> x) ctx)
 *)
 
-(* this is the equivalent of "let _ = fapp_stack ..." in reduction.ml *)
 (* XXX: we could also intern/extern the closures we assign *)
 let fire_updates cl =
-  (* this time we do that in CPS style *)
-  (* TODO: measure speed w.r.t. List.rev and retraversing the list *)
   let _, subs, t, ctx = Clos.kind_of cl in
   let rec fire f c = match Ctx.kind_of c with
   | Znil -> ()
   | Zshift (_,n,c) -> fire (fun c -> f (Ctx.shift n c)) c
-  | Zupdate (_,a,i,c) -> a.(i) <- Clos.mk ~subs ~ctx:(f Ctx.nil) t; fire f c
+  | Zupdate (_,a,i,c) ->
+      a.(i) <- Clos.mk ~subs ~ctx:(f Ctx.nil) t;
+      fire f (*(fun c -> f (Ctx.update a i c))*) c
   | Zapp (_,a,c) -> fire (fun c -> f (Ctx.app a c)) c
   | Zfix (_,fx,c) -> fire (fun c -> f (Ctx.fix fx c)) c
   | Zcase (_,ci,p,br,c) -> fire (fun c -> f (Ctx.case ci p br c)) c in
@@ -1272,12 +1331,11 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
   reset ();
   Clos.H.reset ();
   UF.reset ();
-
   let env = create_env_cache env in
   let whd cl =
     let cl, why = whd betaiotazeta env evars cl in
-    (* XXX fire_updates as in fapp_stack? STUDY rat 3422, more than that :-/ *)
-    Clos.H.intern cl, why in
+    fire_updates cl;
+    Clos.H.intern cl, why, let _,_,_,c = Clos.kind_of cl in sum_shifts c in
   let mk_whd_clos ?subs ?ctx t = whd (Clos.mk ?subs ?ctx t) in
   let same_len a1 a2 = Array.length a1 = Array.length a2 in
   let slift = Subs.lift 1 in
@@ -1329,7 +1387,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
     match unfold_flex env t1 why1 with
     | Some (a, i) ->
         let _, s, t, c = Clos.kind_of a.(i) in
-        let cl1',_ as lhs =
+        let cl1', _,_ as lhs =
           mk_whd_clos ~subs:s t ~ctx:(Ctx.append c (Ctx.update a i c1)) in
         UF.union cl1' cl1;
         convert cv_pb cst lhs rhs
@@ -1337,21 +1395,26 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
         match unfold_flex env t2 why2 with
         | Some (a, i) ->
             let _, s, t, c = Clos.kind_of a.(i) in
-            let cl2', _ as rhs =
+            let cl2', _,_ as rhs =
               mk_whd_clos ~subs:s t ~ctx:(Ctx.append c (Ctx.update a i c2)) in
             UF.union cl2' cl2;
             convert cv_pb cst lhs rhs
         | None -> UF.partition cl1 cl2; raise NotConvertible
 
-  and convert cv_pb cst (cl1, why1 as lhs) (cl2, why2 as rhs) =
+  and convert cv_pb cst (cl1, why1, l1 as lhs) (cl2, why2, l2 as rhs) =
 (*D* __inside "convert"; try let __rc = pp(lazy(_pr_status lhs rhs 1)); *D*)
     match UF.same cl1 cl2 with
-    | `Yes   -> (*D* pp(lazy(str" UF: YES")); *D*) cst
-    | `No    -> (*D* pp(lazy(str" UF: NO"));  *D*) raise NotConvertible
+    | `Yes ->
+(*H*  let (_,s1,t1,_),(_,s2,t2,_) = Clos.H.kind_of cl1, Clos.H.kind_of cl2 in
+       _pr_heads l1 s1 t1 l2 s2 t2; *H*)
+       (*D* pp(lazy(str" UF: YES")); *D*) cst
+    | `No    ->
+(*H*  let (_,s1,t1,_),(_,s2,t2,_) = Clos.H.kind_of cl1, Clos.H.kind_of cl2 in
+       _pr_heads l1 s1 t1 l2 s2 t2; *H*)
+       (*D* pp(lazy(str" UF: NO"));  *D*) raise NotConvertible
     | `Maybe ->
     let _, s1, t1, c1 = Clos.H.kind_of cl1 in
     let _, s2, t2, c2 = Clos.H.kind_of cl2 in
-    let l1, l2 = sum_shifts c1, sum_shifts c2 in
 (*A* let eq_c = eq_constr (hclos_to_constr cl1) (hclos_to_constr cl2) in
       pp(lazy(str" UF: MAYBE " ++ bool eq_c));
       try *A*)
