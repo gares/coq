@@ -1356,6 +1356,8 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
       | HRel n -> RelKey n | HVar id -> VarKey id | HConst k -> ConstKey k
       | _ -> assert false in
     Conv_oracle.oracle_order l2r (key_of_flex t1) (key_of_flex t2) in
+  let uf_union c1 c2 cst =
+    if Univ.is_empty_constraint cst then UF.union c1 c2 in
 
   let eta_expand_ctx c =
     let eta_expand_suffix =
@@ -1389,7 +1391,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
         let _, s, t, c = Clos.kind_of a.(i) in
         let cl1', _,_ as lhs =
           mk_whd_clos ~subs:s t ~ctx:(Ctx.append c (Ctx.update a i c1)) in
-        UF.union cl1' cl1;
+        uf_union cl1' cl1 cst;
         convert cv_pb cst lhs rhs
     | None ->
         match unfold_flex env t2 why2 with
@@ -1397,7 +1399,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
             let _, s, t, c = Clos.kind_of a.(i) in
             let cl2', _,_ as rhs =
               mk_whd_clos ~subs:s t ~ctx:(Ctx.append c (Ctx.update a i c2)) in
-            UF.union cl2' cl2;
+            uf_union cl2' cl2 cst;
             convert cv_pb cst lhs rhs
         | None -> UF.partition cl1 cl2; raise NotConvertible
 
@@ -1422,33 +1424,33 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
     match kind_of t1, kind_of t2 with
     | HSort s1, HSort s2 -> sort_cmp cv_pb s1 s2 cst
     | HMeta n1, HMeta n2 when n1 = n2 ->
-        congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
+        congruence cst cl1 cl2 l1 c1 l2 c2
     | HEvar (_,n1,a1), HEvar (_,n2,a2) when n1 = n2 && same_len a1 a2 ->
         (try
           let s1, s2 = sshift l1 s1, sshift l2 s2 in
-          let cst = fold_left2 (convert_whd cv_pb s1 s2) cst a1 a2 in
-          let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
-          UF.union cl1 cl2; cst
+          let cst = fold_left2 (convert_whd CONV s1 s2) cst a1 a2 in
+          let cst = convert_stacks cst l1 c1 l2 c2 in
+          uf_union cl1 cl2 cst; cst
         with NotConvertible as e -> UF.partition cl1 cl2; raise e)
     | HRel n1, HRel n2 when why1 = Stuck && why2 = Stuck && n1 + l1 = n2 + l2 ->
-        congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
+        congruence cst cl1 cl2 l1 c1 l2 c2
     | HInd i1, HInd i2 when eq_ind i1 i2 ->
-        congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
+        congruence cst cl1 cl2 l1 c1 l2 c2
     | HConstruct (i1,n1), HConstruct (i2,n2) when eq_ind i1 i2 && n1 = n2 ->
-        congruence cv_pb cst cl1 cl2 l1 c1 l2 c2
+        congruence cst cl1 cl2 l1 c1 l2 c2
     | HLambda (_,_,ty1,bo1), HLambda (_,_,ty2,bo2) ->
         (try
           let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
           let cst = convert_whd CONV (slift s1) (slift s2) cst bo1 bo2 in
-          UF.union cl1 cl2; cst
+          uf_union cl1 cl2 cst; cst
         with NotConvertible as e -> UF.partition cl1 cl2; raise e)
     | HProd (_,_,ty1,bo1), HProd (_,_,ty2,bo2) ->
         (try
           let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
           let cst = convert_whd cv_pb (slift s1) (slift s2) cst bo1 bo2 in
-          UF.union cl1 cl2; cst
+          uf_union cl1 cl2 cst; cst
         with NotConvertible as e -> UF.partition cl1 cl2; raise e)
     | HCoFix (_,op1,(_,tys1,bos1)), HCoFix (_,op2,(_,tys2,bos2))
     | HFix(_,(_,op1),(_,tys1,bos1)), HFix(_,(_,op2),(_,tys2,bos2))
@@ -1463,15 +1465,15 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
 	  let n = Array.length bos1 in
           let s1' = Subs.lift n s1 and s2' = Subs.lift n s2 in
           let cst = fold_left2 (convert_whd CONV s1' s2') cst bos1 bos2 in
-          let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
-          UF.union cl1 cl2; cst
+          let cst = convert_stacks cst l1 c1 l2 c2 in
+          uf_union cl1 cl2 cst; cst
         with NotConvertible as e -> UF.partition cl1 cl2; raise e)
     | (HConst _ | HRel _ | HVar _), (HConst _ | HRel _ | HVar _) ->
         (try
           if not (eq_flex l1 t1 l2 t2) then raise NotConvertible
           else
-            let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
-            UF.union cl1 cl2;
+            let cst = convert_stacks cst l1 c1 l2 c2 in
+            uf_union cl1 cl2 cst;
             cst
         with NotConvertible ->
           let b = oracle_flex t1 t2 in
@@ -1497,35 +1499,34 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
         assert(eq_c = false); raise e *A*)
 (*D*  in __outside None; __rc with exn -> __outside (Some exn); raise exn *D*)
 
-  and congruence cv_pb cst cl1 cl2 l1 c1 l2 c2 =
+  and congruence cst cl1 cl2 l1 c1 l2 c2 =
 (*D* __inside "Congruence"; try let __rc =  *D*)
     try
-      let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
-      UF.union cl1 cl2; cst
+      let cst = convert_stacks cst l1 c1 l2 c2 in
+      uf_union cl1 cl2 cst; cst
     with NotConvertible as e -> UF.partition cl1 cl2; raise e
 (*D*  in __outside None; __rc with exn -> __outside (Some exn); raise exn *D*)
 
-  and convert_whd_shift_cl cv_pb l1 l2 cl1 cl2 cst =
-      convert cv_pb cst
-        (whd (shift_closure l1 cl1)) (whd (shift_closure l2 cl2))
+  and convert_whd_shift_cl l1 l2 cl1 cl2 cst =
+    convert CONV cst (whd (shift_closure l1 cl1)) (whd (shift_closure l2 cl2))
 
   (* TODO: change order (to left-to-right).
    * this changes a lot, so measure it independently.
    * moreover it is easy if closures on the context are already shifted.
    * this requires a compare_stack_shape to avoid stupid comparisons *)
-  and convert_stacks cv_pb cst l1 c1 l2 c2 =
+  and convert_stacks cst l1 c1 l2 c2 =
 (*D* __inside "stack"; try let __rc =  *D*)
     match Ctx.kind_of c1, Ctx.kind_of c2 with
     | Znil, Znil -> cst
     | Zshift (_,n, c1), _ ->
-        convert_stacks cv_pb cst (l1 - n) c1 l2 c2
+        convert_stacks cst (l1 - n) c1 l2 c2
     | _, Zshift (_,n, c2) ->
-        convert_stacks cv_pb cst l1 c1 (l2 - n) c2
-    | Zupdate (_,_,_, c1), _ -> convert_stacks cv_pb cst l1 c1 l2 c2
-    | _, Zupdate (_,_,_, c2) -> convert_stacks cv_pb cst l1 c1 l2 c2
+        convert_stacks cst l1 c1 (l2 - n) c2
+    | Zupdate (_,_,_, c1), _ -> convert_stacks cst l1 c1 l2 c2
+    | _, Zupdate (_,_,_, c2) -> convert_stacks cst l1 c1 l2 c2
     | Zapp (_, a1, c1), Zapp (_, a2, c2) when same_len a1 a2 ->
-        let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
-        fold_right2 (convert_whd_shift_cl cv_pb l1 l2) a1 a2 cst
+        let cst = convert_stacks cst l1 c1 l2 c2 in
+        fold_right2 (convert_whd_shift_cl l1 l2) a1 a2 cst
     | Zapp (_, a1, c1), Zapp (_, a2, c2) ->
         let la1, la2 = Array.length a1, Array.length a2 in
         let a1, a2, c1, c2 =
@@ -1534,16 +1535,16 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
           else
             Array.sub a1 0 la2, a2, Ctx.app (Array.sub a1 la2 (la1-la2)) c1, c2
         in
-        let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
-        fold_right2 (convert_whd_shift_cl cv_pb l1 l2) a1 a2 cst
+        let cst = convert_stacks cst l1 c1 l2 c2 in
+        fold_right2 (convert_whd_shift_cl l1 l2) a1 a2 cst
     | Zcase (_, i1, p1, br1, c1), Zcase (_, i2, p2, br2, c2)
       when eq_ind i1.ci_ind i2.ci_ind ->
-        let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
-        let cst = convert_whd_shift_cl cv_pb l1 l2 p1 p2 cst in
-        fold_right2 (convert_whd_shift_cl cv_pb l1 l2) br1 br2 cst
+        let cst = convert_stacks cst l1 c1 l2 c2 in
+        let cst = convert_whd_shift_cl l1 l2 p1 p2 cst in
+        fold_right2 (convert_whd_shift_cl l1 l2) br1 br2 cst
     | Zfix (_, f1, c1), Zfix (_, f2, c2) ->
-        let cst = convert_stacks cv_pb cst l1 c1 l2 c2 in
-        convert_whd_shift_cl cv_pb l1 l2 f1 f2 cst
+        let cst = convert_stacks cst l1 c1 l2 c2 in
+        convert_whd_shift_cl l1 l2 f1 f2 cst
     | _ -> raise NotConvertible
 (*D*  in __outside None; __rc with exn -> __outside (Some exn); raise exn *D*)
 
