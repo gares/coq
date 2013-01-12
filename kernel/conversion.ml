@@ -1363,7 +1363,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
       Ctx.shift 1 (Ctx.app [|r1|] Ctx.nil) in
     Ctx.append c eta_expand_suffix in
 
-  let _pr_status (cl1, why1) (cl2, why2) i =
+  let _pr_status (cl1, why1,_) (cl2, why2,_) i =
        let pcl n e c = Clos.H.pp n c in
        let env = Environ.reset_context env.env in
     hv 0 (pcl i env cl1 ++ spc()++
