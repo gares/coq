@@ -19,6 +19,9 @@ open Mini_evd
  * have changed *)
 let uf_table_size = 100003
 
+let update a i t = a.(i) <- t
+(* let update a i t = () *)
+
 module Hclosure : sig
 
   type closure
@@ -881,7 +884,7 @@ let whd opt env evars c =
     | HRel i -> (match expand_rel i subs with
         | Code(liftno, cl, a, i) ->
             let _, s, t, c = Clos.kind_of cl in
-(* TODO (to help GC): let () = a.(i) <- Clos.mk (intern (mkProp)) in *)
+            (* TODO (to help GC): update a i (Clos.mk (intern (mkProp))); *)
             aux s t (Ctx.append c (Ctx.update a i (Ctx.shift liftno ctx)))
         | Bound k ->
             return (Subs.id k) (intern (mkRel k)) ctx
@@ -978,7 +981,7 @@ let whd opt env evars c =
           | Zshift (_,n,c) -> find_iota (f @ (Ctx.shift n)) c
           | Zapp (_,a,c) -> find_iota (f @ (Ctx.app a)) c
           | Zupdate (_,a,i,c) ->
-              a.(i) <- Clos.mk ~ctx:(f Ctx.nil) hd;
+              update a i (Clos.mk ~ctx:(f Ctx.nil) hd);
               find_iota f c
           | Zfix _ -> return subs hd ctx
           | Znil -> return subs hd ctx
@@ -1029,8 +1032,7 @@ let whd opt env evars c =
               aux fisubs fi (Ctx.append fctx
                 (Ctx.app [|Clos.mk ~ctx:(ctx_for_fix_arg ctx) hd|] c))
           | Zupdate (_,a,i,c) ->
-              let hnf = Clos.mk ~ctx:(ctx_for_update nupds ctx) hd in
-              a.(i) <- hnf;
+              update a i (Clos.mk ~ctx:(ctx_for_update nupds ctx) hd);
               find_iota (nupds + 1) totshift  c
           | Znil -> return subs hd ctx in
         (* Second attempt: nice but CPS *)
@@ -1047,7 +1049,7 @@ let whd opt env evars c =
           | Zshift (_,n,c) -> find_iota (totshift+n) (f @ (Ctx.shift n)) c
           | Zapp (_,a,c) -> find_iota totshift (f @ (Ctx.app a)) c
           | Zupdate (_,a,i,c) ->
-              a.(i) <- Clos.mk ~ctx:(f Ctx.nil) hd;
+              update a i (Clos.mk ~ctx:(f Ctx.nil) hd);
               find_iota totshift f c
           | Znil -> return subs hd ctx in
         (* Third attempt: LISP with auxiliary data types *)
@@ -1066,7 +1068,7 @@ let whd opt env evars c =
           | Zshift (_,n,c) -> find_iota (totshift+n) (`Shift n :: l) c
           | Zapp (_,a,c) -> find_iota totshift (`App a :: l) c
           | Zupdate (_,a,i,c) ->
-              a.(i) <- Clos.mk ~ctx:(back l) hd;
+              update a i (Clos.mk ~ctx:(back l) hd);
               find_iota totshift l c
           | Znil -> return subs hd ctx in
         (* Forth attempt: LISP with closures *)
@@ -1083,7 +1085,7 @@ let whd opt env evars c =
           | Zshift (_,n,c) -> find_iota (totshift+n) (Ctx.shift n :: l) c
           | Zapp (_,a,c) -> find_iota totshift (Ctx.app a :: l) c
           | Zupdate (_,a,i,c) ->
-              a.(i) <- Clos.mk ~ctx:(back l) hd;
+              update a i (Clos.mk ~ctx:(back l) hd);
               find_iota totshift l c
           | Znil -> return subs hd ctx in
         find_iota 0 [] ctx
@@ -1103,7 +1105,7 @@ let whd opt env evars c =
              else return subs hd c
           | Zshift (_,s,c) -> eat_lam (Subs.shift s subs) n c
           | Zupdate (_,a,i,c) ->
-              a.(i) <- Clos.mk ~subs (List.nth spine (nlam - n - 1));
+              update a i (Clos.mk ~subs (List.nth spine (nlam - n - 1)));
               eat_lam subs n c
           | Zapp (_,args,c) ->
               let nargs = Array.length args in
@@ -1156,7 +1158,7 @@ let red_strong env evars t =
      unzip_aux (mkCase (ci,red_aux p,t,Array.map red_aux br)) ctx
   | Zfix (_,fx,ctx) ->
      unzip_aux (red_aux fx) (Ctx.app [|Clos.mk (intern t)|] ctx)
-  | Zupdate (_,a,i,ctx) -> a.(i) <- (Clos.mk (intern t)); unzip_aux t ctx
+  | Zupdate (_,a,i,ctx) -> update a i (Clos.mk (intern t)); unzip_aux t ctx
   | Zshift (_,s,ctx) -> unzip_aux (lift s t) ctx
   and subs_aux s t = match kind_of t with
   | HConst _
@@ -1286,7 +1288,7 @@ let fire_clear_updates cl =
   let rec fire f c = match Ctx.kind_of c with
   | Znil -> Ctx.nil
   | Zshift (_,n,c) -> Ctx.shift n (fire (fun c -> f (Ctx.shift n c)) c)
-  | Zupdate (_,a,i,c) -> a.(i) <- Clos.mk ~subs ~ctx:(f Ctx.nil) t; fire f c
+  | Zupdate (_,a,i,c) -> update a i (Clos.mk ~subs ~ctx:(f Ctx.nil) t); fire f c
   | Zapp (_,a,c) -> Ctx.app a (fire (fun c -> f (Ctx.app a c)) c)
   | Zfix (_,fx,c) -> Ctx.fix fx (fire (fun c -> f (Ctx.fix fx c)) c)
   | Zcase (_,ci,p,br,c) ->
@@ -1301,7 +1303,7 @@ let fire_updates cl =
   | Znil -> ()
   | Zshift (_,n,c) -> fire (fun c -> f (Ctx.shift n c)) c
   | Zupdate (_,a,i,c) ->
-      a.(i) <- Clos.mk ~subs ~ctx:(f Ctx.nil) t;
+      update a i (Clos.mk ~subs ~ctx:(f Ctx.nil) t);
       fire f (*(fun c -> f (Ctx.update a i c))*) c
   | Zapp (_,a,c) -> fire (fun c -> f (Ctx.app a c)) c
   | Zfix (_,fx,c) -> fire (fun c -> f (Ctx.fix fx c)) c
