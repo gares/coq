@@ -1522,7 +1522,36 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
 (*D*  in __outside None; __rc with exn -> __outside (Some exn); raise exn *D*)
 
   and convert_whd_shift_cl l1 l2 cl1 cl2 cst =
-    convert CONV cst (whd (shift_closure l1 cl1)) (whd (shift_closure l2 cl2))
+    let cl1, _, _ as lhs = whd (shift_closure l1 cl1) in
+    let cl2, _, _ as rhs = whd (shift_closure l2 cl2) in
+    try convert CONV cst lhs rhs
+    with NotConvertible as e -> UF.partition cl1 cl2; raise e
+  
+  and convert_whd_update_shift_cl_array l1 l2 a1 a2 cst =
+    let update_shift_closure a i k cl =
+      let c = if k = 0 then Ctx.nil else Ctx.shift k Ctx.nil in
+      let c = Ctx.update a i c in
+      let _, subs, t, ctx = Clos.kind_of cl in
+      Clos.mk ~subs t ~ctx:(Ctx.append ctx c) in
+    let cst = ref cst in
+    for i = 0 to Array.length a1 - 1 do begin
+      let cl1 = a1.(i) in
+      let cl2 = a2.(i) in
+      let scl1, _, _ as lhs = whd (update_shift_closure a1 i l1 cl1) in
+      let scl2, _, _ as rhs = whd (update_shift_closure a2 i l2 cl2) in
+      try
+        let ncst = convert CONV !cst lhs rhs in
+        let hcl1 = Clos.H.intern cl1 in
+        let hcl2 = Clos.H.intern cl2 in
+        let ha1i = Clos.H.intern a1.(i) in
+        let ha2i = Clos.H.intern a2.(i) in
+        uf_union hcl1 ha1i ncst;
+        uf_union hcl2 ha2i ncst;
+        a1.(i) <- Clos.H.extern ha1i;
+        a2.(i) <- Clos.H.extern ha2i;
+        cst := ncst
+      with NotConvertible as e -> UF.partition scl1 scl2; raise e
+    end done; !cst
 
   (* TODO: change order (to left-to-right).
    * this changes a lot, so measure it independently.
@@ -1540,7 +1569,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
     | _, Zupdate (_,_,_, c2) -> convert_stacks cst l1 c1 l2 c2
     | Zapp (_, a1, c1), Zapp (_, a2, c2) when same_len a1 a2 ->
         let cst = convert_stacks cst l1 c1 l2 c2 in
-        fold_right2 (convert_whd_shift_cl l1 l2) a1 a2 cst
+        convert_whd_update_shift_cl_array l1 l2 a1 a2 cst
     | Zapp (_, a1, c1), Zapp (_, a2, c2) ->
         let la1, la2 = Array.length a1, Array.length a2 in
         let a1, a2, c1, c2 =
@@ -1550,6 +1579,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
             Array.sub a1 0 la2, a2, Ctx.app (Array.sub a1 la2 (la1-la2)) c1, c2
         in
         let cst = convert_stacks cst l1 c1 l2 c2 in
+        (* TODO avoid copy of array and allow for updates *)
         fold_right2 (convert_whd_shift_cl l1 l2) a1 a2 cst
     | Zcase (_, i1, p1, br1, c1), Zcase (_, i2, p2, br2, c2)
       when eq_ind i1.ci_ind i2.ci_ind ->
