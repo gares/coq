@@ -1352,10 +1352,10 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
     Clos.H.intern cl, why, let _,_,_,c = Clos.kind_of cl in sum_shifts c in
   let mk_whd_clos ?subs ?ctx t = whd (Clos.mk ?subs ?ctx t) in
   let same_len a1 a2 = Array.length a1 = Array.length a2 in
+  let same_len_off o1 a1 o2 a2 = Array.length a1 - o1 = Array.length a2 - o2 in
   let slift = Subs.lift 1 in
   let sshift n = Subs.shift n in
   let fold_left2 = Util.Array.fold_left2 in
-  let fold_right2 = Util.Array.fold_right2 in
 (*A* let hclos_to_constr c = clos_to_constr (Clos.H.extern c) in *A*)
   let unfold_flex e t why = if why = Stuck then None else match kind_of t with
     | HRel n -> unfold_intern e (RelKey n) (* TODO: lookup up every time *)
@@ -1527,28 +1527,24 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
     try convert CONV cst lhs rhs
     with NotConvertible as e -> UF.partition cl1 cl2; raise e
   
-  and convert_whd_update_shift_cl_array l1 l2 a1 a2 cst =
+  and convert_whd_update_shift_cl_array l1 l2 o1 a1 o2 a2 cst =
     let update_shift_closure a i k cl =
-      let c = if k = 0 then Ctx.nil else Ctx.shift k Ctx.nil in
-      let c = Ctx.update a i c in
+      let c = Ctx.update a i (Ctx.shift k Ctx.nil) in
       let _, subs, t, ctx = Clos.kind_of cl in
       Clos.mk ~subs t ~ctx:(Ctx.append ctx c) in
     let cst = ref cst in
-    for i = 0 to Array.length a1 - 1 do begin
-      let cl1 = a1.(i) in
-      let cl2 = a2.(i) in
-      let scl1, _, _ as lhs = whd (update_shift_closure a1 i l1 cl1) in
-      let scl2, _, _ as rhs = whd (update_shift_closure a2 i l2 cl2) in
+    let len = min (Array.length a1 - 1 - o1) (Array.length a2 - 1 - o2) in
+    for i = 0 to len do begin
+      let i_1, i_2 = i + o1, i + o2 in
+      let cl1, cl2 = a1.(i_1), a2.(i_2) in
+      let scl1, _, _ as lhs = whd (update_shift_closure a1 i_1 l1 cl1) in
+      let scl2, _, _ as rhs = whd (update_shift_closure a2 i_2 l2 cl2) in
       try
         let ncst = convert CONV !cst lhs rhs in
-        let hcl1 = Clos.H.intern cl1 in
-        let hcl2 = Clos.H.intern cl2 in
-        let ha1i = Clos.H.intern a1.(i) in
-        let ha2i = Clos.H.intern a2.(i) in
-        uf_union hcl1 ha1i ncst;
-        uf_union hcl2 ha2i ncst;
-        a1.(i) <- Clos.H.extern ha1i;
-        a2.(i) <- Clos.H.extern ha2i;
+        let hcl1, hcl2 = Clos.H.intern cl1, Clos.H.intern cl2 in
+        let ha1i, ha2i = Clos.H.intern a1.(i_1), Clos.H.intern a2.(i_2) in
+        uf_union hcl1 ha1i ncst; uf_union hcl2 ha2i ncst;
+        a1.(i_1) <- Clos.H.extern ha1i; a2.(i_2) <- Clos.H.extern ha2i;
         cst := ncst
       with NotConvertible as e -> UF.partition scl1 scl2; raise e
     end done; !cst
@@ -1557,40 +1553,38 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
    * this changes a lot, so measure it independently.
    * moreover it is easy if closures on the context are already shifted.
    * this requires a compare_stack_shape to avoid stupid comparisons *)
-  and convert_stacks cst l1 c1 l2 c2 =
+  and convert_stacks_aux cst l1 o1 c1 l2 o2 c2 =
 (*D* __inside "stack"; try let __rc =  *D*)
     match Ctx.kind_of c1, Ctx.kind_of c2 with
-    | Znil, Znil -> cst
+    | Znil, Znil when o1 = 0 && o2 = 0 -> cst
     | Zshift (_,n, c1), _ ->
-        convert_stacks cst (l1 - n) c1 l2 c2
+        convert_stacks_aux cst (l1 - n) o1 c1 l2 o2 c2
     | _, Zshift (_,n, c2) ->
-        convert_stacks cst l1 c1 (l2 - n) c2
-    | Zupdate (_,_,_, c1), _ -> convert_stacks cst l1 c1 l2 c2
-    | _, Zupdate (_,_,_, c2) -> convert_stacks cst l1 c1 l2 c2
-    | Zapp (_, a1, c1), Zapp (_, a2, c2) when same_len a1 a2 ->
-        let cst = convert_stacks cst l1 c1 l2 c2 in
-        convert_whd_update_shift_cl_array l1 l2 a1 a2 cst
-    | Zapp (_, a1, c1), Zapp (_, a2, c2) ->
-        let la1, la2 = Array.length a1, Array.length a2 in
-        let a1, a2, c1, c2 =
-          if la1 < la2 then
-            a1, Array.sub a2 0 la1, c1, Ctx.app (Array.sub a2 la1 (la2-la1)) c2
-          else
-            Array.sub a1 0 la2, a2, Ctx.app (Array.sub a1 la2 (la1-la2)) c1, c2
-        in
-        let cst = convert_stacks cst l1 c1 l2 c2 in
-        (* TODO avoid copy of array and allow for updates *)
-        fold_right2 (convert_whd_shift_cl l1 l2) a1 a2 cst
+        convert_stacks_aux cst l1 o1 c1 (l2 - n) o2 c2
+    | Zupdate (_,_,_, c1), _ -> convert_stacks_aux cst l1 o1 c1 l2 o2 c2
+    | _, Zupdate (_,_,_, c2) -> convert_stacks_aux cst l1 o1 c1 l2 o2 c2
+    | Zapp (_, a1, c1), Zapp (_, a2, c2) when same_len_off o1 a1 o2 a2 ->
+        let cst = convert_stacks_aux cst l1 0 c1 l2 0 c2 in
+        convert_whd_update_shift_cl_array l1 l2 o1 a1 o2 a2 cst
+    | Zapp (_, a1, ct1), Zapp (_, a2, ct2)->
+        let la1, la2 = Array.length a1 - o1, Array.length a2 - o2 in
+        let c1, c2, no1, no2 =
+          if la1 < la2 then ct1, c2, 0, o2 + la1
+          else c1, ct2, o1 + la2, 0 in
+        let cst = convert_stacks_aux cst l1 no1 c1 l2 no2 c2 in
+        convert_whd_update_shift_cl_array l1 l2 o1 a1 o2 a2 cst
     | Zcase (_, i1, p1, br1, c1), Zcase (_, i2, p2, br2, c2)
-      when eq_ind i1.ci_ind i2.ci_ind ->
-        let cst = convert_stacks cst l1 c1 l2 c2 in
+      when o1 = 0 && o2 = 0 && eq_ind i1.ci_ind i2.ci_ind ->
+        let cst = convert_stacks_aux cst l1 0 c1 l2 0 c2 in
         let cst = convert_whd_shift_cl l1 l2 p1 p2 cst in
-        fold_right2 (convert_whd_shift_cl l1 l2) br1 br2 cst
-    | Zfix (_, f1, c1), Zfix (_, f2, c2) ->
-        let cst = convert_stacks cst l1 c1 l2 c2 in
+        convert_whd_update_shift_cl_array l1 l2 0 br1 0 br2 cst
+    | Zfix (_, f1, c1), Zfix (_, f2, c2) when o1 = 0 && o2 = 0 ->
+        let cst = convert_stacks_aux cst l1 0 c1 l2 0 c2 in
         convert_whd_shift_cl l1 l2 f1 f2 cst
     | _ -> raise NotConvertible
 (*D*  in __outside None; __rc with exn -> __outside (Some exn); raise exn *D*)
+
+  and convert_stacks cst l1 c1 l2 c2 = convert_stacks_aux cst l1 0 c1 l2 0 c2
 
   in
 (*D* pp(lazy(ppt env.env ~depth:9 t1++str" VS "++spc()++
