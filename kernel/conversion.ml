@@ -627,28 +627,37 @@ end = struct (* {{{ *)
 
   module UFCset = Set.Make(struct
     type t = Clos.H.hclosure
-    let compare x y =
-      let rx = find x in
-      let ry = find y in
-      Clos.H.compare rx ry
+    let compare = Clos.H.compare
   end)
 
   let partitions : UFCset.t HT.t = HT.create uf_table_size
 
-  let diff_of rx = try HT.find partitions rx with Not_found -> UFCset.empty
+  let diff_of rx =
+    try
+      (* we quotient / shrink according to the current eq relation *)
+      let d = HT.find partitions rx in
+      (* XXX can we avoid doing this every time? *)
+      let d = UFCset.fold (fun x -> UFCset.add (find x)) UFCset.empty d in
+      HT.replace partitions rx d;
+      d
+    with Not_found -> UFCset.empty
 
-  let partition x y =
+  let partition x y = (*D* prerr_endline
+    (Printf.sprintf "UF: partition %d %d %d %d" (Clos.H.hash x) (Clos.H.hash y)
+    (Obj.magic x) (Obj.magic y)); *D*)
     let rx = find x in
     let ry = find y in
     assert(Clos.H.equal rx ry = false);
+    (* XXX we may check if it is really necessary to add it, and if it is not
+     * avoid doing the symmetric *)
     HT.replace partitions rx (UFCset.add ry (diff_of rx));
     HT.replace partitions ry (UFCset.add rx (diff_of ry))
 
   let same x y =
     let rx = find x in
     let ry = find y in
-    if Clos.H.equal rx ry then `Yes
-    else if UFCset.mem rx (diff_of ry) then `No (* XXX HUMMMMM is it complete?*)
+    if Clos.H.equal rx ry then `Yes else 
+    if UFCset.exists (fun y -> Clos.H.equal (find y) rx) (diff_of ry) then `No
     else `Maybe
 
   let reset () =
@@ -656,7 +665,8 @@ end = struct (* {{{ *)
     HT.reset uf_table_size father;
     HT.reset uf_table_size partitions
 
-  let union x y =
+  let union x y = (*D* prerr_endline
+      (Printf.sprintf "UF: union %d %d" (Clos.H.hash x) (Clos.H.hash y)); *D*)
     let rx = find x in
     let ry = find y in
     if not (Clos.H.equal rx ry) then begin
