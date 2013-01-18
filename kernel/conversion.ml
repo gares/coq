@@ -1118,11 +1118,13 @@ let whd opt env evars c =
               update a i (Clos.mk ~subs (List.nth spine (nlam - n - 1)));
               eat_lam subs n c
           | Zapp (_,args,c) ->
+              (* We copy the arrays to behave consistently (in the non
+               * aligned case we have to copy) *)
               let nargs = Array.length args in
               if n + nargs = nlam then
-                aux (opt_subst (Subs.cons args subs) bo) bo c
+                aux (opt_subst (Subs.cons (Array.copy args) subs) bo) bo c
               else if n + nargs < nlam then
-                eat_lam (Subs.cons args subs) (n + nargs) c
+                eat_lam (Subs.cons (Array.copy args) subs) (n + nargs) c
               else
                 let before = Array.sub args 0 (nlam - n) in
                 let after = Array.sub args (nlam - n) (nargs - (nlam - n)) in
