@@ -339,6 +339,7 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
     let t = term_of_lift_fconstr l t in
     let safe_destApp t = try destApp t with Invalid_argument _ -> t, [||] in
     fst (safe_destApp t) in
+  let env = (env_of_infos (snd infos)) in
   prerr_endline(string_of_ppcmds
    ((pr_constr 1 env (term_of_lift_fconstr el1 hd1)) ++ str" " ++
     (pr_constr 1 env (term_of_lift_fconstr el2 hd2))));
