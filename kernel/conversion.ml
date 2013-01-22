@@ -1534,7 +1534,7 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
       Clos.mk ~subs t ~ctx:(Ctx.append ctx c) in
     let cst = ref cst in
     let len = min (Array.length a1 - 1 - o1) (Array.length a2 - 1 - o2) in
-    for i = 0 to len do begin
+    for i = len downto 0 do begin
       let i_1, i_2 = i + o1, i + o2 in
       let cl1, cl2 = a1.(i_1), a2.(i_2) in
       let scl1, _, _ as lhs = whd (update_shift_closure a1 i_1 l1 cl1) in
