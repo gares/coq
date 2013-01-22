@@ -642,9 +642,9 @@ end = struct (* {{{ *)
       d
     with Not_found -> UFCset.empty
 
-  let partition x y = (*D* prerr_endline
+  let partition x y = (*F* prerr_endline
     (Printf.sprintf "UF: partition %d %d %d %d" (Clos.H.hash x) (Clos.H.hash y)
-    (Obj.magic x) (Obj.magic y)); *D*)
+    (Obj.magic x) (Obj.magic y)); *F*)
     let rx = find x in
     let ry = find y in
     assert(Clos.H.equal rx ry = false);
@@ -665,8 +665,8 @@ end = struct (* {{{ *)
     HT.reset uf_table_size father;
     HT.reset uf_table_size partitions
 
-  let union x y = (*D* prerr_endline
-      (Printf.sprintf "UF: union %d %d" (Clos.H.hash x) (Clos.H.hash y)); *D*)
+  let union x y = (*F* prerr_endline
+      (Printf.sprintf "UF: union %d %d" (Clos.H.hash x) (Clos.H.hash y)); *F*)
     let rx = find x in
     let ry = find y in
     if not (Clos.H.equal rx ry) then begin
