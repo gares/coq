@@ -205,7 +205,7 @@ end = struct (* {{{ *)
     | Elift (h1,n,s1), Elift (h2,m,s2) -> h1 = h2 && n = m && equal_subs s1 s2
     | _ -> false
   let equal_closure (_,s1,t1,c1) (_,s2,t2,c2) =
-    Term.H.equal t1 t2 && equal_subs s1 s2 && equal_ctx c1 c2
+    Term.H.equal t1 t2 && equal_ctx c1 c2 && equal_subs s1 s2
 
     (* TODO: use the regular hashcons set, this code is copy paste *)
   module HashsetClos = struct
