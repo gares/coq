@@ -1489,7 +1489,7 @@ let pr_id id = str (string_of_id id)
 let print_sort = function
   | Prop Pos -> (str "Set")
   | Prop Null -> (str "Prop")
-  | Type u -> (str "Type")
+  | Type u -> (str "Type" ++ Univ.pr_uni u)
 
 let pr_sort_family = function
   | InSet -> (str "Set")
@@ -1500,7 +1500,9 @@ let pr_name = function
   | Name id -> pr_id id
   | Anonymous -> str "_"
 
-let pr_con sp = str(string_of_label(con_label sp))
+let pr_con sp = str(string_of_label(con_label sp)
+  (*^"["^string_of_mp (con_modpath sp)^"]"*)
+  )
 
 let pr_rel_name e n =
   try let name, _, _= lookup_rel n e in pr_name name
