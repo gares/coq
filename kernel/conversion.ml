@@ -378,7 +378,9 @@ end = struct (* {{{ *)
   let app a c = Zapp (no_hash,a,c)
   let case ci m p c = Zcase (no_hash,ci,m,p,c)
   let fix m c = Zfix (no_hash,m,c)
-  let update a i c = Zupdate (no_hash,a,i,c)
+  let update a i c = match c with
+    | Zupdate (_,b,j,_) when b == a && j = i -> c
+    | _ -> Zupdate (no_hash,a,i,c)
   let shift s c =
     if s = 0 then c
     else match c with
