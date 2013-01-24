@@ -265,8 +265,10 @@ let sort_cmp pb s0 s1 cuniv =
     | (Type u1, Type u2) ->
 	assert (is_univ_variable u2);
 	(match pb with
-         | CONV -> (*U* print(Univ.pr_uni u1++str" = "++Univ.pr_uni u2); *U*)
-              enforce_eq u1 u2 cuniv
+         | CONV ->
+              if u1 = u2 then cuniv else 
+                ((*U* print(Univ.pr_uni u1++str" = "++Univ.pr_uni u2); *U*)
+                        enforce_eq u1 u2 cuniv)
          | CUMUL -> (*U* print(Univ.pr_uni u1++str" ≤ "++Univ.pr_uni u2); *U*)
               enforce_leq u1 u2 cuniv)
     | (_, _) -> raise NotConvertible
