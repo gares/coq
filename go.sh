@@ -151,8 +151,10 @@ regression_check() {
     runcoq bin/coqtop -boot -run-conv-pbs $IMPL -compile $f 2> /tmp/run.log
     if grep -q -F ERR /tmp/run.log; then
       print_end_action "FAIL"
+      set +e
       cat /tmp/run.log | grep timeout
       cat /tmp/run.log | grep univ | wc -l
+      set -e
       exit 1
     else
       print_end_action "OK"
@@ -180,7 +182,10 @@ run_all() {
         echo $f `cat /tmp/time.log` >> PASSED
       else
 	print_end_action "FAIL"
-        cat /tmp/run.log
+	set +e
+	cat /tmp/run.log | grep timeout
+	echo -n "ERR univ: "; cat /tmp/run.log | grep univ | wc -l
+	set -e
 	FAIL="$f $FAIL"
       fi
     fi
