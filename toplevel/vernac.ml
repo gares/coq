@@ -422,6 +422,7 @@ let load_vernac verb file =
     if !Flags.beautify_file then close_out !chan_beautify;
     raise_with_file file e
 
+exception Err of float * bool * int
 (* Compile a vernac file (f is assumed without .v suffix) *)
 let compile verbosely f =
   let ldir,long_f_dot_v = Flags.verbosely Library.start_library f in
@@ -464,15 +465,18 @@ let compile verbosely f =
           List.nth pbs n, true in
       let time, ok1, ok2 =
         let time, ok1, ok2 = ref 0.0, ref true, ref 0 in
-        for i = 1 to 100 do
-          let t, o1, o2 = Reduction.run_cpb 60 strategy p in
-          time := !time +. t; ok1 := !ok1 && o1; ok2 := !ok2 + o2; 
-        done;
-        !time, !ok1, !ok2
-        in
+        try
+          for i = 1 to 1 do
+            let t, o1, o2 = Reduction.run_cpb 60 strategy p in
+            if not (t >= 0.0 && o1 && o2 = 0) then raise (Err(t,o1,o2));
+            time := !time +. t; ok1 := !ok1 && o1; ok2 := !ok2 + o2; 
+          done;
+          !time, !ok1, !ok2
+        with Err (time, ok1, ok2) -> time, ok1, ok2
+      in
       if dump then dump_single p n;
       Printf.eprintf "{ %d , %s %.3f , %b } ;\n" n 
-        (Reduction.print_cpb p) time (time >= 0.0 && ok1 && ok2 = 0)
+        (Reduction.print_cpb p) (time /. 1.0) (time >= 0.0 && ok1 && ok2 = 0)
   | None ->
       (match !Flags.dump_conv_pbs with
       | Some limit -> Reduction.set_dump_cpbs limit (long_f_dot_v ^ "c")
