@@ -121,7 +121,7 @@ end = struct (* {{{ *)
     | Elift  of hash * int * subs
   and closure = hash * subs * hconstr * ctx
 
-  open Pp
+  open Pp (* {{{ pretty printer *)
   let rec ps m s =
     if s = Eid 0 then str"-" else
     let rec tol s = match s with
@@ -170,6 +170,7 @@ end = struct (* {{{ *)
                   Term.H.ll_pr_hconstr m [] t ++ str";" ++ spc() ++
                   pc m c ++
         str")")
+  (* }}} *)
 
   type kind_of_ctx = ctx =
     | Znil
@@ -206,7 +207,7 @@ end = struct (* {{{ *)
   let equal_closure (_,s1,t1,c1) (_,s2,t2,c2) =
     Term.H.equal t1 t2 && equal_ctx c1 c2 && equal_subs s1 s2
 
-    (* TODO: use the regular hashcons set, this code is copy paste *)
+  (* {{{ TODO: use the regular hashcons set, this code is copy paste *)
   module HashsetClos = struct
 
     type elt = closure
@@ -298,7 +299,7 @@ end = struct (* {{{ *)
   let combinesmall x y =
     let h = beta * x + y in
     if h = no_hash then no_hash + 1 else h
-    (* End of copy pasted code *)
+  (* }}} End of copy pasted code *)
 
   let intern_closure =
     let rec hash_closure (h,s,t,c) =
@@ -372,7 +373,7 @@ end = struct (* {{{ *)
     in
      (fun cl -> fst (sh_rec cl))
 
-  module Ctx = struct
+  module Ctx = struct (* {{{ *)
   let nil = Znil
   let app a c = Zapp (no_hash,a,c)
   let case ci m p c = Zcase (no_hash,ci,m,p,c)
@@ -394,9 +395,9 @@ end = struct (* {{{ *)
     | Zupdate (_,a,i,c) -> update a i (append c c2)
     | Zshift (_,s,c) -> shift s (append c c2)
   let equal = equal_ctx
-  end
+  end (* }}} *)
 
-  module Subs = struct
+  module Subs = struct (* {{{ *)
   let id n = Eid n
   let cons a s = Econs (no_hash,a,s)
   let shift n s =
@@ -411,9 +412,9 @@ end = struct (* {{{ *)
     | _ -> Elift(no_hash,n,s)
   let kind_of s = s
   let equal = equal_subs
-  end
+  end (* }}} *)
 
-  module Clos = struct
+  module Clos = struct (* {{{ *)
   let empty_subs = Subs.id 0
   let empty_ctx = Ctx.nil
   let mk ?(subs=empty_subs) ?(ctx=empty_ctx) t = no_hash, subs, t ,ctx
@@ -441,14 +442,14 @@ end = struct (* {{{ *)
   let intern = if do_uf then intern else fun x -> x
   let hash = if do_uf then hash else fun _ -> assert false
   end
-  end
+  end (* }}} *)
 
   module type HashtblEx = sig
     include Hashtbl.S with type key = Clos.H.hclosure
     val reset : int -> 'a t -> unit
   end
 
-  (* Again copy pasted to add "reset" since clear is slow *)
+  (* {{{ Again copy pasted Hashtbl to add "reset" since clear is slow *)
   module Table : HashtblEx = struct
     type key = Clos.H.hclosure
     type 'a t =
@@ -596,7 +597,7 @@ end = struct (* {{{ *)
       done;
       !accu
 
-  end
+  end (* }}} *)
 
 end (* }}} *)
 
@@ -710,7 +711,7 @@ let term_H_equal =
 
 let update = if do_update then fun a i t -> a.(i) <- t else fun _ _ _ -> ()
 
-(* expand_rel gives meaning to an explicit substitution:
+(* The function expand_rel gives meaning to an explicit substitution:
      Bound n              = bound variable n (bound to a Lambda we traversed)
      InEnv (real, canon)  = Rel canon in the initial context, Rel real here
      Code (l, code, a, i) = code to be lifted by l and updated to a.(i)      *)
@@ -732,6 +733,17 @@ let expand_rel k s =
     | Eid _ -> Bound (liftno + k)
   in
    aux_rel 0 k s
+
+type options = {
+  beta  : bool;         (* App(Lambda _,_) reduction              *)
+  iota  : bool;         (* Fix and CoFix unfolding; Case analysis *)
+  zeta  : bool;         (* LetIn reduction                        *)
+  delta_rel : bool;     (* Rel unfolding                          *)
+  delta_var : Idpred.t; (* Var unfolding                          *) 
+  delta_con : Cpred.t;  (* Const unfolding                        *)
+}
+
+(* {{{ Stupid helpers *)
 
 (* TODO: this is correct, but we "unshare" the whole context.
  * Is there a better solution? Put a shift in the tuple,
@@ -763,60 +775,12 @@ let cofix_body subs (_,i,(_,_,bds as rdcl)) =
   let make_body j = Clos.mk ~subs (mkHCoFix (j,rdcl)) in  
   Subs.cons (Array.init ncofix make_body) subs, bds.(i)
 
-let rec unzip t c = match Ctx.kind_of c with
-  | Znil -> t
-  | Zapp (_,a,ctx) -> unzip (mkApp (t, Array.map clos_to_constr a)) ctx
-(* very suboptimal, maybe wrong *)
-  | Zcase (_,ci,p,br,ctx) ->
-     unzip (mkCase (ci,clos_to_constr p,t,Array.map clos_to_constr br)) ctx
-  | Zfix (_,fx,ctx) ->
-     unzip (clos_to_constr fx) (Ctx.app [|Clos.mk (intern t)|] ctx)
-  | Zupdate (_,_,_,ctx) -> unzip t ctx
-  | Zshift (_,s,ctx) -> unzip (lift s t) ctx
-and apply_subs s t = match kind_of t with
-  | HConst _
-  | HInd _
-  | HConstruct _
-  | HSort _
-  | HVar _
-  | HMeta _ -> extern t
-  | HEvar (_,k,a) -> mkEvar (k, Array.map (apply_subs s) a)
-  | HCast (_,t,k,ty) -> mkCast (apply_subs s t, k, apply_subs s ty)
-  | HProd (_,n,t1,t2) ->
-      mkProd (n, apply_subs s t1, apply_subs (Subs.lift 1 s) t2)
-  | HLambda (_,n,t1,t2) ->
-      mkLambda (n, apply_subs s t1, apply_subs (Subs.lift 1 s) t2)
-  | HLetIn (_,n, b,ty,t) ->
-      mkLetIn (n, apply_subs s b, apply_subs s ty, apply_subs (Subs.lift 1 s) t)
-  | HApp (_,f,a) -> mkApp (apply_subs s f, Array.map (apply_subs s) a)
-  | HCase (_,ci,t,p,bs) ->
-      mkCase (ci, apply_subs s t, apply_subs s p, Array.map (apply_subs s) bs)
-  | HFix f -> extern t (* TODO XXX *)
-  | HCoFix c -> extern t (* TODO XXX *)
-  | HRel i ->
-      match expand_rel i s with
-      | Code (n, t, _, _) -> lift n (clos_to_constr t)
-      | Bound k -> mkRel k
-      | InEnv (k, p) -> lift (k-p) (mkRel p)
-and clos_to_constr c =
-  let _,s,t,c = Clos.kind_of c in
-  unzip (apply_subs s t) c
-
 open Pp
 
 let print cmds = prerr_endline (string_of_ppcmds cmds)
 
 let ppt ?(depth=3) e x =
   Term.ll_pr_constr depth (Environ.rel_context e) x
-
-type options = {
-  beta  : bool; (* App(Lambda _,_) reduction *)
-  iota  : bool; (* Fix and CoFix unfolding; Case analysis *)
-  zeta  : bool; (* LetIn reduction *)
-  delta_rel : bool;    (* Rel unfolding *)
-  delta_var : Idpred.t; (* Var unfolding *) 
-  delta_con : Cpred.t;  (* Const unfolding *)
-}
 
 let betadeltaiotazeta = {
   beta = true;
@@ -892,6 +856,8 @@ let unfold, unfold_intern =
  * TODO We could try to drop the head and the tail when
  * they are not used and replace them by shift/id *)
 let opt_subst s t = s
+
+(* }}} stupid helpers *)
 
 (* ... the machine stopped? *)
 type why =
@@ -1174,6 +1140,46 @@ let whd opt env evars c =
   Clos.mk ~subs:s ~ctx:c t, why
 (* }}} END REDUCTION *********************************************************)
 
+(* {{{ Routines for Eval *)
+let rec unzip t c = match Ctx.kind_of c with
+  | Znil -> t
+  | Zapp (_,a,ctx) -> unzip (mkApp (t, Array.map clos_to_constr a)) ctx
+(* very suboptimal, maybe wrong *)
+  | Zcase (_,ci,p,br,ctx) ->
+     unzip (mkCase (ci,clos_to_constr p,t,Array.map clos_to_constr br)) ctx
+  | Zfix (_,fx,ctx) ->
+     unzip (clos_to_constr fx) (Ctx.app [|Clos.mk (intern t)|] ctx)
+  | Zupdate (_,_,_,ctx) -> unzip t ctx
+  | Zshift (_,s,ctx) -> unzip (lift s t) ctx
+and apply_subs s t = match kind_of t with
+  | HConst _
+  | HInd _
+  | HConstruct _
+  | HSort _
+  | HVar _
+  | HMeta _ -> extern t
+  | HEvar (_,k,a) -> mkEvar (k, Array.map (apply_subs s) a)
+  | HCast (_,t,k,ty) -> mkCast (apply_subs s t, k, apply_subs s ty)
+  | HProd (_,n,t1,t2) ->
+      mkProd (n, apply_subs s t1, apply_subs (Subs.lift 1 s) t2)
+  | HLambda (_,n,t1,t2) ->
+      mkLambda (n, apply_subs s t1, apply_subs (Subs.lift 1 s) t2)
+  | HLetIn (_,n, b,ty,t) ->
+      mkLetIn (n, apply_subs s b, apply_subs s ty, apply_subs (Subs.lift 1 s) t)
+  | HApp (_,f,a) -> mkApp (apply_subs s f, Array.map (apply_subs s) a)
+  | HCase (_,ci,t,p,bs) ->
+      mkCase (ci, apply_subs s t, apply_subs s p, Array.map (apply_subs s) bs)
+  | HFix f -> extern t (* TODO XXX *)
+  | HCoFix c -> extern t (* TODO XXX *)
+  | HRel i ->
+      match expand_rel i s with
+      | Code (n, t, _, _) -> lift n (clos_to_constr t)
+      | Bound k -> mkRel k
+      | InEnv (k, p) -> lift (k-p) (mkRel p)
+and clos_to_constr c =
+  let _,s,t,c = Clos.kind_of c in
+  unzip (apply_subs s t) c
+
 let unwind c = clos_to_constr c
 
 let red_whd env evars t =
@@ -1231,6 +1237,7 @@ let red_strong env evars t =
       | InEnv (k, p) -> lift (k-p) (mkRel p)
   in
   red_aux (Clos.mk (intern t))
+(* }}} *)
 
 exception NotConvertible
 
@@ -1279,6 +1286,7 @@ let __outside ?cmp_opt exc_opt =
 
 (* }}} TRACING INSTRUMENTATION *)
 
+(* {{{ Helpers *)
 let sum_shifts ctx =
   let rec sum_aux n c = match Ctx.kind_of c with
   | Znil -> n
@@ -1286,56 +1294,6 @@ let sum_shifts ctx =
   | Zupdate(_,_,_,c) | Zapp(_,_,c) | Zfix(_,_,c) | Zcase(_,_,_,_,c) ->
       sum_aux n c in
   sum_aux 0 ctx
-
-(* XXX we could normalize the closure before interning it:
-           s, t, [ c1; ^1; c2; ^3; c3 ] --->
-           s, t, [ ^4; c1^4; c2^3; c3 ]
-   benefits:
-       1. the stack is ready for convert_stacks
-       2. this interning phase interns already the right closures for
-          the UF calls in convert_stacks
-       3. sum_shifts is done here once
-       4. new invariant, UF handles whnf-canonical-in-shifts-too
-       5. this would break an assert in whd on Case, but can be fixed
-       6. to be understood how to deal with updates in the stack, maybe it
-          is sufficient to fire them as in fapp_stack
-   question: can we pass the ^4 into s and (apply it if t is Rel)?
-       1. this si consistent with clos_to_constr
-       2. easy to call on subterms when t is Lam/Prod/Evar/Fix
-       3. back to my original idea of not having Zshift, but we now know
-          it make sense to have it temporarily to avoid loosing
-          sharing / updates, but can always be eliminated
-    problem: what to do about updates?
-       1. they get lost? I mean they can fired only once
-
-let canon_closure cl =
-  let _, s, t, c = Clos.kind_of cl in
-  let n = sum_shifts c in
-  let rec distribute_shifts n c = match Ctx.kind_of c with
-  | Znil -> Ctx.nil
-  | Zshift (_,m,c) -> distribute_shifts (n - m) c
-  | Zapp (_,a,c) -> Ctx.app (shift_closure_array n a) (distribute_shifts n c)
-  | Zcase (_,ci,p,br,c) ->
-      Ctx.case ci (shift_closure n p) (shift_closure_array n br)
-        (distribute_shifts n c)
-  | Zfix (_,f,c) -> Ctx.fix (shift_closure n f) (distribute_shifts n c)
-  | Zupdate (_,_,_,c) -> distribute_shifts n c in
-  match kind_of t with
-  | HRel i -> Clos.mk (intern(mkRel (i+n))) ~ctx:(distribute_shifts n c)
-  | _ -> Clos.mk ~subs:(Subs.shift n s) t ~ctx:(distribute_shifts n c)
-
-let fire_clear_updates cl =
-  let _, subs, t, ctx = Clos.kind_of cl in
-  let rec fire f c = match Ctx.kind_of c with
-  | Znil -> Ctx.nil
-  | Zshift (_,n,c) -> Ctx.shift n (fire (fun c -> f (Ctx.shift n c)) c)
-  | Zupdate (_,a,i,c) -> update a i (Clos.mk ~subs ~ctx:(f Ctx.nil) t); fire f c
-  | Zapp (_,a,c) -> Ctx.app a (fire (fun c -> f (Ctx.app a c)) c)
-  | Zfix (_,fx,c) -> Ctx.fix fx (fire (fun c -> f (Ctx.fix fx c)) c)
-  | Zcase (_,ci,p,br,c) ->
-       Ctx.case ci p br (fire (fun c -> f (Ctx.case ci p br c)) c) in
-  Clos.mk ~subs t ~ctx:(fire (fun x -> x) ctx)
-*)
 
 (* XXX: we could also intern/extern the closures we assign *)
 let fire_updates cl =
@@ -1380,6 +1338,8 @@ let sort_cmp pb s0 s1 cuniv =
          | CUMUL -> (*U* print(Univ.pr_uni u1++str" ≤ "++Univ.pr_uni u2); *U*)
               enforce_leq u1 u2 cuniv)
   | (_, _) -> raise NotConvertible
+
+(* }}} helpers*)
 
 (* {{{ CONVERSION ***********************************************************)
 
