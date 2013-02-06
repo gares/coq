@@ -652,18 +652,19 @@ let trans_fconv strategy reds cv_pb l2r evars env t1 t2 time =
     else 
       let rc =
         if strategy = `New then
-          Conversion.are_convertible reds cv_pb ~l2r evars env t1 t2 
+          Conversion.are_convertible ~timing:(pi2 time, pi3 time)
+            reds cv_pb ~l2r evars env t1 t2 
         else clos_fconv reds cv_pb l2r evars env t1 t2 in
-      time := __time () -. !time;
-      dump reds cv_pb l2r evars env t1 t2 !time (Some rc);
+      (pi1 time) := __time () -. !(pi1 time);
+      dump reds cv_pb l2r evars env t1 t2 !(pi1 time) (Some rc);
       rc
   with e ->
-    time := __time () -. !time;
-    dump reds cv_pb l2r evars env t1 t2 !time None;
+    (pi1 time) := __time () -. !(pi1 time);
+    dump reds cv_pb l2r evars env t1 t2 !(pi1 time) None;
     raise e
 
 let run_cpb timeout strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
-  let time = ref (__time ()) in
+  let time = ref (__time ()), ref 0., ref 0. in
   ignore(Unix.sigprocmask Unix.SIG_UNBLOCK [Sys.sigalrm]);
   Sys.set_signal
     Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Errors.Timeout));
@@ -671,15 +672,15 @@ let run_cpb timeout strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
   try
     let u = trans_fconv strategy reds cv_pb l2r evars env t1 t2 time in
     match rc with
-    | None -> !time, false, 0
-    | Some rc -> !time, true, Univ.compare_constraints_symmetric rc u
+    | None -> !(pi1 time),!(pi2 time),!(pi3 time), false, 0
+    | Some rc -> !(pi1 time),!(pi2 time),!(pi3 time), true, Univ.compare_constraints_symmetric rc u
   with 
-  | NotConvertible | Conversion.NotConvertible -> !time, None = rc, 0
-  | Errors.Timeout -> -. (float_of_int timeout), true, 0
-  | e -> prerr_endline (Printexc.to_string e); !time, false, 0
+  | NotConvertible | Conversion.NotConvertible -> !(pi1 time),!(pi2 time),!(pi3 time), None = rc, 0
+  | Errors.Timeout -> -. (float_of_int timeout),!(pi2 time),!(pi3 time), true, 0
+  | e -> prerr_endline (Printexc.to_string e); !(pi1 time),!(pi2 time),!(pi3 time), false, 0
 
 let trans_fconv reds cv_pb l2r evars env t1 t2 =
-  let time = ref (__time ()) in
+  let time = ref (__time ()), ref 0., ref 0. in
   trans_fconv `Regular reds cv_pb l2r evars env t1 t2 time
 
 let trans_conv_cmp ?(l2r=false) conv reds = trans_fconv reds conv l2r Mini_evd.EvarMap.empty

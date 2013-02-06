@@ -18,9 +18,8 @@ open Mini_evd
 (* TODO: given there was a nasty bug in the hashconsing code, this may
  * have changed *)
 let uf_table_size = 100003
-
-let update a i t = a.(i) <- t
-(* let update a i t = () *)
+let do_uf = true
+let do_update = true
 
 module Hclosure : sig
 
@@ -434,8 +433,13 @@ end = struct (* {{{ *)
       let diff = hash c1 - hash c2 in
       if diff = 0 then Pervasives.compare c1 c2 else diff
 
-  let reset = reset
   let distribution () = HashsetClos.distribution clos_table
+  let reset = reset
+  
+  (* we can disable union find flipping do_uf *)
+  let reset = if do_uf then reset else fun _ -> ()
+  let intern = if do_uf then intern else fun x -> x
+  let hash = if do_uf then hash else fun _ -> assert false
   end
   end
 
@@ -687,10 +691,22 @@ end = struct (* {{{ *)
       end
     end
 
+  (* we can disable union find flipping do_uf *)
+  let same = if do_uf then same else fun x y -> if x == y then `Yes else `Maybe
+  let union = if do_uf then union else fun _ _ -> ()
+  let partition = if do_uf then partition else fun _ _ -> ()
+  let reset = if do_uf then reset else fun _ -> ()
+  let find = if do_uf then find else fun x -> x
+
 end (* }}} *)
 
 open Hclosure
+
 open Term.H
+let intern = if do_uf then intern else Obj.magic
+let reset = if do_uf then reset else fun _ -> ()
+
+let update = if do_update then fun a i t -> a.(i) <- t else fun _ _ _ -> ()
 
 (* expand_rel gives meaning to an explicit substitution:
      Bound n              = bound variable n (bound to a Lambda we traversed)
@@ -1365,10 +1381,16 @@ let sort_cmp pb s0 s1 cuniv =
 
 (* {{{ CONVERSION ***********************************************************)
 
-let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
+let are_convertible ?(timing=(ref 0.,ref 0.)) 
+  (trans_var, trans_def) cv_pb ~l2r evars env t1 t2
+=
+  let bigbang = Unix.gettimeofday () in
   reset ();
   Clos.H.reset ();
   UF.reset ();
+  (fst timing) := Unix.gettimeofday () -. bigbang;
+  let bigbang = Unix.gettimeofday () in
+
   let env = create_env_cache env in
   let whd cl =
     let cl, why = whd betaiotazeta env evars cl in
@@ -1615,6 +1637,8 @@ let are_convertible (trans_var, trans_def) cv_pb ~l2r evars env t1 t2 =
              ppt env.env ~depth:9 t2)); *D*)
   let t1 = intern t1 in
   let t2 = intern t2 in
+  (snd timing) := Unix.gettimeofday () -. bigbang;
+
   convert_whd cv_pb (Subs.id 0) (Subs.id 0) empty_constraint t1 t2
 
 (* }}} END CONVERSION *******************************************************)

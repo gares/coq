@@ -422,7 +422,7 @@ let load_vernac verb file =
     if !Flags.beautify_file then close_out !chan_beautify;
     raise_with_file file e
 
-exception Err of float * bool * int
+exception Err of float * float * float * bool * int
 (* Compile a vernac file (f is assumed without .v suffix) *)
 let compile verbosely f =
   let ldir,long_f_dot_v = Flags.verbosely Library.start_library f in
@@ -442,13 +442,14 @@ let compile verbosely f =
         Printf.fprintf stats "{ %d , %s" i (Reduction.print_cpb x);
         flush stats;
         let strategy = if ext = "regular" then `Regular else `New in
-        let time, ok1, ok2 = Reduction.run_cpb 10 strategy x in
+        let time, timei, times, ok1, ok2 = Reduction.run_cpb 10 strategy x in
         if time < 0.0 then prerr_endline ("ERR timeout " ^ string_of_int i);
         if not ok1 then prerr_endline ("ERR " ^ string_of_int i);
         if not (ok2 = 0) then
           prerr_endline ("ERR univ " ^string_of_int i ^" "^ string_of_int ok2);
         if not (time>= 0.0) then dump_single x i;
-        Printf.fprintf stats "%.3f , %b } ;\n" time (time>= 0.0 && ok1 &&ok2=0))
+        Printf.fprintf stats "%.3f , %.3f , %.3f , %b } ;\n" time timei times
+          (time>= 0.0 && ok1 &&ok2=0))
       pbs;
       close_out stats;
   | None -> match !Flags.run_conv_pb with
@@ -456,6 +457,8 @@ let compile verbosely f =
       Reduction.debug := true;
       Sys.catch_break true;
       let n, strategy = if n < 0 then -n -1, `Regular else n, `New in
+      let iterations = 1 in
+      let iterations_f = float_of_int iterations in
       let p, dump =
         try
           let pbs = Reduction.load_dump (long_f_dot_v ^"c."^ string_of_int n) in
@@ -463,20 +466,26 @@ let compile verbosely f =
         with Sys_error _ ->
           let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
           List.nth pbs n, true in
-      let time, ok1, ok2 =
-        let time, ok1, ok2 = ref 0.0, ref true, ref 0 in
+      let time, timei, times, ok1, ok2 =
+        let time, timei, times, ok1, ok2 =
+          ref 0.0, ref 0.0, ref 0.0, ref true, ref 0 in
         try
-          for i = 1 to 1 do
-            let t, o1, o2 = Reduction.run_cpb 60 strategy p in
-            if not (t >= 0.0 && o1 && o2 = 0) then raise (Err(t,o1,o2));
-            time := !time +. t; ok1 := !ok1 && o1; ok2 := !ok2 + o2; 
+          for i = 1 to iterations do
+            let t, ti, ts, o1, o2 = Reduction.run_cpb 60 strategy p in
+            if not (t >= 0.0 && o1 && o2 = 0) then raise (Err(t,ti,ts,o1,o2));
+            time := !time +. t; timei := !timei +. ti; times := !times +. ts;
+            ok1 := !ok1 && o1; ok2 := !ok2 + o2; 
           done;
-          !time, !ok1, !ok2
-        with Err (time, ok1, ok2) -> time, ok1, ok2
+          !time, !timei, !times, !ok1, !ok2
+        with Err (time, timei, times, ok1, ok2) -> time, timei, times, ok1, ok2
       in
       if dump then dump_single p n;
-      Printf.eprintf "{ %d , %s %.3f , %b } ;\n" n 
-        (Reduction.print_cpb p) (time /. 1.0) (time >= 0.0 && ok1 && ok2 = 0)
+      Printf.eprintf "{ %d , %s %.4f , %.4f , %.4f , %b } ;\n" n 
+        (Reduction.print_cpb p) 
+          (time /. iterations_f) 
+          (timei /. iterations_f) 
+          (times /. iterations_f) 
+          (time >= 0.0 && ok1 && ok2 = 0)
   | None ->
       (match !Flags.dump_conv_pbs with
       | Some limit -> Reduction.set_dump_cpbs limit (long_f_dot_v ^ "c")

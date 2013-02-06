@@ -9,6 +9,7 @@
 exception NotConvertible
 
 val are_convertible : 
+  ?timing:(float ref * float ref) ->
   Names.transparent_state ->
   Mini_evd.conv_pb -> (* CONV | CUMUL *)
   l2r:bool ->
