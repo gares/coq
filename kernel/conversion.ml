@@ -705,6 +705,8 @@ open Hclosure
 open Term.H
 let intern = if do_uf then intern else Obj.magic
 let reset = if do_uf then reset else fun _ -> ()
+let term_H_equal =
+  if do_uf then Term.H.equal else fun x y -> eq_constr (extern x) (extern y)
 
 let update = if do_update then fun a i t -> a.(i) <- t else fun _ _ _ -> ()
 
@@ -1410,7 +1412,7 @@ let are_convertible ?(timing=(ref 0.,ref 0.))
     | _ -> None in
   let eq_flex l1 t1 l2 t2 = match kind_of t1, kind_of t2 with
     | HRel n1, HRel n2  -> n1 + l1 = n2 + l2
-    | _ -> Term.H.equal t1 t2 (* Var or Const *) in 
+    | _ -> term_H_equal t1 t2 (* Var or Const *) in 
   let oracle_flex t1 t2 =
     let key_of_flex t = match kind_of t with
       | HRel n -> RelKey n | HVar id -> VarKey id | HConst k -> ConstKey k
