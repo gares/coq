@@ -3,14 +3,22 @@ set -e
 
 rm -f gmon.out ocamlprof.dump
 
+profile=n
+
 build_aux() {
   if [ $1 -ot $2 ]; then
     $3 -I kernel -I lib -c $2
   fi	  
 }
 build() {
-  build_aux $1.cmo $1.ml ocamlcp
-  build_aux $1.cmx $1.ml "ocamlopt -p"
+  print "compiling $2 with profiling=$1"
+  if [ "$1" = y ]; then
+  	build_aux $1.cmo $1.ml ocamlcp
+  	build_aux $1.cmx $1.ml "ocamlopt -p"
+  else
+  	build_aux $1.cmo $1.ml ocamlc
+  	build_aux $1.cmx $1.ml "ocamlopt"
+  fi
 }
 
 mksanitytest() {
@@ -75,7 +83,7 @@ EOT
 }
 
 runcoq() {
-  OCAMLRUNPARAM='s=33554432,o=120,b' /usr/bin/time -o /tmp/time.log -f "%e" "$@"
+  OCAMLRUNPARAM='s=32M,o=120,b' /usr/bin/time -o /tmp/time.log -f "%e" "$@"
 }
 
 print() { echo "INFO: $@"; }
@@ -103,10 +111,9 @@ parse_args() {
 }
 
 compile() {
-  print "compiling kernel/* with profiling enabled"
-  build kernel/conversion
-  build kernel/closure
-  build kernel/reduction
+  build $profile kernel/conversion
+  build $profile kernel/closure
+  build $profile kernel/reduction
   
   print "building coqtop"
   if [ $OPT = 0 ]; then
