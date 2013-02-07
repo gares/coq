@@ -48,8 +48,7 @@ for i=1, #data1 do
  end
 od:close()
 
-print("sum_"..type1..":", sum1,"sum_"..type2..":", sum2)
-
+print(file,"sum_"..type1..":", sum1,"sum_"..type2..":", sum2)
 -- let dataset = float_of_int (List.length data)
 -- let avg1 = !sum1 /. dataset
 -- let avg2 = !sum2 /. dataset
