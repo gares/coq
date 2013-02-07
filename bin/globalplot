@@ -1,0 +1,39 @@
+#!/bin/bash
+
+if [ $# -lt 5 ]; then
+	echo "5 args expected:"
+	echo " file, title, title col1, title col2, first row";
+	exit 1; 
+fi
+
+FILE="$1"
+TITLE="$2"
+C1="$3"
+C2="$4"
+R="$5"
+
+TGT="$FILE.`echo "$TITLE-$C1-$C2-$R"|sed 's/[ \(\)_]//g'`"
+
+grep sum $FILE | sed s/sum_regular:// | sed s/sum_today:// |\
+       egrep -v '0[[:space:]]+0' | sort -n -k2 | sed -E 's/[[:space:]]+/ /g' \
+       > $TGT.4plot
+
+echo "Generating: $TGT.png"
+
+gnuplot <<EOT
+ set title "$TITLE"
+ set terminal png size 1000, 700
+ set output "$TGT.png"
+ set style data lines
+ set xtics rotate by 45 right font "Sans,9pt" nomirror out
+ set ytics mirror out
+ set y2tics out
+ set ylabel "seconds"
+ set xlabel "file (first $R skipped)"
+ set grid ytics
+ set key left
+ plot \\
+       "$TGT.4plot"  every ::$R  using 2:xtic(1) title "$C1", \\
+       "$TGT.4plot"  every ::$R  using 3 title "$C2"
+EOT
+
