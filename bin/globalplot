@@ -2,8 +2,8 @@
 
 if [ $# -lt 5 ]; then
 	echo "5 args expected:"
-	echo " file, title, title col1, title col2, first row";
-	exit 1; 
+	echo " file, title, title col1, title col2, first row"
+	exit 1
 fi
 
 FILE="$1"
