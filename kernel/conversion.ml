@@ -1343,17 +1343,28 @@ let sort_cmp pb s0 s1 cuniv =
 
 (* {{{ CONVERSION ***********************************************************)
 
+let env_cache = ref None
+
 let are_convertible ?(timing=(ref 0.,ref 0.)) 
   (trans_var, trans_def) cv_pb ~l2r evars env t1 t2
 =
   let bigbang = Unix.gettimeofday () in
-  reset ();
-  Clos.H.reset ();
-  UF.reset ();
-  (fst timing) := Unix.gettimeofday () -. bigbang;
-  let bigbang = Unix.gettimeofday () in
 
-  let env = create_env_cache env in
+  let env = 
+    match !env_cache with
+    | Some e when rel_context e.env == rel_context env &&
+                  named_context e.env == named_context env -> e
+    | _ -> begin
+        reset ();
+        Clos.H.reset ();
+        UF.reset ();
+        (fst timing) := Unix.gettimeofday () -. bigbang;
+        let env = create_env_cache env in
+        env_cache := Some env; 
+        env
+    end in
+        let bigbang = Unix.gettimeofday () in
+
   let whd cl =
     let cl, why = whd betaiotazeta env evars cl in
     fire_updates cl;
