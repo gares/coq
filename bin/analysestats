@@ -35,13 +35,13 @@ for i=1, #data1 do
   local d2 = data2[i]
   if d1 == nil or d2 == nil then break end
   local v1,l1,f1,b1 = d1[1], d1[2], math.abs(d1[6]), d1[7]
-  local v2,l2,f2,b2 = d2[1], d2[2], math.abs(d2[6]), d2[7]
+  local v2,l2,f2,s2,s2x,b2 = d2[1], d2[2], math.abs(d2[6]), d2[7], d2[8], d2[9]
   f2 = f2 - setup
   local delta = math.abs(f1 - (f2 - setup))
   if true or (delta > 0.01 and delta > f1 * 0.05) then
     assert(v1 == v2 and l1 == l2, v1 .. l1) -- and b1 == b2)
     sum1 = sum1 + f1
-    sum2 = sum2 + f2
+    sum2 = sum2 + f2 - s2 - s2x
   end
  end
 
