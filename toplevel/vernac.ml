@@ -434,6 +434,11 @@ let compile verbosely f =
     let oc = open_out_bin (long_f_dot_v ^ "c." ^ string_of_int i) in
     Marshal.to_channel oc [x] [];
     close_out oc in
+  match !Flags.stats_conv_pbs with
+  | true ->
+      let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
+      Reduction.stats_conv_pbs (List.rev pbs);
+  | false ->
   match !Flags.run_conv_pbs with
   | Some ext ->
       let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in

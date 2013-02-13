@@ -301,6 +301,8 @@ let parse_args arglist =
          (* to distinguish 0 and -0, encoded as -1 *)
          let n = int_of_string n + if n.[0] = '-' then -1 else 0 in
          Flags.run_conv_pb := Some n; parse rem
+    | "-run-conv-stats" :: rem -> Flags.stats_conv_pbs := true; parse rem
+
     | "-dump-conv-pbs" :: limit :: rem ->
          Flags.dump_conv_pbs := Some (float_of_string limit);
          Flags.load_proofs := Flags.Dont; parse rem

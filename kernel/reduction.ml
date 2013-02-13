@@ -680,6 +680,29 @@ let run_cpb timeout strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
   | Errors.Timeout -> -. (float_of_int timeout),!(pi2 time),!(pi3 time), true, 0
   | e -> prerr_endline (Printexc.to_string e); !(pi1 time),!(pi2 time),!(pi3 time), false, 0
 
+let stats_conv_pbs l =
+  let is_eq = ref 0 in
+  let is_ext = ref 0 in
+  let reset = ref 0 in
+  let old = ref None in
+  List.iter (fun (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) ->
+    match !old with
+    | None -> old := Some env
+    | Some e ->
+       old := Some env;
+        if named_context e == named_context env &&
+           rel_context e == rel_context env then incr is_eq
+        else
+          let rec aux = function 
+          | [] -> incr reset
+          | _ :: l when l == rel_context e -> incr is_ext
+          | _ :: l -> aux l in
+         aux (rel_context env)) 
+  l;
+  Printf.eprintf "tot = %d; eq = %d; sub = %d; reset = %d\n"
+    (List.length l) !is_eq !is_ext !reset
+  ;;
+
 let trans_fconv reds cv_pb l2r evars env t1 t2 =
   let time = ref (__time ()), ref 0., ref 0. in
   trans_fconv `Regular reds cv_pb l2r evars env t1 t2 time
