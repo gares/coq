@@ -671,6 +671,7 @@ let run_cpb timeout strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
   ignore(Unix.alarm timeout);
   try
     let u = trans_fconv strategy reds cv_pb l2r evars env t1 t2 time in
+    Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> ()));
     match rc with
     | None -> !(pi1 time),!(pi2 time),!(pi3 time), false, 0
     | Some rc -> !(pi1 time),!(pi2 time),!(pi3 time), true, Univ.compare_constraints_symmetric rc u
