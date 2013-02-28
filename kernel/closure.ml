@@ -258,14 +258,28 @@ let defined_rels flags env =
       (rel_context env) ~init:(0,[])
 (*  else (0,[])*)
 
+let do_unlock = ref false
+
 let create mk_cl flgs env evars =
-  { i_flags = flgs;
+  let info = { i_flags = flgs;
     i_repr = mk_cl;
     i_env = env;
     i_sigma = evars;
     i_rels = defined_rels flgs env;
     i_vars = defined_vars flgs env;
-    i_tab = Hashtbl.create 17 }
+    i_tab = Hashtbl.create 17 } in
+  if !do_unlock then begin
+    let unlock_name = 
+      let dp = make_dirpath (List.map id_of_string
+        ["ssreflect";"ssreflect";"Coq"]) in
+      Names.make_con (MPfile dp) (make_dirpath []) (mk_label "locked_with") in
+    let locked_with = 
+          mkLambda (Anonymous, mkProp,
+            mkLambda (Anonymous, mkProp,
+              mkLambda (Name (id_of_string "x"), mkProp, mkRel 1))) in
+    Hashtbl.add info.i_tab (ConstKey unlock_name) (mk_cl info locked_with)
+  end;
+  info
 
 
 (**********************************************************************)

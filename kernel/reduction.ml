@@ -315,6 +315,18 @@ let in_whnf (t,stk) =
     | (FFlex _ | FProd _ | FEvar _ | FInd _ | FAtom _ | FRel _) -> true
     | FLOCKED -> assert false
 
+let time_red = ref 0.
+
+let whd_stack i t s =
+  let bigbang = Unix.gettimeofday () in
+  try
+    let rc = whd_stack i t s in
+    time_red := !time_red +. (Unix.gettimeofday() -. bigbang);
+    rc
+  with e ->
+    time_red := !time_red +. (Unix.gettimeofday() -. bigbang);
+    raise e
+
 (* Conversion between  [lft1]term1 and [lft2]term2 *)
 let rec ccnv cv_pb l2r infos lft1 lft2 term1 term2 cuniv =
   eqappr cv_pb l2r infos (lft1, (term1,[])) (lft2, (term2,[])) cuniv
@@ -539,13 +551,27 @@ and convert_vect l2r infos lft1 lft2 v1 v2 cuniv =
     fold 0 cuniv
   else raise NotConvertible
 
-let clos_fconv trans cv_pb l2r evars env t1 t2 =
+let clos_fconv ?(timing=Conversion.mk_timing()) trans cv_pb l2r evars env t1 t2 =
 (*D*   __inside "fconv"; try let __rc =  *D*)
 (*D*  pp(lazy("l2r=" ^ string_of_bool l2r));  *D*)
 (*D*  pp(lazy(ppctx env  ^ "\n----------------------------\n"));  *D*)
 (*D*  pp(lazy(ppterm ~depth:max_int env t1 ^ " \n= " ^ ppterm ~depth:max_int env t2));  *D*)
+  let bigbang = Unix.gettimeofday () in
   let infos = trans, create_clos_infos ~evars betaiotazeta env in
-  ccnv cv_pb l2r infos el_id el_id (inject t1) (inject t2) empty_constraint
+  let now = Unix.gettimeofday () in
+  timing.Conversion.setup <- now -. bigbang;
+  try
+    time_red := 0.;
+    let rc = 
+      ccnv cv_pb l2r infos el_id el_id (inject t1) (inject t2) empty_constraint
+    in
+    timing.Conversion.red <- !time_red;
+    timing.Conversion.conv <- Unix.gettimeofday () -. now;
+    rc
+  with e ->
+    timing.Conversion.red <- !time_red;
+    timing.Conversion.conv <- Unix.gettimeofday () -. now;
+    raise e
 (*D*   in __outside None; __rc with exn -> __outside (Some exn); raise exn  *D*)
 
 (* *************** test of the day ****************
@@ -646,39 +672,51 @@ let dump reds cv_pb l2r evars env t1 t2 time rc =
       ((!filename,!loc_x,!loc_y), reds, cv_pb, l2r,
       evars, env, t1, t2, rc) :: !todump
 
-let trans_fconv strategy reds cv_pb l2r evars env t1 t2 time =
+open Conversion
+
+let trans_fconv ?(timing=mk_timing())
+  strategy reds cv_pb l2r evars env t1 t2
+=
   try
     if eq_constr t1 t2 then empty_constraint
     else 
       let rc =
         if strategy = `New then
-          Conversion.are_convertible ~timing:(pi2 time, pi3 time)
-            reds cv_pb ~l2r evars env t1 t2 
-        else clos_fconv reds cv_pb l2r evars env t1 t2 in
-      (pi1 time) := __time () -. !(pi1 time);
-      dump reds cv_pb l2r evars env t1 t2 !(pi1 time) (Some rc);
+          are_convertible ~timing reds cv_pb ~l2r evars env t1 t2 
+        else clos_fconv ~timing reds cv_pb l2r evars env t1 t2 in
+      dump reds cv_pb l2r evars env t1 t2 timing.conv (Some rc);
       rc
   with e ->
-    (pi1 time) := __time () -. !(pi1 time);
-    dump reds cv_pb l2r evars env t1 t2 !(pi1 time) None;
+    dump reds cv_pb l2r evars env t1 t2 timing.conv None;
     raise e
 
 let run_cpb timeout strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
-  let time = ref (__time ()), ref 0., ref 0. in
-  ignore(Unix.sigprocmask Unix.SIG_UNBLOCK [Sys.sigalrm]);
-  Sys.set_signal
-    Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Errors.Timeout));
-  ignore(Unix.alarm timeout);
+  let stop_alarm () =
+    ignore(Unix.alarm 0);
+    Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> ())) in
+  let start_alarm () =
+    let handler _ =
+      prerr_endline "timeout..."; ignore(Unix.alarm 1); raise Errors.Timeout in
+    ignore(Unix.sigprocmask Unix.SIG_UNBLOCK [Sys.sigalrm]);
+    Sys.set_signal Sys.sigalrm (Sys.Signal_handle handler);
+    ignore(Unix.alarm timeout) in
+  start_alarm ();
+  let timing = mk_timing () in
   try
-    let u = trans_fconv strategy reds cv_pb l2r evars env t1 t2 time in
-    Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> ()));
+    let u = trans_fconv ~timing strategy reds cv_pb l2r evars env t1 t2 in
+    stop_alarm ();
     match rc with
-    | None -> !(pi1 time),!(pi2 time),!(pi3 time), false, 0
-    | Some rc -> !(pi1 time),!(pi2 time),!(pi3 time), true, Univ.compare_constraints_symmetric rc u
+    | None -> timing, false, 0
+    | Some rc -> timing, true, Univ.compare_constraints_symmetric rc u
   with 
-  | NotConvertible | Conversion.NotConvertible -> !(pi1 time),!(pi2 time),!(pi3 time), None = rc, 0
-  | Errors.Timeout -> -. (float_of_int timeout),!(pi2 time),!(pi3 time), true, 0
-  | e -> prerr_endline (Printexc.to_string e); !(pi1 time),!(pi2 time),!(pi3 time), false, 0
+  | NotConvertible | Notconvertible -> stop_alarm ();
+      timing, None = rc, 0
+  | Errors.Timeout -> stop_alarm ();
+      timing.conv <- -. (float_of_int timeout);
+      timing, true, 0
+  | e -> stop_alarm ();
+      prerr_endline (Printexc.to_string e);
+      timing, false, 0
 
 let stats_conv_pbs l =
   let is_eq = ref 0 in
@@ -704,8 +742,7 @@ let stats_conv_pbs l =
   ;;
 
 let trans_fconv reds cv_pb l2r evars env t1 t2 =
-  let time = ref (__time ()), ref 0., ref 0. in
-  trans_fconv `Regular reds cv_pb l2r evars env t1 t2 time
+  trans_fconv `Regular reds cv_pb l2r evars env t1 t2
 
 let trans_conv_cmp ?(l2r=false) conv reds = trans_fconv reds conv l2r Mini_evd.EvarMap.empty
 let trans_conv ?(l2r=false) ?(evars=Mini_evd.EvarMap.empty) reds = trans_fconv reds CONV l2r evars

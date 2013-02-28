@@ -202,4 +202,6 @@ val kl : clos_infos -> fconstr -> constr
 val to_constr : (lift -> fconstr -> constr) -> lift -> fconstr -> constr
 val optimise_closure : fconstr subs -> constr -> fconstr subs * constr
 
+val do_unlock : bool ref (* XXX unlock SSR constants on the fly *)
+
 (** End of cbn debug section i*)

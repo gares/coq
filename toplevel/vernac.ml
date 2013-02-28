@@ -422,7 +422,9 @@ let load_vernac verb file =
     if !Flags.beautify_file then close_out !chan_beautify;
     raise_with_file file e
 
-exception Err of float * float * float * bool * int
+open Conversion
+exception Err of timing * bool * int
+
 (* Compile a vernac file (f is assumed without .v suffix) *)
 let compile verbosely f =
   let ldir,long_f_dot_v = Flags.verbosely Library.start_library f in
@@ -441,20 +443,36 @@ let compile verbosely f =
   | false ->
   match !Flags.run_conv_pbs with
   | Some ext ->
+      let ext, suffix = 
+        try
+          let l = List.rev (Str.split (Str.regexp "\\.") ext) in
+          String.concat "." (List.tl l), List.hd l
+        with Not_found -> ext, "" in
+      let (pred : int -> bool) =
+        if suffix = "locked" || suffix = "unlocked" then
+         let f = open_in (long_f_dot_v ^ ".locked") in
+         let s = ref Intset.empty in
+         try 
+           while true do s := Intset.add (int_of_string (input_line f)) !s done;
+           fun x -> true
+         with End_of_file -> close_in f; fun x -> Intset.mem x !s
+        else fun x -> true in
       let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
       let stats = open_out (long_f_dot_v ^ ".stats." ^ ext) in
-      Util.List.iteri (fun i x ->
+      Util.List.iteri (fun i x -> if pred i then begin
         Printf.fprintf stats "{ %d , %s" i (Reduction.print_cpb x);
         flush stats;
         let strategy = if ext = "regular" then `Regular else `New in
-        let time, timei, times, ok1, ok2 = Reduction.run_cpb 10 strategy x in
-        if time < 0.0 then prerr_endline ("ERR timeout " ^ string_of_int i);
+        let time, ok1, ok2 = Reduction.run_cpb 10 strategy x in
+        if time.conv < 0.0 then
+          prerr_endline ("ERR timeout " ^ string_of_int i);
         if not ok1 then prerr_endline ("ERR " ^ string_of_int i);
         if not (ok2 = 0) then
           prerr_endline ("ERR univ " ^string_of_int i ^" "^ string_of_int ok2);
-        if not (time>= 0.0) then dump_single x i;
-        Printf.fprintf stats "%.3f , %.3f , %.3f , %b } ;\n" time timei times
-          (time>= 0.0 && ok1 &&ok2=0))
+        if not (time.conv >= 0.0) then dump_single x i;
+        Printf.fprintf stats "%.3f , %.3f , %.3f , %3f , %b } ;\n"
+          time.conv time.setup time.hashcons time.red
+          (time.conv >= 0.0 && ok1 && ok2 = 0) end)
       pbs;
       close_out stats;
   | None -> match !Flags.run_conv_pb with
@@ -471,26 +489,26 @@ let compile verbosely f =
         with Sys_error _ ->
           let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
           List.nth pbs n, true in
-      let time, timei, times, ok1, ok2 =
-        let time, timei, times, ok1, ok2 =
-          ref 0.0, ref 0.0, ref 0.0, ref true, ref 0 in
+      let time, ok1, ok2 =
+        let time, ok1, ok2 = mk_timing (), ref true, ref 0 in
         try
           for i = 1 to iterations do
-            let t, ti, ts, o1, o2 = Reduction.run_cpb 60 strategy p in
-            if not (t >= 0.0 && o1 && o2 = 0) then raise (Err(t,ti,ts,o1,o2));
-            time := !time +. t; timei := !timei +. ti; times := !times +. ts;
+            let t, o1, o2 = Reduction.run_cpb 60 strategy p in
+            if not (t.conv >= 0.0 && o1 && o2 = 0) then raise (Err(t, o1, o2));
+            add_timing time t;
             ok1 := !ok1 && o1; ok2 := !ok2 + o2; 
           done;
-          !time, !timei, !times, !ok1, !ok2
-        with Err (time, timei, times, ok1, ok2) -> time, timei, times, ok1, ok2
+          time, !ok1, !ok2
+        with Err (time, ok1, ok2) -> time, ok1, ok2
       in
       if dump then dump_single p n;
-      Printf.eprintf "{ %d , %s %.4f , %.4f , %.4f , %b } ;\n" n 
+      Printf.eprintf "{ %d , %s %.4f , %.4f , %.4f , %.4f , %b } ;\n" n 
         (Reduction.print_cpb p) 
-          (time /. iterations_f) 
-          (timei /. iterations_f) 
-          (times /. iterations_f) 
-          (time >= 0.0 && ok1 && ok2 = 0)
+          (time.conv /. iterations_f) 
+          (time.setup /. iterations_f) 
+          (time.hashcons /. iterations_f) 
+          (time.red /. iterations_f) 
+          (time.conv >= 0.0 && ok1 && ok2 = 0)
   | None ->
       (match !Flags.dump_conv_pbs with
       | Some limit -> Reduction.set_dump_cpbs limit (long_f_dot_v ^ "c")

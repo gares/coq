@@ -20,6 +20,9 @@ open Mini_evd
 let uf_table_size = 100003
 let do_uf = true
 let do_update = true
+let do_unlock = ref false
+let time_conv = ref 0.
+let time_red = ref 0.
 
 module Hclosure : sig
 
@@ -808,6 +811,17 @@ type env_cache = {
 (* TODO if we cache is_normal then we can avoid putting stupid updates *)
 let create_env_cache env =
   let cache = Hashtbl.create 91 in
+  if !do_unlock then begin
+    let dp = make_dirpath (List.map id_of_string
+      ["ssreflect";"ssreflect";"Coq"]) in
+    let unlock_name = Names.make_con (MPfile dp) (make_dirpath [])
+       (mk_label "locked_with") in
+    let cl = Clos.mk (intern 
+      (mkLambda (Anonymous, mkProp,
+        mkLambda (Anonymous, mkProp,
+          mkLambda (Name (id_of_string "x"), mkProp, mkRel 1))))) in
+    Hashtbl.add cache (ConstKey unlock_name) ([| cl |], 0)
+  end;
   let _, _, map, subs =
     Sign.fold_rel_context_reverse
       (fun (i, j, map, subs) (id, b, _) ->
@@ -839,6 +853,8 @@ let unfold, unfold_intern =
     | VarKey _ -> None
     | ConstKey k ->
         try
+          assert(not !do_unlock ||
+            "Coq.ssreflect.ssreflect.locked_with" <> string_of_con k);
           let t = constant_value env.env k in
           (* XXX WTF! it happens! XXX *) 
           if eq_constr t (mkConst k) then None else
@@ -875,9 +891,13 @@ let ctx_update cl a i c =
   aux_update 0 c
 (* TODO: now works on hconstr, but could work on constr *)
 let whd opt env evars c =
+  let bigbang = Unix.gettimeofday () in
+  let update_timing () =
+    time_red := !time_red +. (Unix.gettimeofday ()-. bigbang) in
+
   (* Two possible exits: because in whnf or because opt says so *)
-  let return s t c = s, t, c, Stuck in
-  let stop_at s t c = s, t, c, Stopped in
+  let return s t c = update_timing(); s, t, c, Stuck in
+  let stop_at s t c = update_timing(); s, t, c, Stopped in
 
   let rec aux subs hd ctx =
 (*R* print(Clos.pp 2 (Clos.mk ~subs hd ~ctx)); *R*)
@@ -1239,7 +1259,7 @@ let red_strong env evars t =
   red_aux (Clos.mk (intern t))
 (* }}} *)
 
-exception NotConvertible
+exception Notconvertible
 
 (* {{{ TRACING INSTRUMENTATION *)
 
@@ -1326,9 +1346,9 @@ let sort_cmp pb s0 s1 cuniv =
   match (s0,s1) with
   | (Prop c1, Prop c2) when pb = CUMUL ->
       if c1 = Null or c2 = Pos then cuniv   (* Prop <= Set *)
-      else raise NotConvertible
+      else raise Notconvertible
   | (Prop c1, Prop c2) ->
-      if c1 = c2 then cuniv else raise NotConvertible
+      if c1 = c2 then cuniv else raise Notconvertible
   | (Prop c1, Type u) when pb = CUMUL -> assert (is_univ_variable u); cuniv
   | (Type u1, Type u2) ->
       assert (is_univ_variable u2);
@@ -1337,7 +1357,7 @@ let sort_cmp pb s0 s1 cuniv =
               enforce_eq u1 u2 cuniv
          | CUMUL -> (*U* print(Univ.pr_uni u1++str" ≤ "++Univ.pr_uni u2); *U*)
               enforce_leq u1 u2 cuniv)
-  | (_, _) -> raise NotConvertible
+  | (_, _) -> raise Notconvertible
 
 (* }}} helpers*)
 
@@ -1345,20 +1365,35 @@ let sort_cmp pb s0 s1 cuniv =
 
 let env_cache = ref None
 
-let are_convertible ?(timing=(ref 0.,ref 0.)) 
+type timing = {
+  mutable setup : float;
+  mutable hashcons : float;
+  mutable red : float;
+  mutable conv : float;
+}
+
+let mk_timing () = { setup = 0. ; hashcons = 0. ; red = 0. ; conv = 0. }
+let add_timing ~timing:time ~extra:t =
+  time.conv <- time.conv +. t.conv;
+  time.setup <- time.setup +. t.setup;
+  time.red <- time.red +. t.red;
+  time.hashcons <- time.hashcons +. t.hashcons
+;;
+
+let are_convertible ?(timing=mk_timing ()) 
   (trans_var, trans_def) cv_pb ~l2r evars env t1 t2
 =
   let bigbang = Unix.gettimeofday () in
 
   let env = 
-    match !env_cache with
-    | Some e when rel_context e.env == rel_context env &&
-                  named_context e.env == named_context env -> e
+    match !env_cache with (* we should check if evars impact the ctx or not *)
+    | Some e when false && rel_context e.env == rel_context env &&
+                  named_context e.env == named_context env -> { e with env=env}
     | _ -> begin
         reset ();
         Clos.H.reset ();
         UF.reset ();
-        (fst timing) := Unix.gettimeofday () -. bigbang;
+        timing.setup <- Unix.gettimeofday () -. bigbang;
         let env = create_env_cache env in
         env_cache := Some env; 
         env
@@ -1434,7 +1469,7 @@ let are_convertible ?(timing=(ref 0.,ref 0.))
               mk_whd_clos ~subs:s t ~ctx:(Ctx.append c (ctx_update a.(i) a i c2)) in
             uf_union cl2' cl2 cst;
             convert cv_pb cst lhs rhs
-        | None -> UF.partition cl1 cl2; raise NotConvertible
+        | None -> UF.partition cl1 cl2; raise Notconvertible
 
   and convert cv_pb cst (cl1, why1, l1 as lhs) (cl2, why2, l2 as rhs) =
 (*D* __inside "convert"; try let __rc = pp(lazy(_pr_status lhs rhs 1)); *D*)
@@ -1446,7 +1481,7 @@ let are_convertible ?(timing=(ref 0.,ref 0.))
     | `No    ->
 (*H*  let (_,s1,t1,_),(_,s2,t2,_) = Clos.H.kind_of cl1, Clos.H.kind_of cl2 in
        _pr_heads l1 s1 t1 l2 s2 t2; *H*)
-       (*D* pp(lazy(str" UF: NO"));  *D*) raise NotConvertible
+       (*D* pp(lazy(str" UF: NO"));  *D*) raise Notconvertible
     | `Maybe ->
     let _, s1, t1, c1 = Clos.H.kind_of cl1 in
     let _, s2, t2, c2 = Clos.H.kind_of cl2 in
@@ -1464,7 +1499,7 @@ let are_convertible ?(timing=(ref 0.,ref 0.))
           let cst = fold_left2 (convert_whd CONV s1 s2) cst a1 a2 in
           let cst = convert_stacks cst l1 c1 l2 c2 in
           uf_union cl1 cl2 cst; cst
-        with NotConvertible as e -> UF.partition cl1 cl2; raise e)
+        with Notconvertible as e -> UF.partition cl1 cl2; raise e)
     | HRel n1, HRel n2 when why1 = Stuck && why2 = Stuck && n1 + l1 = n2 + l2 ->
         congruence cst cl1 cl2 l1 c1 l2 c2
     | HInd i1, HInd i2 when eq_ind i1 i2 ->
@@ -1477,21 +1512,21 @@ let are_convertible ?(timing=(ref 0.,ref 0.))
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
           let cst = convert_whd CONV (slift s1) (slift s2) cst bo1 bo2 in
           uf_union cl1 cl2 cst; cst
-        with NotConvertible as e -> UF.partition cl1 cl2; raise e)
+        with Notconvertible as e -> UF.partition cl1 cl2; raise e)
     | HProd (_,_,ty1,bo1), HProd (_,_,ty2,bo2) ->
         (try
           let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = convert_whd CONV s1 s2 cst ty1 ty2 in
           let cst = convert_whd cv_pb (slift s1) (slift s2) cst bo1 bo2 in
           uf_union cl1 cl2 cst; cst
-        with NotConvertible as e -> UF.partition cl1 cl2; raise e)
+        with Notconvertible as e -> UF.partition cl1 cl2; raise e)
     | HCoFix (_,op1,(_,tys1,bos1)), HCoFix (_,op2,(_,tys2,bos2))
     | HFix(_,(_,op1),(_,tys1,bos1)), HFix(_,(_,op2),(_,tys2,bos2))
       when op1 = op2 && same_len tys1 tys2 (*&& same_len bos1 bos2*) ->
         (try
           (match kind_of t1, kind_of t2 with
           | HFix (_,(ra1,_),_), HFix(_,(ra2,_),_) ->
-              if ra1 <> ra2 then raise NotConvertible
+              if ra1 <> ra2 then raise Notconvertible
           | _ -> ());
           let s1, s2 = sshift l1 s1, sshift l2 s2 in
           let cst = fold_left2 (convert_whd CONV s1 s2) cst tys1 tys2 in
@@ -1500,15 +1535,15 @@ let are_convertible ?(timing=(ref 0.,ref 0.))
           let cst = fold_left2 (convert_whd CONV s1' s2') cst bos1 bos2 in
           let cst = convert_stacks cst l1 c1 l2 c2 in
           uf_union cl1 cl2 cst; cst
-        with NotConvertible as e -> UF.partition cl1 cl2; raise e)
+        with Notconvertible as e -> UF.partition cl1 cl2; raise e)
     | (HConst _ | HRel _ | HVar _), (HConst _ | HRel _ | HVar _) ->
         (try
-          if not (eq_flex l1 t1 l2 t2) then raise NotConvertible
+          if not (eq_flex l1 t1 l2 t2) then raise Notconvertible
           else
             let cst = convert_stacks cst l1 c1 l2 c2 in
             uf_union cl1 cl2 cst;
             cst
-        with NotConvertible ->
+        with Notconvertible ->
           let b = oracle_flex t1 t2 in
           unfold_in_order cv_pb cst b t1 why1 c1 cl1 rhs t2 why2 c2 cl2 lhs)
     | HLambda (_,_,_,bo1), _ -> (* XXX see msg on coq club *)
@@ -1523,8 +1558,8 @@ let are_convertible ?(timing=(ref 0.,ref 0.))
     | (HLetIn _,_) | (_,HLetIn _) -> assert false
     | (HApp _,_)   | (_,HApp _)   -> assert false
     | (HCase _,_)  | (_,HCase _)  -> assert false
-    | _ -> UF.partition cl1 cl2; raise NotConvertible
-(*A*  with NotConvertible as e ->
+    | _ -> UF.partition cl1 cl2; raise Notconvertible
+(*A*  with Notconvertible as e ->
         if eq_c then
           print (ppt env.env (hclos_to_constr cl1) ++ spc() ++
                  ppt env.env (hclos_to_constr cl2) ++ spc() ++
@@ -1537,14 +1572,14 @@ let are_convertible ?(timing=(ref 0.,ref 0.))
     try
       let cst = convert_stacks cst l1 c1 l2 c2 in
       uf_union cl1 cl2 cst; cst
-    with NotConvertible as e -> UF.partition cl1 cl2; raise e
+    with Notconvertible as e -> UF.partition cl1 cl2; raise e
 (*D*  in __outside None; __rc with exn -> __outside (Some exn); raise exn *D*)
 
   and convert_whd_shift_cl l1 l2 cl1 cl2 cst =
     let cl1, _, _ as lhs = whd (shift_closure l1 cl1) in
     let cl2, _, _ as rhs = whd (shift_closure l2 cl2) in
     try convert CONV cst lhs rhs
-    with NotConvertible as e -> UF.partition cl1 cl2; raise e
+    with Notconvertible as e -> UF.partition cl1 cl2; raise e
   
   and convert_whd_update_shift_cl_array l1 l2 o1 a1 o2 a2 cst =
     let update_shift_closure a i k cl =
@@ -1565,7 +1600,7 @@ let are_convertible ?(timing=(ref 0.,ref 0.))
         uf_union hcl1 ha1i ncst; uf_union hcl2 ha2i ncst;
         a1.(i_1) <- Clos.H.extern ha1i; a2.(i_2) <- Clos.H.extern ha2i;
         cst := ncst
-      with NotConvertible as e -> UF.partition scl1 scl2; raise e
+      with Notconvertible as e -> UF.partition scl1 scl2; raise e
     end done; !cst
 
   (* TODO: change order (to left-to-right).
@@ -1600,7 +1635,7 @@ let are_convertible ?(timing=(ref 0.,ref 0.))
     | Zfix (_, f1, c1), Zfix (_, f2, c2) when o1 = 0 && o2 = 0 ->
         let cst = convert_stacks_aux cst l1 0 c1 l2 0 c2 in
         convert_whd_shift_cl l1 l2 f1 f2 cst
-    | _ -> raise NotConvertible
+    | _ -> raise Notconvertible
 (*D*  in __outside None; __rc with exn -> __outside (Some exn); raise exn *D*)
 
   and convert_stacks cst l1 c1 l2 c2 = convert_stacks_aux cst l1 0 c1 l2 0 c2
@@ -1610,9 +1645,19 @@ let are_convertible ?(timing=(ref 0.,ref 0.))
              ppt env.env ~depth:9 t2)); *D*)
   let t1 = intern t1 in
   let t2 = intern t2 in
-  (snd timing) := Unix.gettimeofday () -. bigbang;
+  let now = Unix.gettimeofday () in
+  timing.hashcons <- now -. bigbang;
 
-  convert_whd cv_pb (Subs.id 0) (Subs.id 0) empty_constraint t1 t2
+  time_red := 0.;
+  try
+   let rc = convert_whd cv_pb (Subs.id 0) (Subs.id 0) empty_constraint t1 t2 in
+   timing.conv <- Unix.gettimeofday() -. now;
+   timing.red <- !time_red;
+   rc
+  with e ->
+   timing.conv <- Unix.gettimeofday() -. now;
+   timing.red <- !time_red;
+   raise e
 
 (* }}} END CONVERSION *******************************************************)
 
