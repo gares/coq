@@ -35,12 +35,14 @@ for i=1, #data1 do
   local d2 = data2[i]
   if d1 == nil or d2 == nil then break end
   local v1,l1,f1,b1 = d1[1], d1[2], math.abs(d1[6]), d1[7]
-  local v2,l2,f2,s1,s2,b2 = d2[1], d2[2], math.abs(d2[6]), d2[7], d2[8], d2[9]
+  local v2,l2,f2,s1,s2,r2,b2 =
+    d2[1], d2[2], math.abs(d2[6]), d2[7], d2[8], d2[9], d2[10]
+  local f2o = f2
   f2 = math.max(0,f2 - s1 - s2)
   local delta = math.abs(f1 - (f2 - setup))
   if true or (delta > 0.01 and delta > f1 * 0.05) then
     assert(v1 == v2 and l1 == l2, v1 .. l1) -- and b1 == b2)
-    od:write(string.format("%d %f %f\n",v1,f1,f2))
+    od:write(string.format("%d %f %f %f %f\n",v1,f1,f2,f2o,r2))
   end
  end
 od:close()
@@ -61,13 +63,16 @@ oc:write(string.format([[
  set terminal png size 1400, 700
  set output "/tmp/plot.png"
  set logscale y
+ set grid
  # set yrange [*:6]
  #set ytics 0,.01,6
  #set ytics add 3
  set style data points
  plot \
-       "/tmp/data" using 1:2 title "]] .. type1 .. [[", \
-       "/tmp/data" using 1:3 title "]] .. type2 .. [["  \
+       "/tmp/data" using 1:2 title "old", \
+       "/tmp/data" using 1:3 title "new(no init)",  \
+       "/tmp/data" using 1:4 title "new", \
+       "/tmp/data" using 1:5 title "new(conv)" 
 ]]))
 oc:close()
 
