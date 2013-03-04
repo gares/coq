@@ -446,7 +446,7 @@ let compile verbosely f =
       let ext, suffix = 
         try
           let l = List.rev (Str.split (Str.regexp "\\.") ext) in
-          String.concat "." (List.tl l), List.hd l
+          String.concat "." (List.rev (List.tl l)), List.hd l
         with Not_found -> ext, "" in
       let (pred : int -> bool) =
         if suffix = "locked" || suffix = "unlocked" then
@@ -457,8 +457,11 @@ let compile verbosely f =
            fun x -> true
          with End_of_file -> close_in f; fun x -> Intset.mem x !s
         else fun x -> true in
+      Reduction.find_ssrlocked := !Flags.find_ssrlocked;
+      Closure.do_unlock := suffix = "unlocked";
+      Conversion.do_unlock := !Closure.do_unlock;
       let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
-      let stats = open_out (long_f_dot_v ^ ".stats." ^ ext) in
+      let stats = open_out (long_f_dot_v ^ ".stats." ^ ext ^ suffix) in
       Util.List.iteri (fun i x -> if pred i then begin
         Printf.fprintf stats "{ %d , %s" i (Reduction.print_cpb x);
         flush stats;
@@ -489,6 +492,7 @@ let compile verbosely f =
         with Sys_error _ ->
           let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
           List.nth pbs n, true in
+      Reduction.find_ssrlocked := !Flags.find_ssrlocked;
       let time, ok1, ok2 =
         let time, ok1, ok2 = mk_timing (), ref true, ref 0 in
         try
