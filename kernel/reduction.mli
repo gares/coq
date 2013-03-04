@@ -89,3 +89,5 @@ val print_cpb : cpb -> string
 val run_cpb : int -> [`Regular |`New] -> cpb -> Conversion.timing * bool * int
 val stats_conv_pbs : cpb list -> unit
 val debug : bool ref
+exception SsrLocked
+val find_ssrlocked : bool ref

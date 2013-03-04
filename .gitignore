@@ -158,7 +158,11 @@ dev/ocamldoc/ocamldoc.sty
 
 # Enrico
 *.vc
+*.vc.*
 *.stats.*
 *.swp
 *~
+gprof*
+gmon*
+*.locked
 

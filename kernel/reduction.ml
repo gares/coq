@@ -94,8 +94,18 @@ let __outside ?cmp_opt exc_opt =
 
 (* END TRACING INSTRUMENTATION *)
 
+exception SsrLocked
+let find_ssrlocked = ref false
 
 let unfold_reference ((ids, csts), infos) k =
+  (if !find_ssrlocked then
+    let unlock_name = 
+      let dp = make_dirpath (List.map id_of_string
+        ["ssreflect";"ssreflect";"Coq"]) in
+      Names.make_con (MPfile dp) (make_dirpath []) (mk_label "locked_with") in
+    match k with
+    | ConstKey cst when eq_constant cst unlock_name -> raise SsrLocked
+    | _ -> ());
   match k with
     | VarKey id when not (Idpred.mem id ids) -> None
     | ConstKey cst when not (Cpred.mem cst csts) -> None
