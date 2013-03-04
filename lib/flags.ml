@@ -159,3 +159,4 @@ let dump_conv_pbs = ref None
 let run_conv_pbs = ref None
 let run_conv_pb = ref None
 let stats_conv_pbs = ref false
+let find_ssrlocked = ref false

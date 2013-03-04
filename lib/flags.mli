@@ -105,3 +105,4 @@ val dump_conv_pbs : float option ref
 val run_conv_pbs : string option ref
 val run_conv_pb : int option ref
 val stats_conv_pbs : bool ref
+val find_ssrlocked : bool ref
