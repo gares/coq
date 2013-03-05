@@ -1,32 +1,18 @@
 #!/usr/bin/lua5.1
 
-file = select(1,...)
-file = file or "uu0"
-test = nil
-type1 = "regularunlocked"
-type2 = "todayunlocked"
+local coq = require "coq"
 
-function mk_input(t,v,what,test)
-  test = test or what
-  local i = io.popen("find . -name '" .. v .. ".v.stats." .. test .. "'")
-  for f in i:lines() do
-	local j = io.open(f)
-	print("reading",f)
-	for l in j:lines() do
-		local x=loadstring(t.."[#"..t.."+1] = "..
-			l:gsub("%)","}"):gsub("%(","{")) 
-		if x then x() end
-	end
-	j:close()
-  end
-end
+local file1 = assert(select(1,...), "missing arg1: stat file expected")
+local file2 = assert(select(2,...), "missing arg2: stat file expected")
 
-data1 = {}
-mk_input("data1", file, type1)
-data2 = {}
-mk_input("data2", file, type2)
+local data1 = coq.parse(file1)
+local data2 = coq.parse(file2)
 
-od = io.open("/tmp/data","w")
+local ext1 = file1:match('%.([^%.]+)$')
+local ext2 = file2:match('%.([^%.]+)$')
+local name = file1:match('/([^/%.]+)[^/]*$').."-"..ext2.."-"..ext1.."-conv"
+
+od = io.open("logs/"..name..".data","w")
 local tot = 0
 local high = {}
 local high_density = 10
@@ -36,36 +22,28 @@ for i=1, #data1 do
   local d2 = data2[i]
   if d1 == nil or d2 == nil then break end
   tot = tot + 1
-  local v1,l1,f1,_,_,r1,b1 =
-    d1[1], d1[2], math.abs(d1[6]), d1[7], d1[8], d1[9], d1[10]
-  local v2,l2,f2,s1,s2,r2,b2 =
-    d2[1], d2[2], math.abs(d2[6]), d2[7], d2[8], d2[9], d2[10]
-  local f2o = f2
-  f2 = math.max(0,f2 - s1 - s2)
-  local delta = math.abs(f1 - (f2 - setup))
-  if (f1 > 0.5 or f2 > 0.5) and last_high < tot - high_density then
+  local r1 = coq.interpret(d1)
+  local r2 = coq.interpret(d2)
+  if (r1.raw_time > 0.5 or r2.raw_time > 0.5)
+  and last_high < tot - high_density then
 	  last_high = tot
-	  high[#high + 1] = ('"%d" %d'):format(v1,tot)
+	  high[#high + 1] = ('"%d" %d'):format(r1.id,tot)
   end
 
-    assert(v1 == v2 and l1 == l2, v1 .. l1) -- and b1 == b2)
-    od:write(string.format("%d %f %f %f %4.3f %f %f %d %4.3f\n",
-    	v1,f1,f2,f2o,r2,math.max(f2,f1),math.min(f1,f2),tot,r1))
+    assert(r1.id == r2.id and r1.file == r2.file, r1.id .." ".. r1.file)
+    -- and b1 == b2)
+    od:write(string.format("%d %d %f %f %f %4.3f %f %f %4.3f\n",
+	tot,
+    	r1.id,
+	r1.raw_time,r2.raw_time,r2.time,
+	r2.red_time,
+	math.max(r1.raw_time,r2.raw_time),
+	math.min(r1.raw_time,r2.raw_time),
+	r1.red_time))
  end
 od:close()
 
--- let dataset = float_of_int (List.length data)
--- let avg1 = !sum1 /. dataset
--- let avg2 = !sum2 /. dataset
--- let sigma1, sigma2 = List.fold_left 
---   (fun (s1,s2) ((_,_,_,_,_,f1,_),(_,_,_,_,_,f2,_)) ->
---      (s1 +. ((f1 -. avg1) ** 2.0), s2 +. ((f2 -. avg2) ** 2.0)))
---   (0.0,0.0) data;;
--- Printf.eprintf "old=%f, new=%f, diff=%f, sigma1=%f, sigma2=%f\n"
---   !sum1 !sum2 (!sum1 -. !sum2)
---   (sqrt (sigma1 /. dataset)) (sqrt (sigma2 /.  dataset));;
-
-oc = io.open("/tmp/plot","w")
+oc = io.open("logs/"..name..".plot","w")
 oc:write(([[
  set logscale y
  set style data points
@@ -74,20 +52,22 @@ oc:write(([[
  	(]]..table.concat(high,", ")..[[)
  set grid ytics
  set bars small
+ set title "]]..name..[["
 
  # x y yhigh ylow 6=mx 7=min
- plot "/tmp/data" using 8:3:3:7 with yerrorbars pt 0 title "new worse" \
-      ,"/tmp/data" using 8:3:6:3 with yerrorbars pt 0 title "new better" 
+ plot  "logs/]]..name..[[.data" \
+ 		using 1:4:4:8 with yerrorbars pt 0 title "]]..ext2..[[ worse" \
+      ,"logs/]]..name..[[.data" \
+      		using 1:4:7:4 with yerrorbars pt 0 title "]]..ext2..[[ better" 
 
  set terminal png size ]]..tot..[[, 700
- set output "/tmp/plot.png"
+ set output "logs/]]..name..[[.png"
  replot
 
  set terminal svg size ]]..tot..[[, 700 background "white"
- set output "/tmp/plot.svg"
+ set output "logs/]]..name..[[.svg"
  replot
 ]]))
 oc:close()
 
-os.execute("gnuplot /tmp/plot")
-print("generated /tmp/plot.png /tmp/plot.svg")
+os.execute("gnuplot logs/"..name..".plot")
