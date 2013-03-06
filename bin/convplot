@@ -2,8 +2,8 @@
 
 local coq = require "coq"
 
-local file1 = assert(select(1,...), "missing arg1: stat file expected")
-local file2 = assert(select(2,...), "missing arg2: stat file expected")
+local file1 = assert(select(1,...), "missing arg1: regular stat file expected")
+local file2 = assert(select(2,...), "missing arg2: today stat file expected")
 
 local data1 = coq.parse(file1)
 local data2 = coq.parse(file2)
