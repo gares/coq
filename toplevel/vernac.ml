@@ -474,7 +474,7 @@ let compile verbosely f =
         if not (ok2 = 0) then
           prerr_endline ("ERR univ " ^string_of_int i ^" "^ string_of_int ok2);
         if not (time.conv >= 0.0) then dump_single x i;
-        Printf.fprintf stats "%.3f , %.3f , %.3f , %3f , %b } ;\n"
+        Printf.fprintf stats "%.6f , %.6f , %.6f , %.6f , %b } ;\n"
           time.conv time.setup time.hashcons time.red
           (time.conv >= 0.0 && ok1 && ok2 = 0) end)
       pbs;
@@ -508,7 +508,7 @@ let compile verbosely f =
         with Err (time, ok1, ok2) -> time, ok1, ok2
       in
       if dump then dump_single p n;
-      Printf.eprintf "{ %s %.4f , %.4f , %.4f , %.4f , %b } ;\n" 
+      Printf.eprintf "{ %s %.6f , %.6f , %.6f , %.6f , %b } ;\n" 
         (Reduction.print_cpb p) 
           (time.conv /. iterations_f) 
           (time.setup /. iterations_f) 
