@@ -644,15 +644,17 @@ let clos_fconv trans cv_pb l2r evars env t1 t2 =
 *************** end test of the day **************** *)
 
 type cpb = 
-  (string * int * int) * (Names.Idpred.t * Names.Cpred.t) * conv_pb * bool *
+int * (string * int * int) * (Names.Idpred.t * Names.Cpred.t) * conv_pb * bool *
    Mini_evd.EvarMap.t * Environ.env *
    Term.constr * Term.constr * Univ.constraints option
 
 let loc_x, loc_y = ref 0, ref 0
 let filename = ref ""
 
-let print_cpb ((s,i,j),_,_,_,_,_,_,_,b) =
-  Printf.sprintf "%S , %d , %d , %b , " s i j (b <> None)
+let id_of_cpb (id,_,_,_,_,_,_,_,_,_) = id
+
+let print_cpb (id,(s,i,j),_,_,_,_,_,_,_,b) =
+  Printf.sprintf "%d , %S , %d , %d , %b , " id s i j (b <> None)
 
 let todump, dumping = ref ([] : cpb list), ref max_float
 
@@ -676,13 +678,15 @@ let set_dump_cpbs limit s =
     end;
     close_out oc)
 
-let dump reds cv_pb l2r evars env t1 t2 time rc =
+let dump id reds cv_pb l2r evars env t1 t2 time rc =
   if time >= !dumping then
     todump :=
-      ((!filename,!loc_x,!loc_y), reds, cv_pb, l2r,
+      (id,(!filename,!loc_x,!loc_y), reds, cv_pb, l2r,
       evars, env, t1, t2, rc) :: !todump
 
 open Conversion
+
+let cpb_id = ref 0
 
 let trans_fconv ?(timing=mk_timing())
   strategy reds cv_pb l2r evars env t1 t2
@@ -690,17 +694,18 @@ let trans_fconv ?(timing=mk_timing())
   try
     if eq_constr t1 t2 then empty_constraint
     else 
+      let () = incr cpb_id in
       let rc =
         if strategy = `New then
           are_convertible ~timing reds cv_pb ~l2r evars env t1 t2 
         else clos_fconv ~timing reds cv_pb l2r evars env t1 t2 in
-      dump reds cv_pb l2r evars env t1 t2 timing.conv (Some rc);
+      dump !cpb_id reds cv_pb l2r evars env t1 t2 timing.conv (Some rc);
       rc
   with e ->
-    dump reds cv_pb l2r evars env t1 t2 timing.conv None;
+    dump !cpb_id reds cv_pb l2r evars env t1 t2 timing.conv None;
     raise e
 
-let run_cpb timeout strategy (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
+let run_cpb timeout strategy (_,_,reds, cv_pb, l2r, evars, env, t1, t2, rc) =
   let stop_alarm () =
     ignore(Unix.alarm 0);
     Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> ())) in
@@ -733,7 +738,7 @@ let stats_conv_pbs l =
   let is_ext = ref 0 in
   let reset = ref 0 in
   let old = ref None in
-  List.iter (fun (_,reds, cv_pb, l2r, evars, env, t1, t2, rc) ->
+  List.iter (fun (_,_,reds, cv_pb, l2r, evars, env, t1, t2, rc) ->
     match !old with
     | None -> old := Some env
     | Some e ->

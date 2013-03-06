@@ -86,6 +86,7 @@ val set_dump_cpbs : float -> string -> unit
 val set_dump_loc : int * int -> unit
 val load_dump : string -> cpb list
 val print_cpb : cpb -> string
+val id_of_cpb : cpb -> int
 val run_cpb : int -> [`Regular |`New] -> cpb -> Conversion.timing * bool * int
 val stats_conv_pbs : cpb list -> unit
 val debug : bool ref

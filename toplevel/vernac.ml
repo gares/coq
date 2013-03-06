@@ -462,8 +462,9 @@ let compile verbosely f =
       Conversion.do_unlock := !Closure.do_unlock;
       let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
       let stats = open_out (long_f_dot_v ^ ".stats." ^ ext ^ suffix) in
-      Util.List.iteri (fun i x -> if pred i then begin
-        Printf.fprintf stats "{ %d , %s" i (Reduction.print_cpb x);
+      Util.List.iter (fun x -> let i = Reduction.id_of_cpb x in
+        if pred i then begin
+        Printf.fprintf stats "{ %s" (Reduction.print_cpb x);
         flush stats;
         let strategy = if ext = "regular" then `Regular else `New in
         let time, ok1, ok2 = Reduction.run_cpb 10 strategy x in
@@ -487,11 +488,12 @@ let compile verbosely f =
       let iterations_f = float_of_int iterations in
       let p, dump =
         try
-          let pbs = Reduction.load_dump (long_f_dot_v ^"c."^ string_of_int n) in
+          let pbs =
+            Reduction.load_dump (long_f_dot_v ^"c."^ string_of_int n) in
           List.hd pbs, false
         with Sys_error _ ->
           let pbs = Reduction.load_dump (long_f_dot_v ^ "c") in
-          List.nth pbs n, true in
+          List.find (fun x -> Reduction.id_of_cpb x = n) pbs, true in
       Reduction.find_ssrlocked := !Flags.find_ssrlocked;
       let time, ok1, ok2 =
         let time, ok1, ok2 = mk_timing (), ref true, ref 0 in
@@ -506,7 +508,7 @@ let compile verbosely f =
         with Err (time, ok1, ok2) -> time, ok1, ok2
       in
       if dump then dump_single p n;
-      Printf.eprintf "{ %d , %s %.4f , %.4f , %.4f , %.4f , %b } ;\n" n 
+      Printf.eprintf "{ %s %.4f , %.4f , %.4f , %.4f , %b } ;\n" 
         (Reduction.print_cpb p) 
           (time.conv /. iterations_f) 
           (time.setup /. iterations_f) 
