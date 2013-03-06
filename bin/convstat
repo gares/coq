@@ -1,0 +1,52 @@
+#!/usr/bin/lua5.1
+
+local coq = require "coq"
+
+local file = assert(select(1,...), "missing arg: stat file expected")
+local ofname = file .. ".sumup"
+local ofile = assert(io.open(ofname,"w"), "unable to write to "..ofname)
+
+local data = coq.parse(file)
+
+function out(s,...)
+	ofile:write(s:format(...))
+end
+
+out("{ ")
+out("file = %q ; ", coq.interpret(data[1]).file)
+out("n_problems = %d ; ", #data)
+
+local last_line_begin, last_line_end, lines = 0, 0, {}
+
+for j=1, #data do
+	local i = coq.interpret(data[j])	
+	if i.char_begin ~= last_line_begin or
+           i.char_end ~= last_line_end then
+		last_line_begin = i.char_begin
+		last_line_end = i.char_end
+		lines[#lines + 1] = { 
+			sum_conv = 0,
+			sum_red = 0,
+			sum_init = 0,
+			n_problems = 0,
+		}
+	end
+	lines[#lines].sum_conv = lines[#lines].sum_conv + i.conv_time
+	lines[#lines].sum_red  = lines[#lines].sum_red + i.red_time
+	lines[#lines].sum_init = lines[#lines].sum_init + i.init + i.hashcons
+	lines[#lines].n_problems = lines[#lines].n_problems + 1
+end
+
+local tmp = 0; for i=1,#lines do tmp = tmp + lines[i].sum_conv end
+out("sum_conv = %f ; ", tmp)
+
+local tmp = 0; for i=1,#lines do tmp = tmp + lines[i].sum_red end
+out("sum_red = %f ; ", tmp)
+
+local tmp = 0; for i=1,#lines do tmp = tmp + lines[i].sum_init end
+out("sum_init = %f ; ", tmp)
+
+out("n_lines = %d ; ", #lines)
+
+out(" } ;")
+ofile:close()
