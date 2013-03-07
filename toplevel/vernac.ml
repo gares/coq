@@ -466,7 +466,8 @@ let compile verbosely f =
         if pred i then begin
         Printf.fprintf stats "{ %s" (Reduction.print_cpb x);
         flush stats;
-        let strategy = if ext = "regular" then `Regular else `New in
+        let strategy =
+          if ext = "regular" || suffix = "regular" then `Regular else `New in
         let time, ok1, ok2 = Reduction.run_cpb 10 strategy x in
         if time.conv < 0.0 then
           prerr_endline ("ERR timeout " ^ string_of_int i);
