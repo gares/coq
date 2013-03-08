@@ -60,7 +60,7 @@ oc:write(([[
       ,"logs/]]..name..[[.data" \
       		using 1:4:7:4 with yerrorbars pt 0 title "]]..ext2..[[ better" 
 
- set terminal png size ]]..math.min(4000,tot)..[[, 700
+ set terminal png size ]]..math.min(4000,math.max(600,tot))..[[, 700
  set output "logs/]]..name..[[.png"
  replot
 
