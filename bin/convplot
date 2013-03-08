@@ -48,7 +48,7 @@ oc:write(([[
  set logscale y
  set style data points
  unset xtics
- set x2tics rotate by 90 left font "Sans,7pt" out \
+ set x2tics rotate by 90 font "Sans,7pt" out \
  	(]]..table.concat(high,", ")..[[)
  set grid ytics
  set bars small
@@ -64,9 +64,9 @@ oc:write(([[
  set output "logs/]]..name..[[.png"
  replot
 
- set terminal svg size ]]..math.min(4000,tot)..[[, 700 background "white"
- set output "logs/]]..name..[[.svg"
- replot
+ # set terminal svg size ]]..math.min(4000,tot)..[[, 700 background "white"
+ # set output "logs/]]..name..[[.svg"
+ # replot
 ]]))
 oc:close()
 
