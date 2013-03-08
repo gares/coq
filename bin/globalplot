@@ -1,39 +1,137 @@
-#!/bin/bash
+#!/usr/bin/lua5.1
 
-if [ $# -lt 5 ]; then
-	echo "5 args expected:"
-	echo " file, title, title col1, title col2, first row"
-	exit 1
-fi
+local ext1 = assert(select(1,...))
+local ext2 = assert(select(2,...))
 
-FILE="$1"
-TITLE="$2"
-C1="$3"
-C2="$4"
-R="$5"
+local f1 = io.popen("cat `find . -name \\*"..ext1..".sumup`"):read("*a")
+local f2 = io.popen("cat `find . -name \\*"..ext2..".sumup`"):read("*a")
 
-TGT="$FILE.`echo "$TITLE-$C1-$C2-$R"|sed 's/[ \(\)_]//g'`"
+local data1 = assert(loadstring("return { "..f1.."}"))()  
+local data2 = assert(loadstring("return { "..f2.."}"))()  
 
-grep sum $FILE | sed s/sum_regular:// | sed s/sum_today:// |\
-       egrep -v '0[[:space:]]+0' | sort -n -k2 | sed -E 's/[[:space:]]+/ /g' \
-       > $TGT.4plot
+local datak = {}
+for i=1,#data1 do
+	datak[data1[i].file] = { [ext1] = data1[i]}
+end
+for i=1,#data2 do
+	if datak[data2[i].file] ~= nil then
+		datak[data2[i].file][ext2] = data2[i]
+	end
+end
 
-echo "Generating: $TGT.png"
+local data = {}
+for k,v in pairs(datak) do
+	data[#data+1] = v
+end
+table.sort(data,function(v1,v2)
+	return v1[ext1].sum_conv + v1[ext1].sum_red < 
+	       v2[ext1].sum_conv + v2[ext1].sum_red
+end)
 
-gnuplot <<EOT
- set title "$TITLE"
- set terminal png size 1000, 700
- set output "$TGT.png"
- set style data lines
- set xtics rotate by 45 right font "Sans,9pt" nomirror out
- set ytics mirror out
- set y2tics out
- set ylabel "seconds"
- set xlabel "file (first $R skipped)"
- set grid ytics
- set key left
- plot \\
-       "$TGT.4plot"  every ::$R  using 2:xtic(1) title "$C1", \\
-       "$TGT.4plot"  every ::$R  using 3 title "$C2"
-EOT
 
+local dfilename = "logs/"..ext1.."-"..ext2.."-global.data"
+local dfile = io.open(dfilename,"w")
+for k,v in ipairs(data) do
+	local i1 = v[ext1]
+	local i2 = v[ext2]
+	if i1 and i2 and i1.n_problems == i2.n_problems then
+		assert(i1.file == i2.file)
+		dfile:write(("%s %d %f %f %f %f %f %f\n"):format(
+			i1.file:match('([^/]+)$'),
+			i1.n_problems,
+			i1.sum_conv,i2.sum_conv,
+			i1.sum_red, i2.sum_red,
+			i1.sum_init,i2.sum_init))
+	end
+end
+dfile:close()
+
+local pfilename = "logs/"..ext1.."-"..ext2.."-global.plot"
+local pfile = io.open(pfilename,"w")
+pfile:write([[
+  set style data lines
+
+  set xtics rotate by 45 right font "Sans,9pt" nomirror out
+  set ytics mirror out
+  set y2tics out
+  set xlabel "file"
+  set grid ytics
+  set key left
+  
+  set title "]]..ext1.." vs "..ext2..[[ (average time)"
+  set ylabel "seconds"
+  plot \
+    "]]..dfilename..[[" using (($3 + $5) / $2):xtic(1) \
+    	lc 1 title "]]..ext1..[[ conv", \
+    "]]..dfilename..[[" using (($4 + $6) / $2) \
+    	lc 2 title "]]..ext2..[[ conv"
+  set terminal png size 1000, 700
+  set output "logs/]]..ext1.."-"..ext2..[[-global-avg.png"
+  replot
+
+  set title "]]..ext1.." vs "..ext2..[[ (total time)"
+  set ylabel "minutes"
+  plot \
+    "]]..dfilename..[[" using (($3 + $5) / 60):xtic(1) \
+    	lc 1 title "]]..ext1..[[ conv", \
+    "]]..dfilename..[[" using (($4 + $6) / 60) \
+    	lc 2 title "]]..ext2..[[ conv"
+  set terminal png size 1000, 700
+  set output "logs/]]..ext1.."-"..ext2..[[-global-tot.png"
+  replot
+
+  set title "]]..ext1.." vs "..ext2..[[ (total time, w. init)"
+  set ylabel "minutes"
+  plot \
+    "]]..dfilename..[[" using (($3 + $5 + $7) / 60):xtic(1) \
+    	lc 1 title "]]..ext1..[[ conv", \
+    "]]..dfilename..[[" using (($4 + $6 + $8) / 60) \
+    	lc 2 title "]]..ext2..[[ conv"
+  set terminal png size 1000, 700
+  set output "logs/]]..ext1.."-"..ext2..[[-global-tot-init.png"
+  replot
+
+]])
+pfile:close()
+
+os.execute("gnuplot ".. pfilename)
+
+-- 
+-- 
+-- if [ $# -lt 5 ]; then
+-- 	echo "5 args expected:"
+-- 	echo " file, title, title col1, title col2, first row"
+-- 	exit 1
+-- fi
+-- 
+-- FILE="$1"
+-- TITLE="$2"
+-- C1="$3"
+-- C2="$4"
+-- R="$5"
+-- 
+-- TGT="$FILE.`echo "$TITLE-$C1-$C2-$R"|sed 's/[ \(\)_]//g'`"
+-- 
+-- grep sum $FILE | sed s/sum_regular:// | sed s/sum_today:// |\
+--        egrep -v '0[[:space:]]+0' | sort -n -k2 | sed -E 's/[[:space:]]+/ /g' \
+--        > $TGT.4plot
+-- 
+-- echo "Generating: $TGT.png"
+-- 
+-- gnuplot <<EOT
+--  set title "$TITLE"
+--  set terminal png size 1000, 700
+--  set output "$TGT.png"
+--  set style data lines
+--  set xtics rotate by 45 right font "Sans,9pt" nomirror out
+--  set ytics mirror out
+--  set y2tics out
+--  set ylabel "seconds"
+--  set xlabel "file (first $R skipped)"
+--  set grid ytics
+--  set key left
+--  plot \\
+--        "$TGT.4plot"  every ::$R  using 2:xtic(1) title "$C1", \\
+--        "$TGT.4plot"  every ::$R  using 3 title "$C2"
+-- EOT
+-- 
