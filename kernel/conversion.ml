@@ -882,11 +882,28 @@ type why =
 
 (* {{{ REDUCTION ************************************************************)
 
-let ctx_update cl a i c =
+let is_rel t c =
+  match kind_of t, Ctx.kind_of c with
+  | HRel _, Znil -> true
+  | HRel _, Zshift (_,_,c) -> Ctx.equal c Ctx.nil
+  | _ -> false
+
+(* XXX cl must be in whnf *)
+(* is_rel = true means that cl is (s, Rel _, nil) *)
+let ctx_update is_rel cl a i c = 
   let rec aux_update n c = match Ctx.kind_of c with
     | Zshift (_,k,c) -> aux_update (n+k) c
+    | Zupdate (_,b,j,c) when is_rel ->
+        (* we compress the path of 1 step *)
+        update b j (shift_closure n cl);
+        Ctx.update a i (Ctx.shift n (Ctx.update b j c))
     | Zupdate (_,b,j,c) ->
-        update b j (shift_closure n cl); Ctx.update a i (Ctx.shift n c)
+        (* we flatten to this last Rel *)
+        update b j (shift_closure n 
+          (Clos.mk ~subs:(Subs.cons a (Subs.id 0))
+                   ~ctx:(Ctx.shift n Ctx.nil) 
+                   (intern (mkRel i))));
+        aux_update n c;
     | _ -> Ctx.update a i (Ctx.shift n c) in
   aux_update 0 c
 (* TODO: now works on hconstr, but could work on constr *)
@@ -909,7 +926,7 @@ let whd opt env evars c =
             let _, s, t, c = Clos.kind_of cl in
             (* TODO (to help GC): update a i (Clos.mk (intern (mkProp))); *)
             aux s t (Ctx.append c
-              (ctx_update cl a i (Ctx.shift liftno ctx)))
+              (ctx_update (is_rel t c) cl a i (Ctx.shift liftno ctx)))
         | Bound k ->
             return (Subs.id k) (intern (mkRel k)) ctx
         | InEnv(real, k) when opt.delta_rel = false ->
@@ -919,7 +936,7 @@ let whd opt env evars c =
            | Some (a, i) ->
               let _, s, t, c = Clos.kind_of a.(i) in
               aux s t (Ctx.append c
-                (ctx_update a.(i) a i (Ctx.shift (real - k) ctx)))
+                (ctx_update (is_rel t c) a.(i) a i (Ctx.shift (real - k) ctx)))
            | None ->                   (* mkRel real = mkRel(k + (real - k)) *)
               return (Subs.id 0) (intern (mkRel real)) ctx))
     | HVar id when not (Idpred.mem id opt.delta_var) -> stop_at subs hd ctx
@@ -927,7 +944,7 @@ let whd opt env evars c =
             (match unfold env (VarKey id) with
             | Some (a, i) ->
                 let _, s, t, c = Clos.kind_of a.(i) in
-                aux s t (Ctx.append c (ctx_update a.(i) a i ctx))
+                aux s t (Ctx.append c (ctx_update (is_rel t c) a.(i) a i ctx))
             | None -> return (Subs.id 0) hd ctx)
     | HEvar (_,e,v) ->
        (match
@@ -1148,7 +1165,7 @@ let whd opt env evars c =
         | None -> return (Subs.id 0) hd ctx
         | Some (a, i) ->
             let _, s, t, c = Clos.kind_of a.(i) in
-            aux s t (Ctx.append c (ctx_update a.(i) a i ctx)))
+            aux s t (Ctx.append c (ctx_update false a.(i) a i ctx)))
     | HSort _ | HMeta _ | HProd _ | HInd _ -> return subs hd ctx
   in
   let _, s, t, c = Clos.kind_of c in
@@ -1454,7 +1471,8 @@ let are_convertible ?(timing=mk_timing ())
     | Some (a, i) ->
         let _, s, t, c = Clos.kind_of a.(i) in
         let cl1', _,_ as lhs =
-          mk_whd_clos ~subs:s t ~ctx:(Ctx.append c (ctx_update a.(i) a i c1)) in
+          mk_whd_clos ~subs:s t 
+            ~ctx:(Ctx.append c (ctx_update (is_rel t c) a.(i) a i c1)) in
         uf_union cl1' cl1 cst;
         convert cv_pb cst lhs rhs
     | None ->
@@ -1462,7 +1480,8 @@ let are_convertible ?(timing=mk_timing ())
         | Some (a, i) ->
             let _, s, t, c = Clos.kind_of a.(i) in
             let cl2', _,_ as rhs =
-              mk_whd_clos ~subs:s t ~ctx:(Ctx.append c (ctx_update a.(i) a i c2)) in
+              mk_whd_clos ~subs:s t 
+                ~ctx:(Ctx.append c (ctx_update (is_rel t c) a.(i) a i c2)) in
             uf_union cl2' cl2 cst;
             convert cv_pb cst lhs rhs
         | None -> UF.partition cl1 cl2; raise Notconvertible
