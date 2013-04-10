@@ -987,22 +987,13 @@ let whd opt env evars c =
         find_arg rarg ctx
     | HCoFix _  when opt.iota = false -> stop_at subs hd ctx
     | HCoFix cf  ->
-        (* This is really tricky!
-         * CoFix unfolding could escape the match context if we don't filter *)
-        let rec filter_updates c = match Ctx.kind_of c with
-          | Znil -> Ctx.nil
-          | Zupdate (_,_,_,c) -> filter_updates c
-          | Zcase _ -> c
-          | Zshift (_,n,c) -> Ctx.shift n (filter_updates c)
-          | Zapp (_,a,c) -> Ctx.app a (filter_updates c)
-          | Zfix (_,f,c) -> Ctx.fix f (filter_updates c) in
         (* In the next case there are many implementations of find_iota, they
          * all perform the same, it seems, so we copy here the simplest one *)
         let (@) f i = fun c -> f (i c) in
         let rec find_iota f c = match Ctx.kind_of c with
           | Zcase _ ->
               let s, bo = cofix_body subs cf in
-              aux s bo (filter_updates ctx)
+              aux s bo (f c)
           | Zshift (_,n,c) -> find_iota (f @ (Ctx.shift n)) c
           | Zapp (_,a,c) -> find_iota (f @ (Ctx.app a)) c
           | Zupdate (_,a,i,c) ->
