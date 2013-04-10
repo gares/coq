@@ -966,11 +966,12 @@ let whd opt env evars c =
           | Znil -> assert false
           | Zcase _ -> assert false
           | Zfix _ -> assert false in
-        let rec find_arg n c = match Ctx.kind_of c with
+        let back l = List.fold_left (fun c f -> f c) Ctx.nil l in
+        let rec find_arg n l c = match Ctx.kind_of c with
           | Znil -> return subs hd ctx
           | Zapp (_,args,c) ->
               let nargs = Array.length args in
-              if n >= nargs then find_arg (n - nargs) c
+              if n >= nargs then find_arg (n - nargs) (Ctx.app args :: l) c
               else
                 let afterctx =
                   let after = nargs - n - 1 in
@@ -980,11 +981,15 @@ let whd opt env evars c =
                 aux s t (Ctx.append c
                   (Ctx.fix (Clos.mk ~subs ~ctx:(fix_params rarg ctx) hd)
                   afterctx))
-          | Zshift (_,_,c) -> find_arg n c
-          | Zupdate (_,_,_,c) -> find_arg n c (* TODO: fire update *)
+          | Zshift (_,s,c) -> find_arg n (Ctx.shift s :: l) c
+          | Zupdate (_,a,i,c) ->
+              (* If we do higher order programming passing around "plus", it is
+               * unfolded to a Fix that we could assign *)
+              update a i (Clos.mk ~ctx:(back l) hd);
+              find_arg n l c
           | Zcase _ -> assert false
           | Zfix _ -> assert false in
-        find_arg rarg ctx
+        find_arg rarg [] ctx
     | HCoFix _  when opt.iota = false -> stop_at subs hd ctx
     | HCoFix cf  ->
         (* In the next case there are many implementations of find_iota, they
