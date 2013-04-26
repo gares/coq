@@ -17,22 +17,10 @@ val intern_state : string -> unit
 val extern_state : string -> unit
 
 type state
-val freeze : unit -> state
+val freeze : marshallable:bool -> state
 val unfreeze : state -> unit
 
 (** {6 Rollback } *)
-
-(** [with_heavy_rollback f h x] applies [f] to [x]. If this application
-    ends on an exception, the wrapper [h] is applied to it, then
-    the state of the whole system is restored as it was before applying [f],
-    and finally the exception produced by [h] is raised. *)
-
-val with_heavy_rollback : ('a -> 'b) -> (exn -> exn) -> 'a -> 'b
-
-(** [without_rollback] is just like [with_heavy_rollback], except that
-    no state is restored in case of exception. *)
-
-val without_rollback : ('a -> 'b) -> (exn -> exn) -> 'a -> 'b
 
 (** [with_state_protection f x] applies [f] to [x] and restores the
   state of the whole system as it was before applying [f] *)

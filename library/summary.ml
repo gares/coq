@@ -11,7 +11,7 @@ open Errors
 open Util
 
 type 'a summary_declaration = {
-  freeze_function : unit -> 'a;
+  freeze_function : bool -> 'a;
   unfreeze_function : 'a -> unit;
   init_function : unit -> unit }
 
@@ -23,7 +23,7 @@ let internal_declare_summary sumname sdecl =
     anomaly ~label:"Summary.declare_summary"
       (str "Cannot declare a summary twice: " ++ str sumname);
   let (infun,outfun) = Dyn.create sumname in
-  let dyn_freeze () = infun (sdecl.freeze_function())
+  let dyn_freeze b = infun (sdecl.freeze_function b)
   and dyn_unfreeze sum = sdecl.unfreeze_function (outfun sum)
   and dyn_init = sdecl.init_function in
   let ddecl = {
@@ -38,10 +38,18 @@ let declare_summary sumname decl =
 
 type frozen = Dyn.t String.Map.t
 
-let freeze_summaries () =
+let freeze_summaries ~marshallable =
   let m = ref String.Map.empty in
   Hashtbl.iter
-    (fun id decl -> m := String.Map.add id (decl.freeze_function()) !m)
+    (fun id decl -> 
+       (* to debug missing Lazy.force 
+       if marshallable then begin
+         prerr_endline ("begin marshalling " ^ id);
+         ignore(Marshal.to_string (decl.freeze_function marshallable) []);
+         prerr_endline ("end marshalling " ^ id);
+       end;
+        /debug *)
+       m := String.Map.add id (decl.freeze_function marshallable) !m)
     summaries;
   !m
 
@@ -60,12 +68,39 @@ let init_summaries () =
 
 let nop () = ()
 
+type data = (string * Dyn.t) list
+
+let mangle id = id ^ "-SUMMARY"
+
+let find_summary id =
+  try Some (Hashtbl.find summaries (mangle id))
+  with Not_found -> None
+
+let freeze_summary ?(complement=false) ids =
+  if not complement then
+    List.map_filter (fun id ->
+      Option.map (fun x ->
+         mangle id, x.freeze_function false) (find_summary id)) ids
+  else
+    let ids = List.map mangle ids in
+    let l = ref [] in 
+    Hashtbl.iter (fun id decl -> 
+      if List.mem id ids then ()
+      else l := (id, decl.freeze_function false) :: !l) summaries;
+    !l
+
+let unfreeze_summary data = 
+  List.iter (fun (id,data) -> 
+    (fun x -> x.unfreeze_function data) 
+      (Hashtbl.find summaries id)) data
+
 (** All-in-one reference declaration + registration *)
 
-let ref ~name x =
+let ref ?(freeze=fun _ r -> r) ~name x =
   let r = ref x in
   declare_summary name
-    { freeze_function = (fun () -> !r);
+    { freeze_function = (fun b -> freeze b !r);
       unfreeze_function = ((:=) r);
       init_function = (fun () -> r := x) };
   r
+
