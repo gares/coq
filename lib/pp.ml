@@ -359,7 +359,7 @@ let set_logger l = logger := l
 let feeder = ref ignore
 let feedback_id = ref (Interface.Edit 0)
 let set_id_for_feedback i = feedback_id := i
-let feedback what =
+let feedback ?state_id what =
   !feeder {
      Interface.content = what;
      Interface.id =

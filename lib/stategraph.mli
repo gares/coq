@@ -6,12 +6,18 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
+open Xml_datatype
+
 type state_id
 val initial_state_id : state_id
 val dummy_state_id : state_id
 val fresh_state_id : unit -> state_id
 val string_of_state_id : state_id -> string
 val state_id_of_int : int -> state_id
+val int_of_state_id : state_id -> int
+
+val of_state_id : state_id -> xml
+val to_state_id : xml -> state_id
 
 module StateidMap : Map.S with type key = state_id
 module StateidSet : Set.S with type elt = state_id

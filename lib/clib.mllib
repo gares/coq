@@ -16,9 +16,11 @@ CString
 CArray
 Util
 Loc
+Xml_datatype
 Stategraph
 Serialize
 Xml_utils
 Flags
 CUnix
 Envars
+Searchstack

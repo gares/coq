@@ -301,6 +301,9 @@ let reach_state ?cache f x id =
        let e = Errors.push e in
        let e = Cerrors.process_vernac_interp_error e in
        graph := Dag.reach id false !graph;
+       let loc = match Loc.get_loc e with Some l -> l | None -> Loc.ghost in
+       Pp.feedback ~state_id:id
+         (Interface.ErrorMsg (loc, Pp.string_of_ppcmds (print e)));
        ErrorReachingState (good_id, id, e) in
   StateCache.define_state ?cache f x id on_failure;
   graph := Dag.reach id true !graph
@@ -378,6 +381,7 @@ let reach_known_state (perform : state_id -> perform) ~cache id =
       | _ -> anomaly (str "malformed dag")
     in
     reach_state ~cache:cache_step step () id;
+    Pp.feedback ~state_id:id Interface.Processed;
     prerr_endline ("reached: "^ string_of_state_id id) in
 
   reach id

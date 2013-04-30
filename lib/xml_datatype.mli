@@ -6,13 +6,7 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
-class command_window : Coq.coqtop ->
-    mark_as_broken:(Stategraph.state_id list -> unit) ->
-    mark_as_processed:(Stategraph.state_id list -> unit) ->
-    cur_state:(unit -> Stategraph.state_id) ->
-  object
-    method new_command : ?command:string -> ?term:string -> unit -> unit
-    method frame : GBin.frame
-    method refresh_font : unit -> unit
-    method refresh_color : unit -> unit
-  end
+type xml =
+        | Element of (string * (string * string) list * xml list)
+        | PCData of string
+

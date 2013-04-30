@@ -6,14 +6,28 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
+open Xml_datatype
+
 type state_id = int
 let initial_state_id = 1
 let dummy_state_id = 0
-let fresh_state_id =
+let fresh_state_id, in_range =
   let cur = ref initial_state_id in
-  fun () -> incr cur; !cur
+  (fun () -> incr cur; !cur), (fun id -> id >= 0 && id <= !cur)
 let string_of_state_id = string_of_int
-let state_id_of_int x = x
+let state_id_of_int id = assert(in_range id); id
+let int_of_state_id id = id
+
+let to_state_id = function
+  | Element ("state_id",["val",i],[]) ->
+      let id = int_of_string i in
+(* If we use this module on both sides, we can't assert that
+   assert(in_range id); *)
+      id
+  | _ -> raise (Invalid_argument "to_state_id")
+
+let of_state_id i = Element ("state_id",["val",string_of_int i],[])
+
 module StateidOrderedType = struct type t = state_id let compare = compare end
 module StateidSet : Set.S with type elt = state_id =
   Set.Make(StateidOrderedType)

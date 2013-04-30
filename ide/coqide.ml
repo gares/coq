@@ -474,12 +474,10 @@ end
 
 (** Callbacks for the Navigation menu *)
 
-let update_status =
+let update_status sn =
   let display msg = pop_info (); push_info msg in
   let next = function
-  | Interface.Fail (l, str) ->
-    display "Oops, problem while fetching coq status.";
-    Coq.return ()
+  | Interface.Fail x -> sn.coqops#handle_failure x
   | Interface.Good status ->
     let path = match status.Interface.status_path with
       | [] | _ :: [] -> "" (* Drop the topmost level, usually "Top" *)
@@ -492,7 +490,7 @@ let update_status =
     display ("Ready" ^ path ^ name);
     Coq.return ()
   in
-  Coq.bind Coq.status next
+  Coq.bind (Coq.status false) next
 
 let find_next_occurrence ~backward =
   (** go to the next occurrence of the current word, forward or backward *)
@@ -510,7 +508,7 @@ let find_next_occurrence ~backward =
 let send_to_coq f =
   let sn = notebook#current_term in
   let info () = Minilib.log ("Coq busy, discarding query") in
-  let f = Coq.seq (f sn) update_status in
+  let f = Coq.seq (f sn) (update_status sn) in
   Coq.try_grab sn.coqtop f info
 
 module Nav = struct
@@ -526,6 +524,7 @@ module Nav = struct
   let interrupt _ =
     Minilib.log "User break received";
     Coq.break_coqtop notebook#current_term.coqtop
+  let join_document _ = send_to_coq (fun sn -> sn.coqops#join_document)
 end
 
 let tactic_wizard_callback l _ =
@@ -701,7 +700,9 @@ let about _ =
     "Bruno Barras";
     "Pierre Corbineau";
     "Julien Narboux";
-    "Hugo Herbelin" ]
+    "Hugo Herbelin";
+    "Enrico Tassi";
+    ]
   in
   dialog#set_name "CoqIDE";
   dialog#set_comments "The Coq Integrated Development Environment";
@@ -1039,6 +1040,9 @@ let build_ui () =
     item "Next" ~label:"_Next" ~stock:`GO_FORWARD ~callback:Nav.next_occ
       ~tooltip:"Next occurence"
       ~accel:(prefs.modifier_for_navigation^"greater");
+    item "Force" ~label:"_Force" ~stock:`EXECUTE ~callback:Nav.join_document
+      ~tooltip:"Force the processing of the whole document" 
+      ~accel:(current.modifier_for_navigation^"f"); 
   ];
 
   let tacitem s sc =

@@ -9,17 +9,14 @@
 (** * Applicative part of the interface of CoqIde calls to Coq *)
 
 open Interface
-
-type xml =
-        | Element of (string * (string * string) list * xml list)
-        | PCData of string
+open Xml_datatype
 
 type 'a call
 
 type unknown
 
 val interp      : interp_sty      -> interp_rty call
-val rewind      : rewind_sty      -> rewind_rty call
+val backto      : backto_sty      -> backto_rty call
 val goals       : goals_sty       -> goals_rty call
 val hints       : hints_sty       -> hints_rty call
 val status      : status_sty      -> status_rty call

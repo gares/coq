@@ -23,8 +23,8 @@ let eval_call call coqtop =
   Xml_printer.print coqtop.xml_printer xml_query;
   let rec loop () =
     let xml = Xml_parser.parse coqtop.xml_parser in
-    if Serialize.is_oob_message xml then
-      let message = Serialize.to_oob_message xml in
+    if Serialize.is_message xml then
+      let message = Serialize.to_message xml in
       let level = message.Interface.message_level in
       let content = message.Interface.message_content in
       let () = logger level content in

@@ -120,10 +120,14 @@ let interp (id,raw,verbosely,s) =
   let loc_ast = Vernac.parse_sentence (pa,None) in
   if not raw then coqide_cmd_checks loc_ast;
   Flags.make_silent (not verbosely);
-  Vernac.eval_expr ~preserving:raw loc_ast;
+  Vernac.eval_expr (*~preserving:raw*) loc_ast;
   Flags.make_silent true;
-  Pp.feedback Interface.Processed;
-  read_stdout ()
+  Stm.get_current_state (), read_stdout ()
+
+let backto id =
+  Vernac.eval_expr
+    (Loc.ghost, Vernacexpr.VernacBacktrack (Stategraph.int_of_state_id id,0,0));
+  ()
 
 (** Goal display *)
 
@@ -189,6 +193,7 @@ let process_goal sigma g =
   { Interface.goal_hyp = hyps; Interface.goal_ccl = ccl; Interface.goal_id = id; }
 
 let goals () =
+  Vernac.observe max_int;
   try
     let pfts = Proof_global.give_me_the_proof () in
     let (goals, zipper, sigma) = Proof.proof pfts in
@@ -204,6 +209,7 @@ let goals () =
 
 let evars () =
   try
+  Vernac.observe max_int;
     let pfts = Proof_global.give_me_the_proof () in
     let { Evd.it = all_goals ; sigma = sigma } = Proof.V82.subgoals pfts in
     let exl = Evarutil.non_instantiated sigma in
@@ -226,15 +232,18 @@ let hints () =
       Some (hint_hyps, hint_goal)
   with Proof_global.NoCurrentProof -> None
 
+
 (** Other API calls *)
 
 let inloadpath dir =
   Loadpath.is_in_load_paths (CUnix.physical_path_of_string dir)
 
-let status () =
+let status force =
   (** We remove the initial part of the current [DirPath.t]
       (usually Top in an interactive session, cf "coqtop -top"),
       and display the other parts (opened sections and modules) *)
+  Vernac.observe max_int;
+  if force then Stm.join ();
   let path =
     let l = Names.DirPath.repr (Lib.cwd ()) in
     List.rev_map Names.Id.to_string l
@@ -270,12 +279,26 @@ let set_options options =
   in
   List.iter iter options
 
+let mkcases s = Vernacentries.make_cases s
+
 let about () = {
   Interface.coqtop_version = Coq_config.version;
   Interface.protocol_version = Serialize.protocol_version;
   Interface.release_date = Coq_config.date;
   Interface.compile_date = Coq_config.compile_date;
 }
+
+let handle_exn e =
+  let dummy = Stategraph.dummy_state_id in
+  let loc_of e = match Loc.get_loc e with
+    | Some loc when not (Loc.is_ghost loc) -> Some (Loc.unloc loc)
+    | _ -> None in
+  match e with
+  | Errors.Drop -> dummy, None, "Drop is not allowed by coqide!"
+  | Errors.Quit -> dummy, None, "Quit is not allowed by coqide!"
+  | Stategraph.ErrorReachingState (Some good_id, _, exn) as e->
+      good_id, loc_of exn, read_stdout ()^"\n"^string_of_ppcmds (Errors.print e)
+  | e -> dummy, loc_of e, read_stdout ()^"\n"^string_of_ppcmds (Errors.print e)
 
 (** When receiving the Quit call, we don't directly do an [exit 0],
     but rather set this reference, in order to send a final answer
@@ -285,29 +308,19 @@ let quit = ref false
 
 (** Grouping all call handlers together + error handling *)
 
-let eval_call c =
-  let handle_exn e =
-    catch_break := false;
-    match e with
-      | Errors.Drop -> None, "Drop is not allowed by coqide!"
-      | Errors.Quit -> None, "Quit is not allowed by coqide!"
-      | e ->
-        let loc = match Loc.get_loc e with
-          | Some loc when not (Loc.is_ghost loc) -> Some (Loc.unloc loc)
-          | _ -> None
-        in
-        loc, (read_stdout ())^"\n"^(string_of_ppcmds (Errors.print e))
-  in
+let eval_call xml_oc log c =
   let interruptible f x =
     catch_break := true;
     Util.check_for_interrupt ();
     let r = f x in
     catch_break := false;
+    let out = read_stdout () in
+    if out <> "" then log (Pp.str out);
     r
   in
   let handler = {
     Interface.interp = interruptible interp;
-    Interface.rewind = interruptible Backtrack.back;
+    Interface.backto = interruptible backto;
     Interface.goals = interruptible goals;
     Interface.evars = interruptible evars;
     Interface.hints = interruptible hints;
@@ -321,28 +334,24 @@ let eval_call c =
     Interface.about = interruptible about;
     Interface.handle_exn = handle_exn; }
   in
-  (* If the messages of last command are still there, we remove them *)
-  ignore (read_stdout ());
   Serialize.abstract_eval_call handler c
 
 (** Message dispatching. *)
 
-let slave_logger level message =
+let slave_logger xml_oc level message =
   (* convert the message into XML *)
   let msg = Pp.string_of_ppcmds (hov 0 message) in
   let message = {
     Interface.message_level = level;
     Interface.message_content = msg;
   } in
+  let () = pr_debug (Printf.sprintf "-> %S" msg) in
   let xml = Serialize.of_message message in
-  (* Send it to stdout *)
-  Xml_utils.print_xml !orig_stdout xml;
-  flush !orig_stdout
+  Xml_printer.print xml_oc xml
 
-let slave_feeder msg =
+let slave_feeder xml_oc msg =
   let xml = Serialize.of_feedback msg in
-  Xml_utils.print_xml !orig_stdout xml;
-  flush !orig_stdout
+  Xml_printer.print xml_oc xml
 
 (** The main loop *)
 
@@ -353,21 +362,23 @@ let slave_feeder msg =
 let loop () =
   init_signal_handler ();
   catch_break := false;
-  Pp.set_logger slave_logger;
-  Pp.set_feeder slave_feeder;
+  let xml_oc = Xml_printer.make (Xml_printer.TChannel !orig_stdout) in
+  let xml_ic = Xml_parser.make (Xml_parser.SChannel stdin) in
+  let () = Xml_parser.check_eof xml_ic false in
+  Pp.set_logger (slave_logger xml_oc);
+  Pp.set_feeder (slave_feeder xml_oc);
   (* We'll handle goal fetching and display in our own way *)
   Vernacentries.enable_goal_printing := false;
   Vernacentries.qed_display_script := false;
   Flags.make_term_color false;
   while not !quit do
     try
-      let p = Xml_parser.make (Xml_parser.SChannel stdin) in
-      let xml_query = Xml_parser.parse p in
+      let xml_query = Xml_parser.parse xml_ic in
       let q = Serialize.to_call xml_query in
       let () = pr_debug_call q in
-      let r = eval_call q in
+      let r = eval_call xml_oc (slave_logger xml_oc Interface.Notice) q in
       let () = pr_debug_answer q r in
-      Xml_utils.print_xml !orig_stdout (Serialize.of_answer q r);
+      Xml_printer.print xml_oc (Serialize.of_answer q r);
       flush !orig_stdout
     with
       | Xml_parser.Error (Xml_parser.Empty, _) ->

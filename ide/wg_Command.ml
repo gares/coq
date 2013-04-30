@@ -8,7 +8,9 @@
 
 open Preferences
 
-class command_window coqtop =
+class command_window coqtop
+  ~mark_as_broken ~mark_as_processed ~cur_state
+=
 (*  let window = GWindow.window
 		 ~allow_grow:true ~allow_shrink:true
 		 ~width:500 ~height:250
@@ -114,11 +116,40 @@ object(self)
       let log level message = result#buffer#insert (message^"\n") in
       let process =
 	Coq.bind (Coq.interp ~logger:log ~raw:true 0 phrase) (function
-          | Interface.Fail (l,str) ->
+          | Interface.Fail (_,l,str) ->
             result#buffer#insert ("Error while interpreting "^phrase^":\n"^str);
 	    Coq.return ()
-          | Interface.Good res ->
+          | Interface.Good (_,res) ->
             result#buffer#insert ("Result for command " ^ phrase ^ ":\n" ^ res);
+            (*
+(*         let old = cur_state () in *)
+	Coq.bind (Coq.interp ~logger:log ~raw:true phrase) (function
+        | Interface.Fail (good_states, bad_states, (id, _), str) ->
+            result#buffer#insert ("Error while interpreting "^phrase^":\n"^str);
+	    Coq.return ()
+(*
+            mark_as_processed good_states;
+            mark_as_broken bad_states;
+            ignore(Coq.backto handle old);
+            insert Interface.Error
+              ("Error while interpreting "^phrase^":\n"^str)
+*)
+        | Interface.Good (good_states, _) ->
+(*
+            mark_as_processed good_states;
+            match Coq.status handle insert false with
+            | Interface.Fail (good_states, bad_states, (id,_), str) ->
+                mark_as_processed good_states;
+                mark_as_broken bad_states;
+                ignore(Coq.backto handle old);
+                insert Interface.Error
+                   ("Error while interpreting "^phrase^":\n"^str)
+            | Interface.Good (good_states, _) ->
+                mark_as_processed good_states;
+                ignore(Coq.backto handle old)
+*)
+            result#buffer#insert ("Result for command " ^ phrase ^ ":\n");
+*)
 	    Coq.return ())
       in
       result#buffer#set_text "";
