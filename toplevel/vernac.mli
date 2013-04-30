@@ -21,12 +21,7 @@ exception End_of_input
 
 val just_parsing : bool ref
 
-(** [eval_expr] executes one vernacular command. By default the command is
-   considered as non-state-preserving, in which case we add it to the
-   Backtrack stack (triggering a save of a frozen state and the generation
-   of a new state label). An example of state-preserving command is one coming
-   from the query panel of Coqide. *)
-val eval_expr : ?preserving:bool -> Loc.t * Vernacexpr.vernac_expr -> unit
+val eval_expr : Loc.t * Vernacexpr.vernac_expr -> unit
 
 (** Set XML hooks *)
 val set_xml_start_library : (unit -> unit) -> unit
@@ -42,7 +37,6 @@ val load_vernac : bool -> string -> unit
 
 val compile : bool -> string -> unit
 
-
 val is_navigation_vernac : Vernacexpr.vernac_expr -> bool
 
 (** Should we display timings for each command ? *)
@@ -53,3 +47,4 @@ val time : bool ref
 type location_files = { outer : string; inner : string }
 
 val get_exn_files : exn -> location_files option
+val observe : int -> unit

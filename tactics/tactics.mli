@@ -390,3 +390,5 @@ val register_general_multi_rewrite :
 
 val register_subst_one :
   (bool -> Id.t -> Id.t * constr * bool -> tactic) -> unit
+
+val emit_side_effects : Declareops.side_effects -> tactic

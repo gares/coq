@@ -16,6 +16,7 @@ CString
 CArray
 Util
 Loc
+Stategraph
 Serialize
 Xml_utils
 Flags

@@ -256,10 +256,12 @@ type open_constr = evar_map * constr
   type ['a] *)
 type 'a sigma = {
   it : 'a ;
+  eff : Declareops.side_effects;
   sigma : evar_map}
 
-val sig_it  : 'a sigma -> 'a
+val sig_it  : 'a sigma -> 'a * Declareops.side_effects
 val sig_sig : 'a sigma -> evar_map
+val emit_side_effects : Declareops.side_effects -> 'a sigma -> 'a sigma
 
 (*********************************************************
    Failure explanation *)

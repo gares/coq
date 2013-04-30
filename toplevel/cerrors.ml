@@ -124,6 +124,8 @@ let rec process_vernac_interp_error exn = match exn with
       (match Himsg.extract_ltac_trace s loc with
         | None,loc -> Loc.add_loc e loc
         | Some msg, loc -> Loc.add_loc (EvaluatedError (msg,Some e)) loc)
+  | Stategraph.ErrorReachingState (ids,id,exc) ->
+      Stategraph.ErrorReachingState (ids,id,process_vernac_interp_error exc)
   | exc ->
       exc
 

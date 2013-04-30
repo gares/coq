@@ -23,8 +23,7 @@ let string_of_theorem_kind = function
   | Proposition -> "Proposition"
   | Corollary -> "Corollary"
 
-let string_of_definition_kind def =
-  let (locality, kind) = def in
+let string_of_definition_kind (locality, kind) =
   let error () = Errors.anomaly (Pp.str "Internal definition kind") in
   match kind with
   | Definition ->

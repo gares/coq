@@ -27,7 +27,7 @@ val show_node : unit -> unit
 val get_current_context_of_args : int option -> Evd.evar_map * Environ.env
 
 (** The main interpretation function of vernacular expressions *)
-val interp : Vernacexpr.vernac_expr -> unit
+val interp : ?proof:Proof_global.closed_proof -> Vernacexpr.vernac_expr -> unit
 
 (** Print subgoals when the verbose flag is on.
     Meant to be used inside vernac commands from plugins. *)
@@ -53,3 +53,6 @@ val qed_display_script : bool ref
     a known inductive type. *)
 
 val make_cases : string -> string list list
+
+val vernac_end_proof :
+  ?proof:Proof_global.closed_proof -> Vernacexpr.proof_end -> unit

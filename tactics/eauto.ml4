@@ -177,13 +177,13 @@ module SearchProblem = struct
 
   type state = search_state
 
-  let success s = List.is_empty (sig_it s.tacres)
+  let success s = List.is_empty (fst (sig_it s.tacres))
 
   let pr_ev evs ev = Printer.pr_constr_env (Evd.evar_env ev) (Evarutil.nf_evar evs ev.Evd.evar_concl)
 
   let pr_goals gls =
     let evars = Evarutil.nf_evar_map (Refiner.project gls) in
-      prlist (pr_ev evars) (sig_it gls)
+      prlist (pr_ev evars) (fst (sig_it gls))
 
   let filter_tactics glls l =
 (*     let _ = Proof_trees.db_pr_goal (List.hd (sig_it glls)) in *)
@@ -205,7 +205,7 @@ module SearchProblem = struct
      number of remaining goals. *)
   let compare s s' =
     let d = s'.depth - s.depth in
-    let nbgoals s = List.length (sig_it s.tacres) in
+    let nbgoals s = List.length (fst (sig_it s.tacres)) in
     if not (Int.equal d 0) then d else nbgoals s - nbgoals s'
 
   let branching s =
@@ -214,7 +214,7 @@ module SearchProblem = struct
     else
       let ps = if s.prev == Unknown then Unknown else State s in
       let lg = s.tacres in
-      let nbgl = List.length (sig_it lg) in
+      let nbgl = List.length (fst (sig_it lg)) in
       assert (nbgl > 0);
       let g = find_first_goal lg in
       let assumption_tacs =
@@ -249,7 +249,7 @@ module SearchProblem = struct
 	in
 	List.map
 	  (fun (lgls as res, pp) ->
-	     let nbgl' = List.length (sig_it lgls) in
+	     let nbgl' = List.length (fst (sig_it lgls)) in
 	     if nbgl' < nbgl then
 	       { depth = s.depth; tacres = res; last_tactic = pp; prev = ps;
 		 dblist = s.dblist; localdb = List.tl s.localdb }

@@ -8,6 +8,8 @@
 
 open Loc
 open Pp
+open Util
+open Stategraph
 open Names
 open Tacexpr
 open Misctypes
@@ -383,7 +385,7 @@ type vernac_expr =
   | VernacRestart
   | VernacUndo of int
   | VernacUndoTo of int
-  | VernacBacktrack of int*int*int
+  | VernacBacktrack of int * int * int
   | VernacFocus of int option
   | VernacUnfocus
   | VernacUnfocused
@@ -405,3 +407,23 @@ type vernac_expr =
   | VernacLocal of bool * vernac_expr
 
 and located_vernac_expr = Loc.t * vernac_expr
+
+(* Locating errors raised just after the dot is parsed but before the
+   interpretation phase *)
+
+
+(* These types are designed for lazy processing, but not lazy parsing, a file *)
+type vernac_type =
+  | VtUnknown      (* for retrocompatibility, ideally nothing should be there *)
+  | VtNow          (* commands that may alter the parsing of following lines,
+                      like defining a notation *)
+  | VtStartProof of string (* commands that jump in proof mode *)
+  | VtSideff       (* commands with global sideffects on the prover state, like
+                      adding a lemma to a db, setting options, etc that do
+                      not change the way following lines are parsed *)
+  | VtQed          (* commands that end proof mode *)
+  | VtProofStep    (* commands that stay in proof mode, like a tactic or
+                      Check. Also Print, Eval etc should be there *)
+  | VtBack of state_id  (* Undo action, to the given state *)
+  | VtAlias of state_id (* Undo action saved on script, to the given state *)
+

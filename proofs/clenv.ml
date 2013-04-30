@@ -272,7 +272,7 @@ let clenv_unify_meta_types ?(flags=default_unify_flags) clenv =
   { clenv with evd = w_unify_meta_types ~flags:flags clenv.env clenv.evd }
 
 let clenv_unique_resolver ?(flags=default_unify_flags) clenv gl =
-  let concl = Goal.V82.concl clenv.evd (sig_it gl) in
+  let concl = Goal.V82.concl clenv.evd (fst (sig_it gl)) in
   if isMeta (fst (whd_nored_stack clenv.evd clenv.templtyp.rebus)) then
     clenv_unify CUMUL ~flags (clenv_type clenv) concl
       (clenv_unify_meta_types ~flags clenv)
@@ -330,7 +330,7 @@ let connect_clenv gls clenv =
   let evd = evars_reset_evd ~with_conv_pbs:true gls.sigma clenv.evd in
   { clenv with
     evd = evd ;
-    env = Goal.V82.env evd (sig_it gls) }
+    env = Goal.V82.env evd (fst (sig_it gls)) }
 
 (* [clenv_fchain mv clenv clenv']
  *

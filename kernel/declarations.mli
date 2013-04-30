@@ -38,7 +38,7 @@ type inline = int option
 type constant_def =
   | Undef of inline
   | Def of Lazyconstr.constr_substituted
-  | OpaqueDef of Lazyconstr.lazy_constr
+  | OpaqueDef of Lazyconstr.lazy_constr Future.computation
 
 type native_name =
   | Linked of string
@@ -46,15 +46,19 @@ type native_name =
   | LinkedInteractive of string
   | NotLinked
 
+type constant_constraints = Univ.constraints Future.computation
+
 type constant_body = {
     const_hyps : Context.section_context; (** New: younger hyp at top *)
     const_body : constant_def;
     const_type : constant_type;
     const_body_code : Cemitcodes.to_patch_substituted;
-    const_constraints : Univ.constraints;
+    const_constraints : constant_constraints;
     const_native_name : native_name ref;
     const_inline_code : bool }
 
+type side_effect = NewConstant of constant * constant_body
+    
 (** {6 Representation of mutual inductive types in the kernel } *)
 
 type recarg =

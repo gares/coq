@@ -990,7 +990,7 @@ let mk_open_constr_value ist gl c =
 let mk_hyp_value ist gl c = VConstr ([],mkVar (interp_hyp ist gl c))
 let mk_int_or_var_value ist c = VInteger (interp_int_or_var ist c)
 
-let pack_sigma (sigma,c) = {it=c;sigma=sigma}
+let pack_sigma eff (sigma,c) = {it=c;sigma=sigma;eff=eff}
 
 let extend_gl_hyps { it=gl ; sigma=sigma } sign =
   Goal.V82.new_goal_with sigma gl sign
@@ -1229,8 +1229,8 @@ and interp_letin ist gl llc u =
 
 (* Interprets the Match Context expressions *)
 and interp_match_goal ist goal lz lr lmr =
-  let (gl,sigma) = Goal.V82.nf_evar (project goal) (sig_it goal) in
-  let goal = { it = gl ; sigma = sigma } in
+  let (gl,sigma) = Goal.V82.nf_evar (project goal) (fst (sig_it goal)) in
+  let goal = { it = gl ; sigma = sigma; eff = snd (sig_it goal) } in
   let hyps = pf_hyps goal in
   let hyps = if lr then List.rev hyps else hyps in
   let concl = pf_concl goal in
@@ -1376,11 +1376,13 @@ and interp_genarg ist gl x =
            (snd (out_gen (globwit_open_constr_gen casted) x)))
     | ConstrWithBindingsArgType ->
       in_gen wit_constr_with_bindings
-        (pack_sigma (interp_constr_with_bindings ist (pf_env gl) (project gl)
-		       (out_gen globwit_constr_with_bindings x)))
+        (pack_sigma (snd (sig_it gl))
+          (interp_constr_with_bindings ist (pf_env gl) (project gl)
+	    (out_gen globwit_constr_with_bindings x)))
     | BindingsArgType ->
       in_gen wit_bindings
-        (pack_sigma (interp_bindings ist (pf_env gl) (project gl) (out_gen globwit_bindings x)))
+        (pack_sigma (snd (sig_it gl))
+          (interp_bindings ist (pf_env gl) (project gl) (out_gen globwit_bindings x)))
     | List0ArgType ConstrArgType ->
         let (sigma,v) = interp_genarg_constr_list0 ist gl x in
 	evdref := sigma;

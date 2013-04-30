@@ -155,6 +155,9 @@ val mark_end_of_command : unit -> unit
 (** Returns the current label number *)
 val current_command_label : unit -> int
 
+(** The first label number *)
+val first_command_label : int
+
 (** [reset_label n] resets [lib_stk] to the label n registered by
    [mark_end_of_command()]. It forgets anything registered after
    this label. The label should be strictly in the past. *)

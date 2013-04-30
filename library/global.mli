@@ -37,7 +37,7 @@ val env_is_empty : unit -> bool
 
 (** {6 Extending env with variables and local definitions } *)
 val push_named_assum : (Id.t * types) -> Univ.constraints
-val push_named_def   : (Id.t * constr * types option) -> Univ.constraints
+val push_named_def   : (Id.t * definition_entry) -> Univ.constraints
 
 (** {6 ... } *)
 (** Adding constants, inductives, modules and module types.  All these
@@ -101,6 +101,8 @@ val import : compiled_library -> Digest.t ->
 
 val type_of_global : Globnames.global_reference -> types
 val env_of_context : Environ.named_context_val -> Environ.env
+
+val join_safe_environment : unit -> unit
 
 (** spiwack: register/unregister function for retroknowledge *)
 val register : Retroknowledge.field -> constr -> constr -> unit

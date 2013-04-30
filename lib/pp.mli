@@ -119,7 +119,7 @@ val set_logger : logger -> unit
 
 val feedback : Interface.feedback_content -> unit
 
-val set_id_for_feedback : Interface.edit_id -> unit
+val set_id_for_feedback : Interface.edit_or_state_id -> unit
 val set_feeder : (Interface.feedback -> unit) -> unit
 
 (** {6 Utilities} *)

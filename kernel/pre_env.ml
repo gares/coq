@@ -127,7 +127,8 @@ let lookup_constant_key kn env =
   Cmap_env.find kn env.env_globals.env_constants
 
 let lookup_constant kn env =
-  fst (Cmap_env.find kn env.env_globals.env_constants)
+  try fst (Cmap_env.find kn env.env_globals.env_constants)
+  with Not_found -> prerr_endline ("not found: "^string_of_con kn); raise Not_found
 
 (* Mutual Inductives *)
 let lookup_mind kn env =
