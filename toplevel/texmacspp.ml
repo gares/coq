@@ -42,10 +42,8 @@ let xmlApply loc ?(attr=[]) xml =
     "begin", start;
     "end", stop ], xml)
 
-let typ_id = ref 0
-let fresh_tid () =
-  typ_id := !typ_id + 1;
-  string_of_int !typ_id
+let xmlTyped xml =
+  Element("typed", [], xml)
 
 let string_of_name n =
   match n with
@@ -58,24 +56,42 @@ let string_of_glob_sort s =
   | GSet -> "Set"
   | GType _ -> "Type"
 
-let rec pp_expr ?(attr=[])  e =
+let string_of_cast_sort c =
+  match c with
+  | CastConv _ -> "CastConv"
+  | CastVM _ -> "CastVM"
+  | _ -> assert false
+
+let op_of_cast_sort c =
+  match c with
+  | CastConv _ -> ":"
+  | CastVM _ -> "<:"
+  | _ -> assert false
+
+let rec pp_expr ?(attr=[]) e =
+  let unbind_expr bindlist =
+    let tlist =
+      List.flatten
+        (List.map
+          (fun (locl, _, e) ->
+            let names =
+              (List.map
+                (fun (loc, name) ->
+                  xmlCst (string_of_name name) loc) locl) in
+              match e with
+              | CHole (_,_) -> names
+              | _ -> names @ [pp_expr e])
+          bindlist) in
+    match tlist with
+    | [e] -> e
+    | l -> xmlTyped l in
   match e with
   | CRef r ->
       xmlCst ~attr
         (Libnames.string_of_reference r) (Libnames.loc_of_reference r)
   | CProdN (loc, lb, e) ->
       xmlApply loc
-        (xmlOperator "forall" loc ::
-         List.flatten
-           (List.map (fun (lid,k,ty) ->
-             let tid = fresh_tid () in
-             List.map
-               (fun (loc, name) ->
-                 xmlCst (string_of_name name) ~attr:["type",tid] loc)
-             lid
-             @ [pp_expr ~attr:["tydef",tid] ty])
-           lb)
-         @ [pp_expr e])
+        (xmlOperator "forall" loc :: [unbind_expr lb] @ [pp_expr e])
   | CApp (loc, (_, hd), args) ->
        xmlApply ~attr loc (pp_expr hd :: List.map (fun (e,_) -> pp_expr e) args)
   | CAppExpl (loc, (_, r), args) ->
@@ -89,7 +105,11 @@ let rec pp_expr ?(attr=[])  e =
   | CDelimiters (_, _, _) -> assert false
   | CPrim (_, _) -> assert false
   | CGeneralization (_, _, _, _) -> assert false
-  | CCast (_, _, _) -> assert false
+  | CCast (loc, e, tc) ->
+      (match tc with
+       | CastConv t | CastVM t -> xmlApply loc (xmlOperator (string_of_cast_sort tc) loc ~attr:["kind", (op_of_cast_sort tc)] :: [pp_expr e; pp_expr t])
+       | CastCoerce   -> pp_expr e
+       | CastNative _ -> assert false)
   | CEvar (_, _, _) -> assert false
   | CPatVar (_, _) -> assert false
   | CHole (loc, _) -> xmlCst ~attr  "_" loc
@@ -97,8 +117,11 @@ let rec pp_expr ?(attr=[])  e =
   | CLetTuple (_, _, _, _, _) -> assert false
   | CCases (_, _, _, _, _) -> assert false
   | CRecord (_, _, _) -> assert false
-  | CLetIn (_, _, _, _) -> assert false
-  | CLambdaN (_, _, _) -> assert false
+  | CLetIn (loc, (varloc, var), value, body) ->
+      xmlApply loc (xmlOperator "let" loc :: [xmlCst (string_of_name var) varloc; pp_expr value; pp_expr body])
+  | CLambdaN (loc, lb, e) ->
+      xmlApply loc
+        (xmlOperator "lambda" loc :: [unbind_expr lb] @ [pp_expr e])
   | CCoFix (_, _, _) -> assert false
   | CFix (_, _, _) -> assert false
 
