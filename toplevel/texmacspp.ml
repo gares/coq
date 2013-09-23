@@ -63,19 +63,19 @@ let string_of_cast_sort c =
   | _ -> assert false
 
 
-let rec unbind_expr bindlist =
+let rec pp_bindlist bl =
   let tlist =
     List.flatten
         (List.map
-          (fun (locl, _, e) ->
+          (fun (loc_names, _, e) ->
             let names =
               (List.map
                 (fun (loc, name) ->
-                  xmlCst (string_of_name name) loc) locl) in
+                  xmlCst (string_of_name name) loc) loc_names) in
             match e with
               | CHole (_,_) -> names
               | _ -> names @ [pp_expr e])
-          bindlist) in
+          bl) in
   match tlist with
     | [e] -> e
     | l -> xmlTyped l
@@ -85,9 +85,9 @@ and pp_expr ?(attr=[]) e =
   | CRef r ->
       xmlCst ~attr
         (Libnames.string_of_reference r) (Libnames.loc_of_reference r)
-  | CProdN (loc, lb, e) ->
+  | CProdN (loc, bl, e) ->
       xmlApply loc
-        (xmlOperator "forall" loc :: [unbind_expr lb] @ [pp_expr e])
+        (xmlOperator "forall" loc :: [pp_bindlist bl] @ [pp_expr e])
   | CApp (loc, (_, hd), args) ->
        xmlApply ~attr loc (pp_expr hd :: List.map (fun (e,_) -> pp_expr e) args)
   | CAppExpl (loc, (_, r), args) ->
@@ -124,7 +124,7 @@ and pp_expr ?(attr=[]) e =
          [xmlCst (string_of_name var) varloc; pp_expr value; pp_expr body])
   | CLambdaN (loc, bl, e) ->
       xmlApply loc
-        (xmlOperator "lambda" loc :: [unbind_expr lb] @ [pp_expr e])
+        (xmlOperator "lambda" loc :: [pp_bindlist bl] @ [pp_expr e])
   | CCoFix (_, _, _) -> assert false
   | CFix (_, _, _) -> assert false
 
