@@ -107,7 +107,7 @@ let rec pp_expr ?(attr=[]) e =
   | CGeneralization (_, _, _, _) -> assert false
   | CCast (loc, e, tc) ->
       (match tc with
-       | CastConv t | CastVM t -> xmlApply loc (xmlOperator (string_of_cast_sort tc) loc ~attr:["kind", (op_of_cast_sort tc)] :: [pp_expr e; pp_expr t])
+       | CastConv t | CastVM t -> xmlApply loc (xmlOperator (op_of_cast_sort tc) loc ~attr:["kind", (string_of_cast_sort tc)] :: [pp_expr e; pp_expr t])
        | CastCoerce   -> pp_expr e
        | CastNative _ -> assert false)
   | CEvar (_, _, _) -> assert false
