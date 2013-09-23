@@ -62,23 +62,25 @@ let string_of_cast_sort c =
   | CastVM _ -> "CastVM"
   | _ -> assert false
 
-let rec pp_expr ?(attr=[]) e =
-  let unbind_expr bindlist =
-    let tlist =
-      List.flatten
+
+let rec unbind_expr bindlist =
+  let tlist =
+    List.flatten
         (List.map
           (fun (locl, _, e) ->
             let names =
               (List.map
                 (fun (loc, name) ->
                   xmlCst (string_of_name name) loc) locl) in
-              match e with
+            match e with
               | CHole (_,_) -> names
               | _ -> names @ [pp_expr e])
           bindlist) in
-    match tlist with
+  match tlist with
     | [e] -> e
-    | l -> xmlTyped l in
+    | l -> xmlTyped l
+
+and pp_expr ?(attr=[]) e =
   match e with
   | CRef r ->
       xmlCst ~attr
