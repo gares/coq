@@ -89,7 +89,9 @@ let rec pp_expr ?(attr=[]) e =
   | CApp (loc, (_, hd), args) ->
        xmlApply ~attr loc (pp_expr hd :: List.map (fun (e,_) -> pp_expr e) args)
   | CAppExpl (loc, (_, r), args) ->
-       xmlApply ~attr loc (xmlCst (Libnames.string_of_reference r) (Libnames.loc_of_reference r) :: List.map pp_expr args)
+       xmlApply ~attr loc
+         (xmlCst (Libnames.string_of_reference r)
+                 (Libnames.loc_of_reference r) :: List.map pp_expr args)
   | CNotation (loc, notation,  ([],_,_)) ->
        xmlOperator notation loc
   | CNotation (loc, notation,  (args,_,_)) ->
@@ -101,7 +103,10 @@ let rec pp_expr ?(attr=[]) e =
   | CGeneralization (_, _, _, _) -> assert false
   | CCast (loc, e, tc) ->
       (match tc with
-       | CastConv t | CastVM t -> xmlApply loc (xmlOperator ":" loc ~attr:["kind", (string_of_cast_sort tc)] :: [pp_expr e; pp_expr t])
+       | CastConv t | CastVM t ->
+           xmlApply loc
+             (xmlOperator ":" loc ~attr:["kind", (string_of_cast_sort tc)] ::
+              [pp_expr e; pp_expr t])
        | CastCoerce   -> pp_expr e
        | CastNative _ -> assert false)
   | CEvar (_, _, _) -> assert false
@@ -112,8 +117,10 @@ let rec pp_expr ?(attr=[]) e =
   | CCases (_, _, _, _, _) -> assert false
   | CRecord (_, _, _) -> assert false
   | CLetIn (loc, (varloc, var), value, body) ->
-      xmlApply loc (xmlOperator "let" loc :: [xmlCst (string_of_name var) varloc; pp_expr value; pp_expr body])
-  | CLambdaN (loc, lb, e) ->
+      xmlApply loc
+        (xmlOperator "let" loc ::
+         [xmlCst (string_of_name var) varloc; pp_expr value; pp_expr body])
+  | CLambdaN (loc, bl, e) ->
       xmlApply loc
         (xmlOperator "lambda" loc :: [unbind_expr lb] @ [pp_expr e])
   | CCoFix (_, _, _) -> assert false
