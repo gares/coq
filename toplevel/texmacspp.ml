@@ -62,12 +62,6 @@ let string_of_cast_sort c =
   | CastVM _ -> "CastVM"
   | _ -> assert false
 
-let op_of_cast_sort c =
-  match c with
-  | CastConv _ -> ":"
-  | CastVM _ -> "<:"
-  | _ -> assert false
-
 let rec pp_expr ?(attr=[]) e =
   let unbind_expr bindlist =
     let tlist =
@@ -107,7 +101,7 @@ let rec pp_expr ?(attr=[]) e =
   | CGeneralization (_, _, _, _) -> assert false
   | CCast (loc, e, tc) ->
       (match tc with
-       | CastConv t | CastVM t -> xmlApply loc (xmlOperator (op_of_cast_sort tc) loc ~attr:["kind", (string_of_cast_sort tc)] :: [pp_expr e; pp_expr t])
+       | CastConv t | CastVM t -> xmlApply loc (xmlOperator ":" loc ~attr:["kind", (string_of_cast_sort tc)] :: [pp_expr e; pp_expr t])
        | CastCoerce   -> pp_expr e
        | CastNative _ -> assert false)
   | CEvar (_, _, _) -> assert false
