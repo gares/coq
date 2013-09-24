@@ -9,6 +9,7 @@ open Vernacexpr
 open Constrexpr
 open Names
 open Misctypes
+open Bigint
 
 let unlock loc =
   let start, stop = Loc.unloc loc in
@@ -45,6 +46,12 @@ let xmlApply loc ?(attr=[]) xml =
     "begin", start;
     "end", stop ], xml)
 
+let xmlToken loc ?(attr=[]) xml =
+  let start, stop = unlock loc in
+  Element("token", attr @ [
+    "begin", start;
+    "end", stop ], xml)
+
 let xmlTyped xml =
   Element("typed", [], xml)
 
@@ -59,6 +66,9 @@ let xmlMatch xml =
 
 let xmlWith xml =
   Element("with", [], xml)
+
+let xmlComment xml =
+  Element("comment", [], xml)
 
 let string_of_name n =
   match n with
@@ -131,6 +141,12 @@ and pp_branch_expr_list bel =
         let ppe = [pp_expr e] in
         xmlCase (ppcepl @ ppe))
      bel)
+and pp_token loc tok =
+  let tokstr =
+    match tok with
+    | String s -> PCData s
+    | Numeral n -> PCData (to_string n) in
+  xmlToken loc [tokstr]
 and pp_expr ?(attr=[]) e =
   match e with
   | CRef r ->
@@ -152,7 +168,7 @@ and pp_expr ?(attr=[]) e =
   | CSort(loc, s) ->
        xmlOperator (string_of_glob_sort s) loc
   | CDelimiters (_, _, _) -> assert false
-  | CPrim (_, _) -> assert false
+  | CPrim (loc, tok) -> pp_token loc tok
   | CGeneralization (_, _, _, _) -> assert false
   | CCast (loc, e, tc) ->
       (match tc with
@@ -210,12 +226,29 @@ and pp_expr ?(attr=[]) e =
   | CDelimiters of Loc.t * string * constr_expr
 *)
 
-let tmpp v loc =
+let pp_comment (c) =
+  match c with
+  | CommentConstr e -> [pp_expr e]
+  | CommentString s -> [Element ("string", [], [PCData s])]
+  | CommentInt i -> [PCData (string_of_int i)]
+
+let rec tmpp v loc =
   match v with
   | VernacStartTheoremProof (tk, [ Some (_,id), ([], statement, None) ], b) ->
       let str_tk = Kindops.string_of_theorem_kind tk in
       let str_id = Id.to_string id in
       (xmlThm str_tk str_id loc [pp_expr statement])
+  | VernacComments (cl) -> xmlComment (List.flatten (List.map pp_comment cl))
+  | VernacStm s ->
+      (match s with
+       | JoinDocument -> assert false
+       | Finish -> assert false
+       | Observe _ -> assert false
+       | Command v -> tmpp v Loc.ghost (* note: loc might be optionnal*)
+       | PGLast _ -> assert false)
+
+
+  (***************** To be done ******************)
   (* Control *)
   | VernacList _ -> assert false
   | VernacLoad _ -> assert false
@@ -318,9 +351,6 @@ let tmpp v loc =
   | VernacLocate _ -> assert false
   | VernacRegister _ -> assert false
   | VernacNop -> assert false
-
-  (* Stm backdoor *)
-  | VernacStm _ -> assert false
 
   (* Proof management *)
   | VernacGoal _ -> assert false
