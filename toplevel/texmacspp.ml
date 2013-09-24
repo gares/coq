@@ -13,6 +13,20 @@ let unlock loc =
 let xmlNoop = (* almost noop  *)
   PCData ""
 
+let xmlBeginSection loc name =
+  let start, stop = unlock loc in
+  Element("beginsection", [
+    "name", name;
+    "begin", start;
+    "end", stop ], [])
+
+let xmlEndSegment loc name =
+  let start, stop = unlock loc in
+  Element("endsegment", [
+    "name", name;
+    "begin", start;
+    "end", stop ], [])
+
 let xmlThm typ name loc xml =
   let start, stop = unlock loc in
   Element("theorem", [
@@ -266,8 +280,8 @@ let rec tmpp v loc =
   | VernacCombinedScheme _ -> assert false
 
   (* Gallina extensions *)
-  | VernacBeginSection _ -> assert false
-  | VernacEndSegment _ -> assert false
+  | VernacBeginSection (_, id) -> xmlBeginSection loc (Id.to_string id)
+  | VernacEndSegment (_, id) -> xmlEndSegment loc (Id.to_string id)
   | VernacRequire _ -> assert false
   | VernacImport _ -> assert false
   | VernacCanonical _ -> assert false
