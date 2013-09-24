@@ -4,6 +4,7 @@ open Constrexpr
 open Names
 open Misctypes
 open Bigint
+open Decl_kinds
 
 let unlock loc =
   let start, stop = Loc.unloc loc in
@@ -15,6 +16,14 @@ let xmlNoop = (* almost noop  *)
 let xmlThm typ name loc xml =
   let start, stop = unlock loc in
   Element("theorem", [
+    "type", typ;
+    "name", name;
+    "begin", start;
+    "end", stop ], xml)
+
+let xmlDef typ name loc xml =
+  let start, stop = unlock loc in
+  Element("definition", [
     "type", typ;
     "name", name;
     "begin", start;
@@ -222,7 +231,23 @@ let rec tmpp v loc =
   | VernacNotation _ -> assert false
 
   (* Gallina *)
-  | VernacDefinition _ -> assert false
+  | VernacDefinition (ldk, (_,id), de) ->
+      let l, dk =
+        match ldk with
+        | Some l, dk -> (l, dk)
+        | None, dk -> (Discharge, dk) in  (* FIXME: optional locality
+        * I don't have any idea of what should be done. But it's needed for
+        * string_of_definition_kind. *)
+      let e =
+        match de with
+        | ProveBody (_, ce) -> ce 
+        | DefineBody (_, Some _, ce, None) -> ce
+        | DefineBody (_, None  , ce, None) -> ce
+        | DefineBody (_, Some _, ce, Some _) -> ce
+        | DefineBody (_, None  , ce, Some _) -> ce in
+      let str_dk = Kindops.string_of_definition_kind (l, dk) in
+      let str_id = Id.to_string id in
+      (xmlDef str_dk str_id loc [pp_expr e])
   | VernacStartTheoremProof (tk, [ Some (_,id), ([], statement, None) ], b) ->
       let str_tk = Kindops.string_of_theorem_kind tk in
       let str_id = Id.to_string id in
