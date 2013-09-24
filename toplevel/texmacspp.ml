@@ -70,8 +70,11 @@ let xmlMatch xml =
 let xmlWith xml =
   Element("with", [], xml)
 
-let xmlComment xml =
-  Element("comment", [], xml)
+let xmlComment loc xml =
+  let start, stop = unlock loc in
+  Element("comment", [
+    "begin", start;
+    "end", stop ], xml)
 
 let string_of_name n =
   match n with
@@ -335,7 +338,8 @@ let rec tmpp v loc =
   | VernacSearch _ -> assert false
   | VernacLocate _ -> assert false
   | VernacRegister _ -> assert false
-  | VernacComments (cl) -> xmlComment (List.flatten (List.map pp_comment cl))
+  | VernacComments (cl) ->
+      xmlComment loc (List.flatten (List.map pp_comment cl))
   | VernacNop -> assert false
 
   (* Stm backdoor *)
