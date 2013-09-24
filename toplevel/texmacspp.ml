@@ -288,12 +288,12 @@ let rec tmpp v loc =
 
   (* Solving *)
 
-  | VernacSolve _ -> assert false
+  | VernacSolve _ -> PCData "VernacSolve"
   | VernacSolveExistential _ -> assert false
 
   (* Auxiliary file and library management *)
   | VernacRequireFrom _ -> assert false
-  | VernacAddLoadPath _ -> xmlNoop
+  | VernacAddLoadPath _ -> PCData "VernacAddLoadPath"
   | VernacRemoveLoadPath _ -> assert false
   | VernacAddMLPath _ -> assert false
   | VernacDeclareMLModule _ -> assert false
@@ -307,7 +307,7 @@ let rec tmpp v loc =
   | VernacResetName _ -> assert false
   | VernacResetInitial -> assert false
   | VernacBack _ -> assert false
-  | VernacBackTo _ -> assert false
+  | VernacBackTo _ -> PCData "VernacBackTo"
 
   (* Commands *)
   | VernacDeclareTacticDefinition _ -> assert false
@@ -351,7 +351,7 @@ let rec tmpp v loc =
   (* Proof management *)
   | VernacGoal _ -> assert false
   | VernacAbort _ -> assert false
-  | VernacAbortAll -> assert false
+  | VernacAbortAll -> PCData "VernacAbortAll"
   | VernacRestart -> assert false
   | VernacUndo _ -> assert false
   | VernacUndoTo _ -> assert false
