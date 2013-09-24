@@ -90,6 +90,12 @@ let xmlComment loc xml =
     "begin", start;
     "end", stop ], xml)
 
+let xmlQed ?(attr=[]) loc =
+  let start, stop = unlock loc in
+  Element("qed", attr @ [
+    "begin", start;
+    "end", stop ], [])
+
 let string_of_name n =
   match n with
   | Anonymous -> "_"
@@ -270,7 +276,20 @@ let rec tmpp v loc =
       let str_tk = Kindops.string_of_theorem_kind tk in
       let str_id = Id.to_string id in
       (xmlThm str_tk str_id loc [pp_expr statement])
-  | VernacEndProof _ -> assert false
+  | VernacStartTheoremProof _ -> assert false
+  | VernacEndProof pe ->
+      begin
+        match pe with
+        | Admitted -> xmlQed loc
+        | Proved (_, Some ((_, id), Some tk)) ->
+            let nam = Id.to_string id in
+            let typ = Kindops.string_of_theorem_kind tk in
+            xmlQed ~attr:["name", nam; "type", typ] loc
+        | Proved (_, Some ((_, id), None)) ->
+            let nam = Id.to_string id in
+            xmlQed ~attr:["name", nam] loc
+        | Proved _ -> xmlQed loc
+      end
   | VernacExactProof _ -> assert false
   | VernacAssumption _ -> assert false
   | VernacInductive _ -> assert false
