@@ -174,13 +174,14 @@ and pp_expr ?(attr=[]) e =
   | CPrim (loc, tok) -> pp_token loc tok
   | CGeneralization (_, _, _, _) -> assert false
   | CCast (loc, e, tc) ->
-      (match tc with
-       | CastConv t | CastVM t ->
-           xmlApply loc
-             (xmlOperator ":" loc ~attr:["kind", (string_of_cast_sort tc)] ::
-              [pp_expr e; pp_expr t])
-       | CastCoerce   -> pp_expr e
-       | CastNative _ -> assert false)
+      begin match tc with
+      | CastConv t | CastVM t ->
+          xmlApply loc
+            (xmlOperator ":" loc ~attr:["kind", (string_of_cast_sort tc)] ::
+             [pp_expr e; pp_expr t])
+      | CastCoerce   -> pp_expr e
+      | CastNative _ -> assert false
+      end
   | CEvar (_, _, _) -> assert false
   | CPatVar (_, _) -> assert false
   | CHole (loc, _) -> xmlCst ~attr  "_" loc
@@ -339,12 +340,13 @@ let rec tmpp v loc =
 
   (* Stm backdoor *)
   | VernacStm s ->
-      (match s with
-       | JoinDocument -> assert false
-       | Finish -> assert false
-       | Observe _ -> assert false
-       | Command v -> tmpp v Loc.ghost (* note: loc might be optionnal*)
-       | PGLast _ -> assert false)
+      begin match s with
+      | JoinDocument -> assert false
+      | Finish -> assert false
+      | Observe _ -> assert false
+      | Command v -> tmpp v Loc.ghost (* note: loc might be optionnal*)
+      | PGLast _ -> assert false
+      end
 
   (* Proof management *)
   | VernacGoal _ -> assert false
