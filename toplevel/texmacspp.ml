@@ -213,169 +213,136 @@ let tmpp v loc =
       let str_tk = Kindops.string_of_theorem_kind tk in
       let str_id = Id.to_string id in
       (xmlThm str_tk str_id loc [pp_expr statement])
-  | _ -> assert false
-  (*
   (* Control *)
-  | VernacList of located_vernac_expr list
-  | VernacLoad of verbose_flag * string
-  | VernacTime of vernac_expr
-  | VernacTimeout of int * vernac_expr
-  | VernacFail of vernac_expr
+  | VernacList _ -> assert false
+  | VernacLoad _ -> assert false
+  | VernacTime _ -> assert false
+  | VernacTimeout _ -> assert false
+  | VernacFail _ -> assert false
 
   (* Syntax *)
-  | VernacTacticNotation of
-      int * grammar_tactic_prod_item_expr list * raw_tactic_expr
-  | VernacSyntaxExtension of
-      obsolete_locality * (lstring * syntax_modifier list)
-  | VernacOpenCloseScope of obsolete_locality * (bool * scope_name)
-  | VernacDelimiters of scope_name * string
-  | VernacBindScope of scope_name * reference or_by_notation list
-  | VernacInfix of obsolete_locality * (lstring * syntax_modifier list) *
-      constr_expr * scope_name option
-  | VernacNotation of
-      obsolete_locality * constr_expr * (lstring * syntax_modifier list) *
-      scope_name option
+  | VernacTacticNotation _ -> assert false
+  | VernacSyntaxExtension _ -> assert false
+  | VernacOpenCloseScope _ -> assert false
+  | VernacDelimiters _ -> assert false
+  | VernacBindScope _ -> assert false
+  | VernacInfix _ -> assert false
+  | VernacNotation _ -> assert false
 
   (* Gallina *)
-  | VernacDefinition of
-      (locality option * definition_object_kind) * lident * definition_expr
-  | VernacStartTheoremProof of theorem_kind *
-      (lident option * (local_binder list * constr_expr * (lident option * recursion_order_expr) option)) list *
-        bool
-  | VernacEndProof of proof_end
-  | VernacExactProof of constr_expr
-  | VernacAssumption of (locality option * assumption_object_kind) *
-      inline * simple_binder with_coercion list
-  | VernacInductive of inductive_flag * infer_flag * (inductive_expr * decl_notation list) list
-  | VernacFixpoint of
-      locality option * (fixpoint_expr * decl_notation list) list
-  | VernacCoFixpoint of
-      locality option * (cofixpoint_expr * decl_notation list) list
-  | VernacScheme of (lident option * scheme) list
-  | VernacCombinedScheme of lident * lident list
+  | VernacDefinition _ -> assert false
+  | VernacStartTheoremProof _ -> assert false
+  | VernacEndProof _ -> assert false
+  | VernacExactProof _ -> assert false
+  | VernacAssumption _ -> assert false
+  | VernacInductive _ -> assert false
+  | VernacFixpoint _ -> assert false
+  | VernacCoFixpoint _ -> assert false
+  | VernacScheme _ -> assert false
+  | VernacCombinedScheme _ -> assert false
 
   (* Gallina extensions *)
-  | VernacBeginSection of lident
-  | VernacEndSegment of lident
-  | VernacRequire of
-      export_flag option * lreference list
-  | VernacImport of export_flag * lreference list
-  | VernacCanonical of reference or_by_notation
-  | VernacCoercion of obsolete_locality * reference or_by_notation *
-      class_rawexpr * class_rawexpr
-  | VernacIdentityCoercion of obsolete_locality * lident *
-      class_rawexpr * class_rawexpr
+  | VernacBeginSection _ -> assert false
+  | VernacEndSegment _ -> assert false
+  | VernacRequire _ -> assert false
+  | VernacImport _ -> assert false
+  | VernacCanonical _ -> assert false
+  | VernacCoercion _ -> assert false
+  | VernacIdentityCoercion _ -> assert false
 
   (* Type classes *)
-  | VernacInstance of
-      bool * (* abstract instance *)
-      local_binder list * (* super *)
-	typeclass_constraint * (* instance name, class name, params *)
-	constr_expr option * (* props *)
-	int option (* Priority *)
+  | VernacInstance _ -> assert false
 
-  | VernacContext of local_binder list
+  | VernacContext _ -> assert false
 
-  | VernacDeclareInstances of reference list (* instance names *)
+  | VernacDeclareInstances _ -> assert false
 
-  | VernacDeclareClass of reference (* inductive or definition name *)
+  | VernacDeclareClass _ -> assert false
 
   (* Modules and Module Types *)
-  | VernacDeclareModule of bool option * lident *
-      module_binder list * module_ast_inl
-  | VernacDefineModule of bool option * lident * module_binder list *
-      module_ast_inl module_signature * module_ast_inl list
-  | VernacDeclareModuleType of lident *
-      module_binder list * module_ast_inl list * module_ast_inl list
-  | VernacInclude of module_ast_inl list
+  | VernacDeclareModule _ -> assert false
+  | VernacDefineModule _ -> assert false
+  | VernacDeclareModuleType _ -> assert false
+  | VernacInclude _ -> assert false
 
   (* Solving *)
 
-  | VernacSolve of int * raw_tactic_expr * bool
-  | VernacSolveExistential of int * constr_expr
+  | VernacSolve _ -> assert false
+  | VernacSolveExistential _ -> assert false
 
   (* Auxiliary file and library management *)
-  | VernacRequireFrom of export_flag option * string
-  | VernacAddLoadPath of rec_flag * string * DirPath.t option
-  | VernacRemoveLoadPath of string
-  | VernacAddMLPath of rec_flag * string
-  | VernacDeclareMLModule of string list
-  | VernacChdir of string option
+  | VernacRequireFrom _ -> assert false
+  | VernacAddLoadPath _ -> assert false
+  | VernacRemoveLoadPath _ -> assert false
+  | VernacAddMLPath _ -> assert false
+  | VernacDeclareMLModule _ -> assert false
+  | VernacChdir _ -> assert false
 
   (* State management *)
-  | VernacWriteState of string
-  | VernacRestoreState of string
+  | VernacWriteState _ -> assert false
+  | VernacRestoreState _ -> assert false
 
   (* Resetting *)
-  | VernacResetName of lident
-  | VernacResetInitial
-  | VernacBack of int
-  | VernacBackTo of int
+  | VernacResetName _ -> assert false
+  | VernacResetInitial -> assert false
+  | VernacBack _ -> assert false
+  | VernacBackTo _ -> assert false
 
   (* Commands *)
-  | VernacDeclareTacticDefinition of
-      (rec_flag * (reference * bool * raw_tactic_expr) list)
-  | VernacCreateHintDb of string * bool
-  | VernacRemoveHints of string list * reference list
-  | VernacHints of obsolete_locality * string list * hints_expr
-  | VernacSyntacticDefinition of Id.t located * (Id.t list * constr_expr) *
-      obsolete_locality * onlyparsing_flag
-  | VernacDeclareImplicits of reference or_by_notation *
-      (explicitation * bool * bool) list list
-  | VernacArguments of reference or_by_notation *
-      ((Name.t * bool * (Loc.t * string) option * bool * bool) list) list *
-      int * [ `SimplDontExposeCase | `SimplNeverUnfold | `Rename | `ExtraScopes
-            | `ClearImplicits | `ClearScopes | `DefaultImplicits ] list
-  | VernacArgumentsScope of reference or_by_notation *
-      scope_name option list
-  | VernacReserve of simple_binder list
-  | VernacGeneralizable of (lident list) option
-  | VernacSetOpacity of (Conv_oracle.level * reference or_by_notation list)
-  | VernacSetStrategy of
-      (Conv_oracle.level * reference or_by_notation list) list
-  | VernacUnsetOption of Goptions.option_name
-  | VernacSetOption of Goptions.option_name * option_value
-  | VernacAddOption of Goptions.option_name * option_ref_value list
-  | VernacRemoveOption of Goptions.option_name * option_ref_value list
-  | VernacMemOption of Goptions.option_name * option_ref_value list
-  | VernacPrintOption of Goptions.option_name
-  | VernacCheckMayEval of raw_red_expr option * int option * constr_expr
-  | VernacGlobalCheck of constr_expr
-  | VernacDeclareReduction of string * raw_red_expr
-  | VernacPrint of printable
-  | VernacSearch of searchable * search_restriction
-  | VernacLocate of locatable
-  | VernacComments of comment list
-  | VernacNop
+  | VernacDeclareTacticDefinition _ -> assert false
+  | VernacCreateHintDb _ -> assert false
+  | VernacRemoveHints _ -> assert false
+  | VernacHints _ -> assert false
+  | VernacSyntacticDefinition _ -> assert false
+  | VernacDeclareImplicits _ -> assert false
+  | VernacArguments _ -> assert false
+  | VernacArgumentsScope _ -> assert false
+  | VernacReserve _ -> assert false
+  | VernacGeneralizable _ -> assert false
+  | VernacSetOpacity _ -> assert false
+  | VernacSetStrategy _ -> assert false
+  | VernacUnsetOption _ -> assert false
+  | VernacSetOption _ -> assert false
+  | VernacAddOption _ -> assert false
+  | VernacRemoveOption _ -> assert false
+  | VernacMemOption _ -> assert false
+  | VernacPrintOption _ -> assert false
+  | VernacCheckMayEval _ -> assert false
+  | VernacGlobalCheck _ -> assert false
+  | VernacDeclareReduction _ -> assert false
+  | VernacPrint _ -> assert false
+  | VernacSearch _ -> assert false
+  | VernacLocate _ -> assert false
+  | VernacRegister _ -> assert false
+  | VernacNop -> assert false
 
   (* Stm backdoor *)
-  | VernacStm of vernac_expr stm_vernac
+  | VernacStm _ -> assert false
 
   (* Proof management *)
-  | VernacGoal of constr_expr
-  | VernacAbort of lident option
-  | VernacAbortAll
-  | VernacRestart
-  | VernacUndo of int
-  | VernacUndoTo of int
-  | VernacBacktrack of int*int*int
-  | VernacFocus of int option
-  | VernacUnfocus
-  | VernacUnfocused
-  | VernacBullet of bullet
-  | VernacSubproof of int option
-  | VernacEndSubproof
-  | VernacShow of showable
-  | VernacCheckGuard
-  | VernacProof of raw_tactic_expr option * lident list option
-  | VernacProofMode of string
+  | VernacGoal _ -> assert false
+  | VernacAbort _ -> assert false
+  | VernacAbortAll -> assert false
+  | VernacRestart -> assert false
+  | VernacUndo _ -> assert false
+  | VernacUndoTo _ -> assert false
+  | VernacBacktrack _ -> assert false
+  | VernacFocus _ -> assert false
+  | VernacUnfocus -> assert false
+  | VernacUnfocused -> assert false
+  | VernacBullet _ -> assert false
+  | VernacSubproof _ -> assert false
+  | VernacEndSubproof -> assert false
+  | VernacShow _ -> assert false
+  | VernacCheckGuard -> assert false
+  | VernacProof _ -> assert false
+  | VernacProofMode _ -> assert false
   (* Toplevel control *)
-  | VernacToplevelControl of exn
+  | VernacToplevelControl _ -> assert false
 
   (* For extension *)
-  | VernacExtend of string * raw_generic_argument list
+  | VernacExtend _ -> assert false
 
   (* Flags *)
-  | VernacProgram of vernac_expr
-  | VernacLocal of bool * vernac_expr
-  *)
+  | VernacProgram _ -> assert false
+  | VernacLocal _ -> assert false
