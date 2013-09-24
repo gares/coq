@@ -14,6 +14,9 @@ let unlock loc =
   let start, stop = Loc.unloc loc in
   (string_of_int start, string_of_int stop)
 
+let xmlNoop = (* almost noop  *)
+  PCData ""
+
 let xmlThm typ name loc xml =
   let start, stop = unlock loc in
   Element("theorem", [
@@ -272,7 +275,7 @@ let tmpp v loc =
 
   (* Auxiliary file and library management *)
   | VernacRequireFrom _ -> assert false
-  | VernacAddLoadPath _ -> assert false
+  | VernacAddLoadPath _ -> xmlNoop
   | VernacRemoveLoadPath _ -> assert false
   | VernacAddMLPath _ -> assert false
   | VernacDeclareMLModule _ -> assert false
