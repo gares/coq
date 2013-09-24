@@ -90,6 +90,13 @@ let xmlCheck loc xml =
     "begin", start;
     "end", stop ], xml)
 
+let xmlAssumption kind loc xml =
+  let start, stop = unlock loc in
+  Element("assumption", [
+    "kind", kind;
+    "begin", start;
+    "end", stop ], xml)
+
 let xmlComment loc xml =
   let start, stop = unlock loc in
   Element("comment", [
@@ -139,6 +146,23 @@ let string_of_cases_pattern_expr cpe =
   | CPatRecord _ -> "CPatRecord"
   | CPatDelimiters _ -> "CPatDelimiters"
 
+let string_of_assumption_kind l a many =
+  match l, a, many with
+  | (Discharge, Logical,      true)  -> "Hypotheses"
+  | (Discharge, Logical,      false) -> "Hypothesis"
+  | (Discharge, Definitional, true)  -> "Variables"
+  | (Discharge, Definitional, false) -> "Variable"
+  | (Global,    Logical,      true)  -> "Axioms"
+  | (Global,    Logical,      false) -> "Axiom"
+  | (Global,    Definitional, true)  -> "Parameters"
+  | (Global,    Definitional, false) -> "Parameter"
+  | (Local,     Logical,      true)  -> "Local Axioms"
+  | (Local,     Logical,      false) -> "Local Axiom"
+  | (Local,     Definitional, true)  -> "Local Parameters"
+  | (Local,     Definitional, false) -> "Local Parameter"
+  | (Global,    Conjectural, _) -> "Conjecture"
+  | ((Discharge | Local), Conjectural, _) -> assert false
+
 let rec pp_bindlist bl =
   let tlist =
     List.flatten
@@ -156,6 +180,9 @@ let rec pp_bindlist bl =
     | [e] -> e
     | l -> xmlTyped l
 
+and pp_lident (loc, id) = xmlCst (Id.to_string id) loc
+and pp_simple_binder (idl, ce) =
+  (List.map pp_lident idl) @ [pp_expr ce]
 and pp_cases_pattern_expr cpe =
   (* TODO: To be finished. cases_pattern_expr are quite complex*)
   let str= string_of_cases_pattern_expr cpe in
@@ -265,9 +292,7 @@ let rec tmpp v loc =
       let l, dk =
         match ldk with
         | Some l, dk -> (l, dk)
-        | None, dk -> (Discharge, dk) in  (* FIXME: optional locality
-        * I don't have any idea of what should be done. But it's needed for
-        * string_of_definition_kind. *)
+        | None, dk -> (Global, dk) in (* Like in ppvernac.ml, l 585 *)
       let e =
         match de with
         | ProveBody (_, ce) -> ce 
@@ -297,7 +322,14 @@ let rec tmpp v loc =
         | Proved _ -> xmlQed loc
       end
   | VernacExactProof _ -> assert false
-  | VernacAssumption _ -> assert false
+  | VernacAssumption ((l, a), _, sbwcl) ->
+      let many =
+        List.length (List.flatten (List.map fst (List.map snd sbwcl))) > 1 in
+      let exprs =
+        List.flatten (List.map pp_simple_binder (List.map snd sbwcl)) in
+      let l = match l with Some x -> x | None -> Decl_kinds.Global in
+      let kind = string_of_assumption_kind l a many in
+      xmlAssumption kind loc exprs
   | VernacInductive _ -> assert false
   | VernacFixpoint _ -> assert false
   | VernacCoFixpoint _ -> assert false
