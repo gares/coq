@@ -1,3 +1,5 @@
+Check (1:nat).
+
 Comments 3 (2 + 2) "ciao".
 
 Lemma toto1 : True.

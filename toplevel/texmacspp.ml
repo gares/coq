@@ -84,6 +84,12 @@ let xmlMatch xml =
 let xmlWith xml =
   Element("with", [], xml)
 
+let xmlCheck loc xml =
+  let start, stop = unlock loc in
+  Element("check", [
+    "begin", start;
+    "end", stop ], xml)
+
 let xmlComment loc xml =
   let start, stop = unlock loc in
   Element("comment", [
@@ -364,7 +370,7 @@ let rec tmpp v loc =
   | VernacRemoveOption _ -> assert false
   | VernacMemOption _ -> assert false
   | VernacPrintOption _ -> assert false
-  | VernacCheckMayEval _ -> assert false
+  | VernacCheckMayEval (_,_,e) -> xmlCheck loc [pp_expr e]
   | VernacGlobalCheck _ -> assert false
   | VernacDeclareReduction _ -> assert false
   | VernacPrint _ -> assert false
