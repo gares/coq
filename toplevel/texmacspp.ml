@@ -1,9 +1,3 @@
-(*
-type xml =
-        | Element of (string * (string * string) list * xml list)
-        | PCData of string
-*)
-
 open Xml_datatype
 open Vernacexpr
 open Constrexpr
@@ -203,29 +197,6 @@ and pp_expr ?(attr=[]) e =
   | CCoFix (_, _, _) -> assert false
   | CFix (_, _, _) -> assert false
 
-  (* | CAppExpl of Loc.t * (proj_flag * reference) * constr_expr list *)
-(*
-  | CFix of Loc.t * Id.t located * fix_expr list
-  | CCoFix of Loc.t * Id.t located * cofix_expr list
-  | CLambdaN of Loc.t * binder_expr list * constr_expr
-  | CLetIn of Loc.t * Name.t located * constr_expr * constr_expr
-  | CRecord of Loc.t * constr_expr option * (reference * constr_expr) list
-  | CCases of Loc.t * case_style * constr_expr option *
-      case_expr list * branch_expr list
-  | CLetTuple of Loc.t * Name.t located list * (Name.t located option * constr_expr option) *
-      constr_expr * constr_expr
-  | CIf of Loc.t * constr_expr * (Name.t located option * constr_expr option)
-      * constr_expr * constr_expr
-  | CHole of Loc.t * Evar_kinds.t option
-  | CPatVar of Loc.t * (bool * patvar)
-  | CEvar of Loc.t * existential_key * constr_expr list option
-  | CSort of Loc.t * glob_sort
-  | CCast of Loc.t * constr_expr * constr_expr cast_type
-  | CGeneralization of Loc.t * binding_kind * abstraction_kind option * constr_expr
-  | CPrim of Loc.t * prim_token
-  | CDelimiters of Loc.t * string * constr_expr
-*)
-
 let pp_comment (c) =
   match c with
   | CommentConstr e -> [pp_expr e]
@@ -234,21 +205,6 @@ let pp_comment (c) =
 
 let rec tmpp v loc =
   match v with
-  | VernacStartTheoremProof (tk, [ Some (_,id), ([], statement, None) ], b) ->
-      let str_tk = Kindops.string_of_theorem_kind tk in
-      let str_id = Id.to_string id in
-      (xmlThm str_tk str_id loc [pp_expr statement])
-  | VernacComments (cl) -> xmlComment (List.flatten (List.map pp_comment cl))
-  | VernacStm s ->
-      (match s with
-       | JoinDocument -> assert false
-       | Finish -> assert false
-       | Observe _ -> assert false
-       | Command v -> tmpp v Loc.ghost (* note: loc might be optionnal*)
-       | PGLast _ -> assert false)
-
-
-  (***************** To be done ******************)
   (* Control *)
   | VernacList _ -> assert false
   | VernacLoad _ -> assert false
@@ -267,7 +223,10 @@ let rec tmpp v loc =
 
   (* Gallina *)
   | VernacDefinition _ -> assert false
-  | VernacStartTheoremProof _ -> assert false
+  | VernacStartTheoremProof (tk, [ Some (_,id), ([], statement, None) ], b) ->
+      let str_tk = Kindops.string_of_theorem_kind tk in
+      let str_id = Id.to_string id in
+      (xmlThm str_tk str_id loc [pp_expr statement])
   | VernacEndProof _ -> assert false
   | VernacExactProof _ -> assert false
   | VernacAssumption _ -> assert false
@@ -350,7 +309,17 @@ let rec tmpp v loc =
   | VernacSearch _ -> assert false
   | VernacLocate _ -> assert false
   | VernacRegister _ -> assert false
+  | VernacComments (cl) -> xmlComment (List.flatten (List.map pp_comment cl))
   | VernacNop -> assert false
+
+  (* Stm backdoor *)
+  | VernacStm s ->
+      (match s with
+       | JoinDocument -> assert false
+       | Finish -> assert false
+       | Observe _ -> assert false
+       | Command v -> tmpp v Loc.ghost (* note: loc might be optionnal*)
+       | PGLast _ -> assert false)
 
   (* Proof management *)
   | VernacGoal _ -> assert false
