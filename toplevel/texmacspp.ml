@@ -45,6 +45,18 @@ let xmlApply loc ?(attr=[]) xml =
 let xmlTyped xml =
   Element("typed", [], xml)
 
+let xmlReturn xml =
+  Element("return", [], xml)
+
+let xmlCase xml =
+  Element("case", [], xml)
+
+let xmlMatch xml =
+  Element("match", [], xml)
+
+let xmlWith xml =
+  Element("with", [], xml)
+
 let string_of_name n =
   match n with
   | Anonymous -> "_"
@@ -62,6 +74,25 @@ let string_of_cast_sort c =
   | CastVM _ -> "CastVM"
   | _ -> assert false
 
+let string_of_case_style s =
+  match s with
+  | LetStyle -> "Let"
+  | IfStyle -> "If"
+  | LetPatternStyle -> "LetPattern"
+  | MatchStyle -> "Match"
+  | RegularStyle -> "Regular"
+
+(* For debuging purpose *)
+let string_of_cases_pattern_expr cpe =
+  match cpe with
+  | CPatAlias _ -> "CPatAlias"
+  | CPatCstr _ -> "CPatCstr"
+  | CPatAtom _ -> "CPatAtom"
+  | CPatOr _ -> "CPatOr"
+  | CPatNotation _ -> "CPatNotation"
+  | CPatPrim _ -> "CPatPrim"
+  | CPatRecord _ -> "CPatRecord"
+  | CPatDelimiters _ -> "CPatDelimiters"
 
 let rec pp_bindlist bl =
   let tlist =
@@ -80,6 +111,23 @@ let rec pp_bindlist bl =
     | [e] -> e
     | l -> xmlTyped l
 
+and pp_cases_pattern_expr cpe =
+  (* TODO: To be finished. cases_pattern_expr are quite complex*)
+  let str= string_of_cases_pattern_expr cpe in
+  Element ("pp_cases_pattern_expr", [("case", str)], [])
+and pp_case_expr (e,_) =
+  (* TODO: To be finished. cases_pattern_expr are not handled *)
+  xmlMatch [pp_expr e]
+and pp_branch_expr_list bel =
+  (* TODO: To be thought. How to prettyprint well the pattern / branch list *)
+  xmlWith
+    (List.map
+      (fun (_, cpel, e) ->
+        let ppcepl =
+          (List.map pp_cases_pattern_expr (List.flatten (List.map snd cpel))) in
+        let ppe = [pp_expr e] in
+        xmlCase (ppcepl @ ppe))
+     bel)
 and pp_expr ?(attr=[]) e =
   match e with
   | CRef r ->
@@ -116,7 +164,15 @@ and pp_expr ?(attr=[]) e =
   | CHole (loc, _) -> xmlCst ~attr  "_" loc
   | CIf (_, _, _, _, _) -> assert false
   | CLetTuple (_, _, _, _, _) -> assert false
-  | CCases (_, _, _, _, _) -> assert false
+  | CCases (loc, sty, None, cel, bel) ->
+      xmlApply loc
+        (xmlOperator "match" loc ~attr:["style", (string_of_case_style sty)] ::
+          (List.map pp_case_expr cel) @ [pp_branch_expr_list bel])
+  | CCases (loc, sty, Some e, cel, bel) ->
+      xmlApply loc
+        (xmlOperator "match" loc  ~attr:["style", (string_of_case_style sty)] ::
+          [xmlReturn [pp_expr e]] @ (List.map pp_case_expr cel) @
+          [pp_branch_expr_list bel])
   | CRecord (_, _, _) -> assert false
   | CLetIn (loc, (varloc, var), value, body) ->
       xmlApply loc

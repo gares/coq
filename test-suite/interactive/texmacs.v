@@ -23,6 +23,21 @@ Lemma toto : forall x : nat,
 Lemma toto : forall (i j : list nat) (x : nat),
     let f := (fun (n m : list nat) (y : nat) => y) in f i j x = x.
 *)
+
 (* CCases *)
 Lemma toto : forall x : nat,
     match x with S y => y | O => x end = x - (S O).
+
+Lemma toto : forall x : nat,
+    match x with S y | O as y => x end = x - (S O).
+
+Lemma toto : forall x : nat,
+    match x return nat with S y => y | O => x end = x - (S O).
+
+Lemma toto : forall x z : nat,
+    match x,z with
+    | S a, S b => a
+    | S c, 0 => c
+    | 0, S d => d
+    | O, 0 => z
+    end = x - (S O).
