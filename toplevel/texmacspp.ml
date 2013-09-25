@@ -51,6 +51,13 @@ let xmlNotation attr name loc xml =
     "begin", start;
     "end", stop ], xml)
 
+let xmlReservedNotation attr name loc =
+  let start, stop = unlock loc in
+  Element("reservednotation", attr @ [
+    "name", name;
+    "begin", start;
+    "end", stop ], [])
+
 let xmlCst name ?(attr=[]) loc =
   let start, stop = unlock loc in
   Element("constant", attr @ [
@@ -303,7 +310,10 @@ let rec tmpp v loc =
 
   (* Syntax *)
   | VernacTacticNotation _ -> assert false
-  | VernacSyntaxExtension _ -> assert false
+  | VernacSyntaxExtension (_, ((_, name), sml)) ->
+      let attrs = List.flatten (List.map attribute_of_syntax_modifier sml) in
+      xmlReservedNotation attrs name loc
+
   | VernacOpenCloseScope _ -> assert false
   | VernacDelimiters _ -> assert false
   | VernacBindScope _ -> assert false
