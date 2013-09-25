@@ -44,7 +44,7 @@ let xmlDef typ name loc xml =
     "begin", start;
     "end", stop ], xml)
 
-let xmlNotation ?(attr=[]) name loc xml =
+let xmlNotation attr name loc xml =
   let start, stop = unlock loc in
   Element("notation", attr @ [
     "name", name;
@@ -315,7 +315,7 @@ let rec tmpp v loc =
         match sn with
         | Some scope -> ["scope", scope]
         | None -> [] in
-      xmlNotation ~attr:(sc_attr @ attrs) name loc [pp_expr ce]
+      xmlNotation (sc_attr @ attrs) name loc [pp_expr ce]
 
   (* Gallina *)
   | VernacDefinition (ldk, (_,id), de) ->
@@ -418,7 +418,10 @@ let rec tmpp v loc =
   | VernacCreateHintDb _ -> assert false
   | VernacRemoveHints _ -> assert false
   | VernacHints _ -> assert false
-  | VernacSyntacticDefinition _ -> assert false
+  | VernacSyntacticDefinition ((_, name), (idl, ce), _, _) ->
+      let name = Id.to_string name in
+      let attrs = List.map (fun id -> ("id", Id.to_string id)) idl in
+      xmlNotation attrs name loc [pp_expr ce]
   | VernacDeclareImplicits _ -> assert false
   | VernacArguments _ -> assert false
   | VernacArgumentsScope _ -> assert false

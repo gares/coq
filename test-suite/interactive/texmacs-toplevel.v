@@ -1,3 +1,4 @@
+(*
 Check (1:nat).
 
 Comments 3 (2 + 2) "ciao".
@@ -26,7 +27,7 @@ Section Toto.
   Hypothesis npos : n > 0.
 
 End Toto.
-
+*)
 Notation "a ++ b" := (a + b).
 
 Notation "a +- b" := (a + b) (at level 42).
