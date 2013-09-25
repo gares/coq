@@ -100,6 +100,13 @@ let xmlMatch xml =
 let xmlWith xml =
   Element("with", [], xml)
 
+let xmlInductive kind loc xml =
+  let start, stop = unlock loc in
+  Element("inductive", [
+    "kind", kind;
+    "begin", start;
+    "end", stop ], xml)
+
 let xmlCheck loc xml =
   let start, stop = unlock loc in
   Element("check", [
@@ -216,7 +223,32 @@ let rec pp_bindlist bl =
   match tlist with
     | [e] -> e
     | l -> xmlTyped l
-
+and pp_decl_notation ((_, s), ce, sc) = (* don't know what it is for now *)
+  Element ("decl_notation", ["name", s], [pp_expr ce])
+and pp_local_binder lb = (* don't know what it is for now *)
+  match lb with
+  | LocalRawDef ((_, nam), ce) ->
+      let attrs = ["name", string_of_name nam] in
+      pp_expr ~attr:attrs ce
+  | LocalRawAssum (namll, _, ce) ->
+      let attrs =
+        List.map (fun (_, nam) -> ("name", string_of_name nam)) namll in
+      pp_expr ~attr:attrs ce
+and pp_local_decl_expr lde = (* don't know what it is for now *)
+  match lde with
+  | AssumExpr (_, ce) -> pp_expr ce
+  | DefExpr (_, ce, _) -> pp_expr ce
+and pp_inductive_expr ((_, (_, id)), lbl, ceo, _, cl_or_rdexpr) = (* inductive_expr *)
+  [Element ("lident", ["name", Id.to_string id], [])] @ (* don't know what it is for now *)
+  begin match cl_or_rdexpr with
+  | Constructors coel -> List.map (fun (_, (_, ce)) -> pp_expr ce) coel
+  | RecordDecl (_, ldewwwl) -> List.map (fun (((_, x), _), _) -> pp_local_decl_expr x) ldewwwl
+  end @
+  begin match ceo with (* don't know what it is for now *)
+  | Some ce -> [pp_expr ce]
+  | None -> []
+  end @
+  (List.map pp_local_binder lbl)
 and pp_lident (loc, id) = xmlCst (Id.to_string id) loc
 and pp_simple_binder (idl, ce) =
   (List.map pp_lident idl) @ [pp_expr ce]
@@ -377,7 +409,23 @@ let rec tmpp v loc =
       let l = match l with Some x -> x | None -> Decl_kinds.Global in
       let kind = string_of_assumption_kind l a many in
       xmlAssumption kind loc exprs
-  | VernacInductive _ -> assert false
+  | VernacInductive (_, _, iednll) ->
+      let kind =
+        let (_, _, _, k, _),_ = List.hd iednll in
+	  begin
+            match k with
+            | Record -> "Record"
+            | Structure -> "Structure"
+            | Inductive_kw -> "Inductive"
+            | CoInductive -> "CoInductive"
+            | Class _ -> "Class"
+          end in
+      let exprs =
+        List.flatten
+          (List.map
+            (fun (ie, dnl) -> (pp_inductive_expr ie) @
+                              (List.map pp_decl_notation dnl)) iednll) in
+      xmlInductive kind loc exprs
   | VernacFixpoint _ -> assert false
   | VernacCoFixpoint _ -> assert false
   | VernacScheme _ -> assert false
