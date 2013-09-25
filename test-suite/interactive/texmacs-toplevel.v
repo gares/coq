@@ -29,6 +29,12 @@ End Toto.
 
 Notation "a ++ b" := (a + b).
 
+Notation "a +- b" := (a + b) (at level 42).
+
+Notation "a -- b" := (a + b) (at level 42, format "'[v' a -- b ']'").
+
+Notation "a -+- b" := (a + b) (at level 42, right associativity).
+
 Notation mynat := nat.
 
 Reserved Notation "a ** b" (at level 30).

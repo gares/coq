@@ -5,6 +5,7 @@ open Names
 open Misctypes
 open Bigint
 open Decl_kinds
+open Extend
 
 let unlock loc =
   let start, stop = Loc.unloc loc in
@@ -39,6 +40,13 @@ let xmlDef typ name loc xml =
   let start, stop = unlock loc in
   Element("definition", [
     "type", typ;
+    "name", name;
+    "begin", start;
+    "end", stop ], xml)
+
+let xmlNotation ?(attr=[]) name loc xml =
+  let start, stop = unlock loc in
+  Element("notation", attr @ [
     "name", name;
     "begin", start;
     "end", stop ], xml)
@@ -133,6 +141,21 @@ let string_of_case_style s =
   | LetPatternStyle -> "LetPattern"
   | MatchStyle -> "Match"
   | RegularStyle -> "Regular"
+
+let attribute_of_syntax_modifier sm =
+  (* TODO: Need probably some improvements *)
+match sm with
+  | SetItemLevel (sl,_) -> List.map (fun s -> ("itemlevel", s)) sl
+  | SetLevel i -> ["level", string_of_int i]
+  | SetAssoc a ->
+      begin match a with
+      | NonA -> ["",""]
+      | RightA -> ["associativity", "right"]
+      | LeftA -> ["associativity", "left"]
+      end
+  | SetEntryType (s, _) -> ["entrytype", s ]
+  | SetOnlyParsing _ -> ["",""]
+  | SetFormat (_, s) -> ["format", s]
 
 (* For debuging purpose *)
 let string_of_cases_pattern_expr cpe =
@@ -285,7 +308,14 @@ let rec tmpp v loc =
   | VernacDelimiters _ -> assert false
   | VernacBindScope _ -> assert false
   | VernacInfix _ -> assert false
-  | VernacNotation _ -> assert false
+  | VernacNotation (_, ce, (lstr, sml), sn) ->
+      let name = snd lstr in
+      let attrs = List.flatten (List.map attribute_of_syntax_modifier sml) in
+      let sc_attr =
+        match sn with
+        | Some scope -> ["scope", scope]
+        | None -> [] in
+      xmlNotation ~attr:(sc_attr @ attrs) name loc [pp_expr ce]
 
   (* Gallina *)
   | VernacDefinition (ldk, (_,id), de) ->
