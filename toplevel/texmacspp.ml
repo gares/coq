@@ -6,6 +6,7 @@ open Misctypes
 open Bigint
 open Decl_kinds
 open Extend
+open Libnames
 
 let unlock loc =
   let start, stop = Loc.unloc loc in
@@ -117,6 +118,12 @@ let xmlComment loc xml =
   Element("comment", [
     "begin", start;
     "end", stop ], xml)
+
+let xmlCanonicalStructure attr loc =
+  let start, stop = unlock loc in
+  Element("canonicalstructure", attr @ [
+    "begin", start;
+    "end", stop ], [])
 
 let xmlQed ?(attr=[]) loc =
   let start, stop = unlock loc in
@@ -381,7 +388,13 @@ let rec tmpp v loc =
   | VernacEndSegment (_, id) -> xmlEndSegment loc (Id.to_string id)
   | VernacRequire _ -> assert false
   | VernacImport _ -> assert false
-  | VernacCanonical _ -> assert false
+  | VernacCanonical r ->
+      let attr =
+        match r with
+        | AN (Qualid (_, q)) -> ["qualid", string_of_qualid q]
+        | AN (Ident (_, id)) -> ["id", Id.to_string id]
+        | ByNotation (_, s, _) -> ["notation", s] in
+      xmlCanonicalStructure attr loc
   | VernacCoercion _ -> assert false
   | VernacIdentityCoercion _ -> assert false
 

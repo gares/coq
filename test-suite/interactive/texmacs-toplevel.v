@@ -27,7 +27,7 @@ Section Toto.
   Hypothesis npos : n > 0.
 
 End Toto.
-*)
+
 Notation "a ++ b" := (a + b).
 
 Notation "a +- b" := (a + b) (at level 42).
@@ -39,6 +39,7 @@ Notation "a -+- b" := (a + b) (at level 42, right associativity).
 Notation mynat := nat.
 
 Reserved Notation "a ** b" (at level 30).
+*)
 
 Inductive vect (A : Type) : Type :=
  | Vnil : vect A
