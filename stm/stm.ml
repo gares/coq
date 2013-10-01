@@ -1645,6 +1645,10 @@ let handle_failure e vcs tty =
       raise e
 
 let process_transaction ?(newtip=Stateid.fresh ()) ~tty verbose c (loc, expr) =
+  let xml =
+    try Texmacspp.tmpp expr loc
+    with e -> Xml_datatype.PCData ("ERROR " ^ Printexc.to_string e) in
+  print_endline (Xml_printer.to_string_fmt xml);
   let warn_if_pos a b =
     if b then msg_warning(pr_ast a ++ str" should not be part of a script") in
   let v, x = expr, { verbose = verbose && Flags.is_verbose(); loc; expr } in
