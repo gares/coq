@@ -9,6 +9,7 @@
 open Names
 open Environ
 open Util
+open Vernacexpr
 
 (* Proof using Type.
  * Proof using All.
@@ -16,6 +17,19 @@ open Util
  * Proof using x y z.
  * Proof using -(x y z)
  * *)
+let to_string = function
+  | SsAll -> "All"
+  | SsType -> "Type"
+  | SsExpr e ->
+      let rec aux = function
+        | SsSet l ->
+          "(" ^ String.concat " " (List.map Id.to_string (List.map snd l)) ^ ")"
+        | SsCompl e -> "(-" ^ aux e^")"
+        | SsUnion(e1,e2) -> "("^aux e1 ^" + "^ aux e2^")"
+        | SsSubstr(e1,e2) -> "("^aux e1 ^" - "^ aux e2^")"
+      in aux e
+
+let process_expr e = prerr_endline (to_string e); []
 
 
 let minimize_hyps env ids =

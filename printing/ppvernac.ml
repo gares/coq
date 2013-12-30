@@ -944,11 +944,13 @@ let rec pr_vernac = function
   (* For extension *)
   | VernacExtend (s,c) -> pr_extend s c
   | VernacProof (None, None) -> str "Proof"
-  | VernacProof (None, Some l) -> str "Proof using" ++spc()++ prlist pr_lident l
+(*   | VernacProof (None, Some l) -> str "Proof using" ++spc()++ prlist pr_lident l *)
   | VernacProof (Some te, None) -> str "Proof with" ++ spc() ++ pr_raw_tactic te
+(*
   | VernacProof (Some te, Some l) ->
       str "Proof using" ++spc()++ prlist pr_lident l ++ spc() ++
       str "with" ++ spc() ++pr_raw_tactic te
+*)
   | VernacProofMode s -> str ("Proof Mode "^s)
   | VernacBullet b -> begin match b with
       | Dash -> str"-"

@@ -799,14 +799,16 @@ let vernac_set_end_tac tac =
     (* TO DO verifier s'il faut pas mettre exist s | TacId s ici*)
 
 let vernac_set_used_variables l =
-  let l = List.map snd l in
+  let l = (*List.map snd l in
   if not (List.distinct_f Id.compare l)
   then error "Used variables list contains duplicates";
   let vars = Environ.named_context (Global.env ()) in
   List.iter (fun id -> 
     if not (List.exists (fun (id',_,_) -> Id.equal id id') vars) then
       error ("Unknown variable: " ^ Id.to_string id))
-    l;
+    l;*)
+  Proof_using.process_expr l
+  in
   set_used_variables l
 
 (*****************************)

@@ -1145,7 +1145,7 @@ let collect_proof cur hd id =
         (try
           let hint = get_hint_ctx loc in
           assert (VCS.Branch.equal hd hd'||VCS.Branch.equal hd VCS.edit_branch);
-          v.expr <- VernacProof(t, Some hint);
+(*           v.expr <- VernacProof(t, Some hint); *)
           if delegate_policy_check () then `ASync (parent,Some v,accn,ids)
           else `Sync `Policy
         with Not_found -> `Sync `NoHint)

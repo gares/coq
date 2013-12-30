@@ -15,3 +15,4 @@ val minimize_hyps : Environ.env -> Names.Id.Set.t -> Names.Id.Set.t
  * and s.t. calling [clear s1] would do the same as [clear s2].  Inefficient. *)
 val minimize_unused_hyps : Environ.env -> Names.Id.Set.t -> Names.Id.Set.t
 
+val process_expr : Vernacexpr.section_subset_descr -> Names.Id.t list
