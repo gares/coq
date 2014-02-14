@@ -399,15 +399,13 @@ and pp_expr ?(attr=[]) e =
           return @
           (List.map (fun (loc, var) -> xmlCst (string_of_name var) loc) names) @
           [pp_expr value; pp_expr body])
-  | CCases (loc, sty, None, cel, bel) ->
-      xmlApply loc
-        (xmlOperator "match" loc ~attr:["style", (string_of_case_style sty)] ::
-          ([Element ("scrutinees", [], List.map pp_case_expr cel)] @
-           [pp_branch_expr_list bel]))
-  | CCases (loc, sty, Some e, cel, bel) ->
+  | CCases (loc, sty, ret, cel, bel) ->
+      let return = match ret with
+      | None -> []
+      | Some r -> [xmlReturn [pp_expr r]] in
       xmlApply loc
         (xmlOperator "match" loc  ~attr:["style", (string_of_case_style sty)] ::
-          ([xmlReturn [pp_expr e]] @
+          (return @
            [Element ("scrutinees", [], List.map pp_case_expr cel)] @
            [pp_branch_expr_list bel]))
   | CRecord (_, _, _) -> assert false
