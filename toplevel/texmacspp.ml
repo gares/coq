@@ -371,14 +371,13 @@ and pp_expr ?(attr=[]) e =
             (xmlOperator ":" loc ~attr:["kind", "CastCoerce"] ::
              [pp_expr e])
       end
-  | CEvar (loc, ek, None) ->
+  | CEvar (loc, ek, optcel) ->
+      let ppcel= match optcel with
+      | None -> []
+      | Some cel -> List.map pp_expr cel in
       xmlApply loc
         (xmlOperator "evar" loc ~attr:["id", string_of_int (Evar.repr ek)] ::
-          [])
-  | CEvar (loc, ek, Some cel) ->
-      xmlApply loc
-        (xmlOperator "evar" loc ~attr:["id", string_of_int (Evar.repr ek)] ::
-          List.map pp_expr cel)
+          ppcel)
   | CPatVar (loc, (_, id)) -> xmlPatvar (string_of_id id) loc
   | CHole (loc, _, _) -> xmlCst ~attr  "_" loc
   | CIf (loc, test, (_, ret), th, el) ->
