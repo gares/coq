@@ -354,14 +354,12 @@ and pp_expr ?(attr=[]) e =
       xmlApply loc (xmlOperator "delimiter" ~attr:["name", scope] loc ::
         [pp_expr ce])
   | CPrim (loc, tok) -> pp_token loc tok
-  | CGeneralization (loc, Implicit, _, e) ->
+  | CGeneralization (loc, kind, _, e) ->
+      let kind= match kind with
+      | Explicit -> "explicit"
+      | Implicit -> "implicit" in
       xmlApply loc
-        (xmlOperator "generalization" ~attr:["type", "implicit"] loc ::
-          [pp_expr e])
-  | CGeneralization (loc, Explicit, _, e) ->
-      xmlApply loc
-        (xmlOperator "generalization" ~attr:["type", "explicit"] loc ::
-          [pp_expr e])
+        (xmlOperator "generalization" ~attr:["kind", kind] loc :: [pp_expr e])
   | CCast (loc, e, tc) ->
       begin match tc with
       | CastConv t | CastVM t |CastNative t ->
