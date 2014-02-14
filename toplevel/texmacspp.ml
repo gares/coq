@@ -7,6 +7,7 @@ open Bigint
 open Decl_kinds
 open Extend
 open Libnames
+open Flags
 
 let unlock loc =
   let start, stop = Loc.unloc loc in
@@ -172,9 +173,11 @@ let string_of_case_style s =
   | RegularStyle -> "Regular"
 
 let attribute_of_syntax_modifier sm =
-  (* TODO: Need probably some improvements *)
 match sm with
-  | SetItemLevel (sl,_) -> List.map (fun s -> ("itemlevel", s)) sl
+  | SetItemLevel (sl, NumLevel n) ->
+      List.map (fun s -> ("itemlevel", s)) sl @ ["level", string_of_int n]
+  | SetItemLevel (sl, NextLevel) ->
+      List.map (fun s -> ("itemlevel", s)) sl @ ["level", "next"]
   | SetLevel i -> ["level", string_of_int i]
   | SetAssoc a ->
       begin match a with
@@ -182,8 +185,8 @@ match sm with
       | RightA -> ["associativity", "right"]
       | LeftA -> ["associativity", "left"]
       end
-  | SetEntryType (s, _) -> ["entrytype", s ]
-  | SetOnlyParsing _ -> ["",""]
+  | SetEntryType (s, _) -> ["entrytype", s]
+  | SetOnlyParsing v -> ["compat", Flags.pr_version v]
   | SetFormat (loc, s) ->
       let start, stop= unlock loc in
       ["format", s; "begin", start; "end", stop]
