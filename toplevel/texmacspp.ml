@@ -284,13 +284,14 @@ and pp_cases_pattern_expr cpe =
                 subst_rec)]);
            Element ("args", [], (List.map pp_cases_pattern_expr cpel))])
   | CPatPrim (loc, tok) -> pp_token loc tok
-  | CPatRecord (_, rcl) ->
-      Element ("CPatRecord", [],
-        List.map (fun (r, cpe) ->
-          Element ("field",
-            ["reference", Libnames.string_of_reference r],
-            [pp_cases_pattern_expr cpe]))
-        rcl)
+  | CPatRecord (loc, rcl) ->
+      xmlApply loc
+        (xmlOperator "record" loc ::
+           List.map (fun (r, cpe) ->
+             Element ("field",
+               ["reference", Libnames.string_of_reference r],
+               [pp_cases_pattern_expr cpe]))
+           rcl)
   | CPatDelimiters (_, delim, cpe) ->
       Element ("CPatDelimiters",
         ["delimiter", delim], [pp_cases_pattern_expr cpe])
