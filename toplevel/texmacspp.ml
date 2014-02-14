@@ -184,7 +184,9 @@ match sm with
       end
   | SetEntryType (s, _) -> ["entrytype", s ]
   | SetOnlyParsing _ -> ["",""]
-  | SetFormat (_, s) -> ["format", s]
+  | SetFormat (loc, s) ->
+      let start, stop= unlock loc in
+      ["format", s; "begin", start; "end", stop]
 
 let string_of_assumption_kind l a many =
   match l, a, many with
