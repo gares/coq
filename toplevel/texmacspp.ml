@@ -94,8 +94,8 @@ let xmlReturn xml =
 let xmlCase xml =
   Element("case", [], xml)
 
-let xmlMatch xml =
-  Element("match", [], xml)
+let xmlScrutinee ?(attr=[]) xml =
+  Element("scrutinee", attr, xml)
 
 let xmlWith xml =
   Element("with", [], xml)
@@ -138,6 +138,13 @@ let xmlQed ?(attr=[]) loc =
     "begin", start;
     "end", stop ], [])
 
+let xmlPatvar id loc =
+  let start, stop = unlock loc in
+  Element("patvar", [
+    "id", id;
+    "begin", start;
+    "end", stop ], [])
+
 let string_of_name n =
   match n with
   | Anonymous -> "_"
@@ -153,6 +160,7 @@ let string_of_cast_sort c =
   match c with
   | CastConv _ -> "CastConv"
   | CastVM _ -> "CastVM"
+  | CastNative _ -> "CastNative"
   | _ -> assert false
 
 let string_of_case_style s =
@@ -178,18 +186,6 @@ match sm with
   | SetOnlyParsing _ -> ["",""]
   | SetFormat (_, s) -> ["format", s]
 
-(* For debuging purpose *)
-let string_of_cases_pattern_expr cpe =
-  match cpe with
-  | CPatAlias _ -> "CPatAlias"
-  | CPatCstr _ -> "CPatCstr"
-  | CPatAtom _ -> "CPatAtom"
-  | CPatOr _ -> "CPatOr"
-  | CPatNotation _ -> "CPatNotation"
-  | CPatPrim _ -> "CPatPrim"
-  | CPatRecord _ -> "CPatRecord"
-  | CPatDelimiters _ -> "CPatDelimiters"
-
 let string_of_assumption_kind l a many =
   match l, a, many with
   | (Discharge, Logical,      true)  -> "Hypotheses"
@@ -204,7 +200,7 @@ let string_of_assumption_kind l a many =
   | (Local,     Logical,      false) -> "Local Axiom"
   | (Local,     Definitional, true)  -> "Local Parameters"
   | (Local,     Definitional, false) -> "Local Parameter"
-  | (Global,    Conjectural, _) -> "Conjecture"
+  | (Global,    Conjectural, _)      -> "Conjecture"
   | ((Discharge | Local), Conjectural, _) -> assert false
 
 let rec pp_bindlist bl =
@@ -217,7 +213,7 @@ let rec pp_bindlist bl =
                 (fun (loc, name) ->
                   xmlCst (string_of_name name) loc) loc_names) in
             match e with
-              | CHole (_,_) -> names
+              | CHole _ -> names
               | _ -> names @ [pp_expr e])
           bl) in
   match tlist with
@@ -242,7 +238,8 @@ and pp_inductive_expr ((_, (_, id)), lbl, ceo, _, cl_or_rdexpr) = (* inductive_e
   [Element ("lident", ["name", Id.to_string id], [])] @ (* don't know what it is for now *)
   begin match cl_or_rdexpr with
   | Constructors coel -> List.map (fun (_, (_, ce)) -> pp_expr ce) coel
-  | RecordDecl (_, ldewwwl) -> List.map (fun (((_, x), _), _) -> pp_local_decl_expr x) ldewwwl
+  | RecordDecl (_, ldewwwl) ->
+      List.map (fun (((_, x), _), _) -> pp_local_decl_expr x) ldewwwl
   end @
   begin match ceo with (* don't know what it is for now *)
   | Some ce -> [pp_expr ce]
@@ -253,14 +250,56 @@ and pp_lident (loc, id) = xmlCst (Id.to_string id) loc
 and pp_simple_binder (idl, ce) =
   (List.map pp_lident idl) @ [pp_expr ce]
 and pp_cases_pattern_expr cpe =
-  (* TODO: To be finished. cases_pattern_expr are quite complex*)
-  let str= string_of_cases_pattern_expr cpe in
-  Element ("pp_cases_pattern_expr", [("case", str)], [])
-and pp_case_expr (e,_) =
-  (* TODO: To be finished. cases_pattern_expr are not handled *)
-  xmlMatch [pp_expr e]
+  match cpe with
+  | CPatAlias (_, cpe, id) ->
+      Element ("CPatAlias",
+        ["name", string_of_id id], [pp_cases_pattern_expr cpe])
+  | CPatCstr (_, ref, cpel1, cpel2) ->
+      Element ("CPatCstr",
+        ["reference", Libnames.string_of_reference ref],
+        [Element ("impargs", [], (List.map pp_cases_pattern_expr cpel1));
+         Element ("args", [], (List.map pp_cases_pattern_expr cpel2))])
+  | CPatAtom (_, None) ->  Element ("CPatAtom", [], [])
+  | CPatAtom (_, Some ref) ->
+      Element ("CPatAtom", ["reference", Libnames.string_of_reference ref], [])
+  | CPatOr (_, cpel) ->
+      Element ("CPatOr", [], (List.map pp_cases_pattern_expr cpel))
+  | CPatNotation (loc, n, (subst_constr, subst_rec), cpel) ->
+      Element ("CPatNotation", [],
+      [xmlOperator n loc;
+      Element ("subst", [], [
+        Element ("subterms", [], List.map pp_cases_pattern_expr subst_constr);
+        Element ("recsubterms", [],
+          List.map
+            (fun (cpel) ->
+               Element ("recsubterm", [], List.map pp_cases_pattern_expr cpel))
+            subst_rec)]);
+      Element ("args", [], (List.map pp_cases_pattern_expr cpel))])
+  | CPatPrim (_, Numeral n) ->
+      Element ("CPatPrim", ["val", Bigint.to_string n], [])
+  | CPatPrim (_, String s) ->
+      Element ("CPatPrim", ["val", s], [])
+  | CPatRecord (_, rcl) ->
+      Element ("CPatRecord", [],
+        List.map (fun (r, cpe) ->
+          Element ("field",
+            ["reference", Libnames.string_of_reference r],
+            [pp_cases_pattern_expr cpe]))
+        rcl)
+  | CPatDelimiters (_, delim, cpe) ->
+      Element ("CPatDelimiters",
+        ["delimiter", delim], [pp_cases_pattern_expr cpe])
+and pp_case_expr (e, (name, pat)) =
+  match name, pat with
+  | None, None -> xmlScrutinee [pp_expr e]
+  | Some (_, name), None ->
+      xmlScrutinee ~attr:["name", string_of_name name] [pp_expr e]
+  | Some (_, name), Some p ->
+      xmlScrutinee ~attr:["name", string_of_name name]
+        [Element ("in", [], [pp_cases_pattern_expr p]) ; pp_expr e]
+  | None, Some p ->
+      xmlScrutinee [Element ("in", [], [pp_cases_pattern_expr p]) ; pp_expr e]
 and pp_branch_expr_list bel =
-  (* TODO: To be thought. How to prettyprint well the pattern / branch list *)
   xmlWith
     (List.map
       (fun (_, cpel, e) ->
@@ -295,32 +334,67 @@ and pp_expr ?(attr=[]) e =
        xmlApply loc (xmlOperator notation loc :: List.map pp_expr args)
   | CSort(loc, s) ->
        xmlOperator (string_of_glob_sort s) loc
-  | CDelimiters (_, _, _) -> assert false
+  | CDelimiters (loc, scope, ce) -> xmlApply loc (xmlOperator "delimiter" ~attr:["name", scope] loc :: [pp_expr ce])
   | CPrim (loc, tok) -> pp_token loc tok
-  | CGeneralization (_, _, _, _) -> assert false
+  | CGeneralization (loc, Implicit, _, e) ->
+      xmlApply loc
+        (xmlOperator "generalization" ~attr:["type", "implicit"] loc ::
+          [pp_expr e])
+  | CGeneralization (loc, Explicit, _, e) ->
+      xmlApply loc
+        (xmlOperator "generalization" ~attr:["type", "explicit"] loc ::
+          [pp_expr e])
   | CCast (loc, e, tc) ->
       begin match tc with
-      | CastConv t | CastVM t ->
+      | CastConv t | CastVM t |CastNative t ->
           xmlApply loc
             (xmlOperator ":" loc ~attr:["kind", (string_of_cast_sort tc)] ::
              [pp_expr e; pp_expr t])
-      | CastCoerce   -> pp_expr e
-      | CastNative _ -> assert false
+      | CastCoerce   ->
+          xmlApply loc
+            (xmlOperator ":" loc ~attr:["kind", "CastCoerce"] ::
+             [pp_expr e])
       end
-  | CEvar (_, _, _) -> assert false
-  | CPatVar (_, _) -> assert false
-  | CHole (loc, _) -> xmlCst ~attr  "_" loc
-  | CIf (_, _, _, _, _) -> assert false
-  | CLetTuple (_, _, _, _, _) -> assert false
+  | CEvar (loc, ek, None) ->
+      xmlApply loc
+        (xmlOperator "evar" loc ~attr:["id", string_of_int (Evar.repr ek)] ::
+          [])
+  | CEvar (loc, ek, Some cel) ->
+      xmlApply loc
+        (xmlOperator "evar" loc ~attr:["id", string_of_int (Evar.repr ek)] ::
+          List.map pp_expr cel)
+  | CPatVar (loc, (_, id)) -> xmlPatvar (string_of_id id) loc
+  | CHole (loc, _, _) -> xmlCst ~attr  "_" loc
+  | CIf (loc, test, (_, None), th, el) ->
+      xmlApply loc
+        (xmlOperator "if" loc ::
+          [pp_expr th] @ [pp_expr el])
+  | CIf (loc, test, (_, Some ret), th, el) ->
+      xmlApply loc (
+        xmlOperator "if" loc ::
+          [xmlReturn [pp_expr ret]] @ [pp_expr th] @ [pp_expr el])
+  | CLetTuple (loc, names, (_, None), value, body) ->
+      xmlApply loc
+        (xmlOperator "lettuple" loc ::
+          (List.map (fun (loc, var) -> xmlCst (string_of_name var) loc) names) @
+          [pp_expr value; pp_expr body])
+  | CLetTuple (loc, names, (_, Some ret), value, body) ->
+      xmlApply loc
+        (xmlOperator "lettuple" loc ::
+          [xmlReturn [pp_expr ret]] @
+          (List.map (fun (loc, var) -> xmlCst (string_of_name var) loc) names) @
+          [pp_expr value; pp_expr body])
   | CCases (loc, sty, None, cel, bel) ->
       xmlApply loc
         (xmlOperator "match" loc ~attr:["style", (string_of_case_style sty)] ::
-          (List.map pp_case_expr cel) @ [pp_branch_expr_list bel])
+          ([Element ("scrutinees", [], List.map pp_case_expr cel)] @
+           [pp_branch_expr_list bel]))
   | CCases (loc, sty, Some e, cel, bel) ->
       xmlApply loc
         (xmlOperator "match" loc  ~attr:["style", (string_of_case_style sty)] ::
-          [xmlReturn [pp_expr e]] @ (List.map pp_case_expr cel) @
-          [pp_branch_expr_list bel])
+          ([xmlReturn [pp_expr e]] @
+           [Element ("scrutinees", [], List.map pp_case_expr cel)] @
+           [pp_branch_expr_list bel]))
   | CRecord (_, _, _) -> assert false
   | CLetIn (loc, (varloc, var), value, body) ->
       xmlApply loc
@@ -346,6 +420,7 @@ let rec tmpp v loc =
   | VernacTime _ -> assert false
   | VernacTimeout _ -> assert false
   | VernacFail _ -> assert false
+  | VernacError _ -> assert false
 
   (* Syntax *)
   | VernacTacticNotation _ -> assert false
@@ -374,7 +449,7 @@ let rec tmpp v loc =
         | None, dk -> (Global, dk) in (* Like in ppvernac.ml, l 585 *)
       let e =
         match de with
-        | ProveBody (_, ce) -> ce 
+        | ProveBody (_, ce) -> ce
         | DefineBody (_, Some _, ce, None) -> ce
         | DefineBody (_, None  , ce, None) -> ce
         | DefineBody (_, Some _, ce, Some _) -> ce
@@ -467,7 +542,6 @@ let rec tmpp v loc =
   | VernacSolveExistential _ -> assert false
 
   (* Auxiliary file and library management *)
-  | VernacRequireFrom _ -> assert false
   | VernacAddLoadPath _ -> PCData "VernacAddLoadPath"
   | VernacRemoveLoadPath _ -> assert false
   | VernacAddMLPath _ -> assert false
@@ -525,6 +599,8 @@ let rec tmpp v loc =
       | Observe _ -> assert false
       | Command v -> tmpp v Loc.ghost (* note: loc might be optionnal*)
       | PGLast _ -> assert false
+      | PrintDag _ -> assert false
+      | Wait _ -> assert false
       end
 
   (* Proof management *)
