@@ -283,10 +283,7 @@ and pp_cases_pattern_expr cpe =
                        List.map pp_cases_pattern_expr cpel))
                 subst_rec)]);
            Element ("args", [], (List.map pp_cases_pattern_expr cpel))])
-  | CPatPrim (_, Numeral n) ->
-      Element ("CPatPrim", ["val", Bigint.to_string n], [])
-  | CPatPrim (_, String s) ->
-      Element ("CPatPrim", ["val", s], [])
+  | CPatPrim (loc, tok) -> pp_token loc tok
   | CPatRecord (_, rcl) ->
       Element ("CPatRecord", [],
         List.map (fun (r, cpe) ->
