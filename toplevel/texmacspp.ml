@@ -255,15 +255,17 @@ and pp_cases_pattern_expr cpe =
       xmlApply loc
         (xmlOperator "alias" ~attr:["name", string_of_id id] loc ::
           [pp_cases_pattern_expr cpe])
-  | CPatAtom (_, None) ->  Element ("CPatAtom", [], [])
   | CPatCstr (loc, ref, cpel1, cpel2) ->
       xmlApply loc
         (xmlOperator "reference"
            ~attr:["name", Libnames.string_of_reference ref] loc ::
          [Element ("impargs", [], (List.map pp_cases_pattern_expr cpel1));
           Element ("args", [], (List.map pp_cases_pattern_expr cpel2))])
-  | CPatAtom (_, Some ref) ->
-      Element ("CPatAtom", ["reference", Libnames.string_of_reference ref], [])
+  | CPatAtom (loc, None) -> xmlApply loc (xmlOperator "atom" loc :: [])
+  | CPatAtom (loc, Some r) ->
+      xmlApply loc
+        (xmlOperator "atom"
+          ~attr:["name", Libnames.string_of_reference r] loc :: [])
   | CPatOr (_, cpel) ->
       Element ("CPatOr", [], (List.map pp_cases_pattern_expr cpel))
   | CPatNotation (loc, n, (subst_constr, subst_rec), cpel) ->
