@@ -292,9 +292,10 @@ and pp_cases_pattern_expr cpe =
                ["reference", Libnames.string_of_reference r],
                [pp_cases_pattern_expr cpe]))
            rcl)
-  | CPatDelimiters (_, delim, cpe) ->
-      Element ("CPatDelimiters",
-        ["delimiter", delim], [pp_cases_pattern_expr cpe])
+  | CPatDelimiters (loc, delim, cpe) ->
+      xmlApply loc
+        (xmlOperator "delimiter" ~attr:["name", delim] loc ::
+          [pp_cases_pattern_expr cpe])
 and pp_case_expr (e, (name, pat)) =
   match name, pat with
   | None, None -> xmlScrutinee [pp_expr e]
