@@ -270,16 +270,19 @@ and pp_cases_pattern_expr cpe =
       xmlApply loc
         (xmlOperator "or" loc :: (List.map pp_cases_pattern_expr cpel))
   | CPatNotation (loc, n, (subst_constr, subst_rec), cpel) ->
-      Element ("CPatNotation", [],
-      [xmlOperator n loc;
-      Element ("subst", [], [
-        Element ("subterms", [], List.map pp_cases_pattern_expr subst_constr);
-        Element ("recsubterms", [],
-          List.map
-            (fun (cpel) ->
-               Element ("recsubterm", [], List.map pp_cases_pattern_expr cpel))
-            subst_rec)]);
-      Element ("args", [], (List.map pp_cases_pattern_expr cpel))])
+      xmlApply loc
+        (xmlOperator "notation" loc ::
+          [xmlOperator n loc;
+           Element ("subst", [],
+             [Element ("subterms", [],
+                List.map pp_cases_pattern_expr subst_constr);
+              Element ("recsubterms", [],
+                List.map
+                  (fun (cpel) ->
+                     Element ("recsubterm", [],
+                       List.map pp_cases_pattern_expr cpel))
+                subst_rec)]);
+           Element ("args", [], (List.map pp_cases_pattern_expr cpel))])
   | CPatPrim (_, Numeral n) ->
       Element ("CPatPrim", ["val", Bigint.to_string n], [])
   | CPatPrim (_, String s) ->
