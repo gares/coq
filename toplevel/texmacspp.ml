@@ -89,8 +89,8 @@ let xmlToken loc ?(attr=[]) xml =
 let xmlTyped xml =
   Element("typed", [], xml)
 
-let xmlReturn xml =
-  Element("return", [], xml)
+let xmlReturn ?(attr=[]) xml =
+  Element("return", attr, xml)
 
 let xmlCase xml =
   Element("case", [], xml)
@@ -383,23 +383,20 @@ and pp_expr ?(attr=[]) e =
           List.map pp_expr cel)
   | CPatVar (loc, (_, id)) -> xmlPatvar (string_of_id id) loc
   | CHole (loc, _, _) -> xmlCst ~attr  "_" loc
-  | CIf (loc, test, (_, None), th, el) ->
+  | CIf (loc, test, (_, ret), th, el) ->
+      let return = match ret with
+      | None -> []
+      | Some r -> [xmlReturn [pp_expr r]] in
       xmlApply loc
         (xmlOperator "if" loc ::
-          [pp_expr th] @ [pp_expr el])
-  | CIf (loc, test, (_, Some ret), th, el) ->
-      xmlApply loc (
-        xmlOperator "if" loc ::
-          [xmlReturn [pp_expr ret]] @ [pp_expr th] @ [pp_expr el])
-  | CLetTuple (loc, names, (_, None), value, body) ->
+          return @ [pp_expr th] @ [pp_expr el])
+  | CLetTuple (loc, names, (_, ret), value, body) ->
+      let return = match ret with
+      | None -> []
+      | Some r -> [xmlReturn [pp_expr r]] in
       xmlApply loc
         (xmlOperator "lettuple" loc ::
-          (List.map (fun (loc, var) -> xmlCst (string_of_name var) loc) names) @
-          [pp_expr value; pp_expr body])
-  | CLetTuple (loc, names, (_, Some ret), value, body) ->
-      xmlApply loc
-        (xmlOperator "lettuple" loc ::
-          [xmlReturn [pp_expr ret]] @
+          return @
           (List.map (fun (loc, var) -> xmlCst (string_of_name var) loc) names) @
           [pp_expr value; pp_expr body])
   | CCases (loc, sty, None, cel, bel) ->
