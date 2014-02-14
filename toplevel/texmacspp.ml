@@ -299,10 +299,14 @@ and pp_cases_pattern_expr cpe =
 and pp_case_expr (e, (name, pat)) =
   match name, pat with
   | None, None -> xmlScrutinee [pp_expr e]
-  | Some (_, name), None ->
-      xmlScrutinee ~attr:["name", string_of_name name] [pp_expr e]
-  | Some (_, name), Some p ->
-      xmlScrutinee ~attr:["name", string_of_name name]
+  | Some (loc, name), None ->
+      let start, stop= unlock loc in
+      xmlScrutinee ~attr:["name", string_of_name name;
+                          "begin", start; "end", stop] [pp_expr e]
+  | Some (loc, name), Some p ->
+      let start, stop= unlock loc in
+      xmlScrutinee ~attr:["name", string_of_name name;
+                          "begin", start; "end", stop]
         [Element ("in", [], [pp_cases_pattern_expr p]) ; pp_expr e]
   | None, Some p ->
       xmlScrutinee [Element ("in", [], [pp_cases_pattern_expr p]) ; pp_expr e]
