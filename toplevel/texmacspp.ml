@@ -251,9 +251,10 @@ and pp_simple_binder (idl, ce) =
   (List.map pp_lident idl) @ [pp_expr ce]
 and pp_cases_pattern_expr cpe =
   match cpe with
-  | CPatAlias (_, cpe, id) ->
-      Element ("CPatAlias",
-        ["name", string_of_id id], [pp_cases_pattern_expr cpe])
+  | CPatAlias (loc, cpe, id) ->
+      xmlApply loc
+        (xmlOperator "alias" ~attr:["name", string_of_id id] loc ::
+          [pp_cases_pattern_expr cpe])
   | CPatCstr (_, ref, cpel1, cpel2) ->
       Element ("CPatCstr",
         ["reference", Libnames.string_of_reference ref],
