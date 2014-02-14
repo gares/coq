@@ -345,7 +345,9 @@ and pp_expr ?(attr=[]) e =
        xmlApply loc (xmlOperator notation loc :: List.map pp_expr args)
   | CSort(loc, s) ->
        xmlOperator (string_of_glob_sort s) loc
-  | CDelimiters (loc, scope, ce) -> xmlApply loc (xmlOperator "delimiter" ~attr:["name", scope] loc :: [pp_expr ce])
+  | CDelimiters (loc, scope, ce) ->
+      xmlApply loc (xmlOperator "delimiter" ~attr:["name", scope] loc ::
+        [pp_expr ce])
   | CPrim (loc, tok) -> pp_token loc tok
   | CGeneralization (loc, Implicit, _, e) ->
       xmlApply loc
