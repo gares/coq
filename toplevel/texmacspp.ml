@@ -266,8 +266,9 @@ and pp_cases_pattern_expr cpe =
       xmlApply loc
         (xmlOperator "atom"
           ~attr:["name", Libnames.string_of_reference r] loc :: [])
-  | CPatOr (_, cpel) ->
-      Element ("CPatOr", [], (List.map pp_cases_pattern_expr cpel))
+  | CPatOr (loc, cpel) ->
+      xmlApply loc
+        (xmlOperator "or" loc :: (List.map pp_cases_pattern_expr cpel))
   | CPatNotation (loc, n, (subst_constr, subst_rec), cpel) ->
       Element ("CPatNotation", [],
       [xmlOperator n loc;
