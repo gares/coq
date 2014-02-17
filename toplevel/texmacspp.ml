@@ -76,11 +76,16 @@ let xmlRequire loc ?(attr=[]) xml = xmlWithLoc loc "require" attr xml
 
 let xmlImport loc ?(attr=[]) xml = xmlWithLoc loc "import" attr xml
 
+let xmlExtend loc xml = xmlWithLoc loc "extend" [] xml
+
+let xmlScope loc action ?(attr=[]) name xml =
+  xmlWithLoc loc "scope" (["name",name;"action",action] @ attr) xml
+
 (* tactics *)
-let xmlLtac xml = Element("ltac",[],xml)
+let xmlLtac loc xml = xmlWithLoc loc "ltac" [] xml
 
 (* toplevel commands *)
-let xmlGallina xml = Element("gallina",[],xml)
+let xmlGallina loc xml = xmlWithLoc loc "gallina" [] xml
 
 let string_of_name n =
   match n with
@@ -362,23 +367,44 @@ let pp_comment (c) =
 let rec tmpp v loc =
   match v with
   (* Control *)
-  | VernacList _ -> assert false
-  | VernacLoad _ -> assert false
-  | VernacTime _ -> assert false
-  | VernacTimeout _ -> assert false
-  | VernacFail _ -> assert false
-  | VernacError _ -> assert false
+  | VernacList ll ->
+      xmlApply loc (Element("list",[],[]) ::
+                    List.map (fun(loc,e) ->tmpp e loc) ll)
+  | VernacLoad (verbose,f) ->
+      xmlWithLoc loc "load" ["verbose",string_of_bool verbose;"file",f] []
+  | VernacTime e -> xmlApply loc (Element("time",[],[]) :: [tmpp e loc])
+  | VernacTimeout (s,e) ->
+      xmlApply loc (Element("timeout",["val",string_of_int s],[]) ::
+                    [tmpp e loc])
+  | VernacFail e -> xmlApply loc (Element("fail",[],[]) :: [tmpp e loc])
+  | VernacError _ -> xmlWithLoc loc "error" [] []
 
   (* Syntax *)
-  | VernacTacticNotation _ -> assert false
+  | VernacTacticNotation _ as x ->
+      xmlLtac loc [PCData (Pp.string_of_ppcmds (Ppvernac.pr_vernac x))]
+
   | VernacSyntaxExtension (_, ((_, name), sml)) ->
       let attrs = List.flatten (List.map attribute_of_syntax_modifier sml) in
       xmlReservedNotation attrs name loc
 
-  | VernacOpenCloseScope _ -> assert false
-  | VernacDelimiters _ -> assert false
-  | VernacBindScope _ -> assert false
-  | VernacInfix _ -> assert false
+  | VernacOpenCloseScope (_,(true,name)) -> xmlScope loc "open" name []
+  | VernacOpenCloseScope (_,(false,name)) -> xmlScope loc "close" name []
+  | VernacDelimiters (name,tag) ->
+      xmlScope loc "delimit" name ~attr:["delimiter",tag] []
+  | VernacBindScope (name,l) ->
+      xmlScope loc "bind" name
+        (List.map (function
+          | ByNotation(loc,name,None) -> xmlNotation [] name loc []
+          | ByNotation(loc,name,Some d) ->
+              xmlNotation ["delimiter",d] name loc []
+          | AN ref -> xmlReference (Libnames.string_of_reference ref)) l)
+  | VernacInfix (_,((_,name),sml),ce,sn) ->
+      let attrs = List.flatten (List.map attribute_of_syntax_modifier sml) in
+      let sc_attr =
+        match sn with
+        | Some scope -> ["scope", scope]
+        | None -> [] in
+      xmlNotation (sc_attr @ attrs) name loc [pp_expr ce]
   | VernacNotation (_, ce, (lstr, sml), sn) ->
       let name = snd lstr in
       let attrs = List.flatten (List.map attribute_of_syntax_modifier sml) in
@@ -499,7 +525,7 @@ let rec tmpp v loc =
   (* Solving *)
 
   | (VernacSolve _ | VernacSolveExistential _) as x ->
-      xmlLtac [PCData (Pp.string_of_ppcmds (Ppvernac.pr_vernac x))]
+      xmlLtac loc [PCData (Pp.string_of_ppcmds (Ppvernac.pr_vernac x))]
 
   (* Auxiliary file and library management *)
   | VernacAddLoadPath _ -> PCData "VernacAddLoadPath"
@@ -585,13 +611,16 @@ let rec tmpp v loc =
   | VernacToplevelControl _ -> assert false
 
   (* For extension *)
-  | VernacExtend _ -> assert false
+  | VernacExtend _ as x ->
+      xmlExtend loc [PCData (Pp.string_of_ppcmds (Ppvernac.pr_vernac x))]
 
   (* Flags *)
-  | VernacProgram _ -> assert false
-  | VernacLocal _ -> assert false
+  | VernacProgram e -> xmlApply loc (Element("program",[],[]) :: [tmpp e loc])
+  | VernacLocal (b,e) ->
+      xmlApply loc (Element("local",["flag",string_of_bool b],[]) ::
+                    [tmpp e loc])
 
 let tmpp v loc =
   match tmpp v loc with
   | Element("ltac",_,_) as x -> x
-  | xml -> xmlGallina [xml]
+  | xml -> xmlGallina loc [xml]
