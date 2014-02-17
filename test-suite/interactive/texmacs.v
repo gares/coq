@@ -1,6 +1,9 @@
 Require Import Init.Logic.
 Import Logic.
 
+Delimit Scope foo with f.
+Bind Scope nat_scope with nat.
+
 (* CProdN *)
 Lemma toto1 : forall (n m : list nat), forall (b : bool), n = m.
 idtac.
