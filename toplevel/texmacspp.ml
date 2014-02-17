@@ -16,135 +16,71 @@ let unlock loc =
 let xmlNoop = (* almost noop  *)
   PCData ""
 
-let xmlBeginSection loc name =
+let xmlWithLoc loc ename attr xml =
   let start, stop = unlock loc in
-  Element("beginsection", [
-    "name", name;
-    "begin", start;
-    "end", stop ], [])
+  Element(ename, [ "begin", start; "end", stop ] @ attr, xml)
 
-let xmlEndSegment loc name =
-  let start, stop = unlock loc in
-  Element("endsegment", [
-    "name", name;
-    "begin", start;
-    "end", stop ], [])
+let xmlBeginSection loc name = xmlWithLoc loc "beginsection" ["name", name] []
+
+let xmlEndSegment loc name = xmlWithLoc loc "endsegment" ["name", name] []
 
 let xmlThm typ name loc xml =
-  let start, stop = unlock loc in
-  Element("theorem", [
-    "type", typ;
-    "name", name;
-    "begin", start;
-    "end", stop ], xml)
+  xmlWithLoc loc "theorem" ["type", typ; "name", name] xml
 
 let xmlDef typ name loc xml =
-  let start, stop = unlock loc in
-  Element("definition", [
-    "type", typ;
-    "name", name;
-    "begin", start;
-    "end", stop ], xml)
+  xmlWithLoc loc "definition" ["type", typ; "name", name] xml
 
 let xmlNotation attr name loc xml =
-  let start, stop = unlock loc in
-  Element("notation", attr @ [
-    "name", name;
-    "begin", start;
-    "end", stop ], xml)
+  xmlWithLoc loc "notation" (("name", name) :: attr) xml
 
 let xmlReservedNotation attr name loc =
-  let start, stop = unlock loc in
-  Element("reservednotation", attr @ [
-    "name", name;
-    "begin", start;
-    "end", stop ], [])
+  xmlWithLoc loc "reservednotation" (("name", name) :: attr) []
 
 let xmlCst name ?(attr=[]) loc =
-  let start, stop = unlock loc in
-  Element("constant", attr @ [
-    "name", name;
-    "begin", start;
-    "end", stop ], [])
+  xmlWithLoc loc "constant" (("name", name) :: attr) []
 
 let xmlOperator name ?(attr=[]) loc =
-  let start, stop = unlock loc in
-  Element("operator", attr @ [
-    "name", name;
-    "begin", start;
-    "end", stop ], [])
+  xmlWithLoc loc "operator" (("name", name) :: attr) []
 
-let xmlApply loc ?(attr=[]) xml =
-  let start, stop = unlock loc in
-  Element("apply", attr @ [
-    "begin", start;
-    "end", stop ], xml)
+let xmlApply loc ?(attr=[]) xml = xmlWithLoc loc "apply" attr xml
 
-let xmlToken loc ?(attr=[]) xml =
-  let start, stop = unlock loc in
-  Element("token", attr @ [
-    "begin", start;
-    "end", stop ], xml)
+let xmlToken loc ?(attr=[]) xml = xmlWithLoc loc "token" attr xml
 
-let xmlTyped xml =
-  Element("typed", [], xml)
+let xmlTyped xml = Element("typed", [], xml)
 
-let xmlReturn ?(attr=[]) xml =
-  Element("return", attr, xml)
+let xmlReturn ?(attr=[]) xml = Element("return", attr, xml)
 
-let xmlCase xml =
-  Element("case", [], xml)
+let xmlCase xml = Element("case", [], xml)
 
-let xmlScrutinee ?(attr=[]) xml =
-  Element("scrutinee", attr, xml)
+let xmlScrutinee ?(attr=[]) xml = Element("scrutinee", attr, xml)
 
-let xmlWith xml =
-  Element("with", [], xml)
+let xmlWith xml = Element("with", [], xml)
 
-let xmlInductive kind loc xml =
-  let start, stop = unlock loc in
-  Element("inductive", [
-    "kind", kind;
-    "begin", start;
-    "end", stop ], xml)
+let xmlInductive kind loc xml = xmlWithLoc loc "inductive" ["kind",kind] xml
 
-let xmlCheck loc xml =
-  let start, stop = unlock loc in
-  Element("check", [
-    "begin", start;
-    "end", stop ], xml)
+let xmlCheck loc xml = xmlWithLoc loc "check" [] xml
 
-let xmlAssumption kind loc xml =
-  let start, stop = unlock loc in
-  Element("assumption", [
-    "kind", kind;
-    "begin", start;
-    "end", stop ], xml)
+let xmlAssumption kind loc xml = xmlWithLoc loc "assumption" ["kind",kind] xml
 
-let xmlComment loc xml =
-  let start, stop = unlock loc in
-  Element("comment", [
-    "begin", start;
-    "end", stop ], xml)
+let xmlComment loc xml = xmlWithLoc loc "comment" [] xml
 
-let xmlCanonicalStructure attr loc =
-  let start, stop = unlock loc in
-  Element("canonicalstructure", attr @ [
-    "begin", start;
-    "end", stop ], [])
+let xmlCanonicalStructure attr loc = xmlWithLoc loc "canonicalstructure" attr []
 
-let xmlQed ?(attr=[]) loc =
-  let start, stop = unlock loc in
-  Element("qed", attr @ [
-    "begin", start;
-    "end", stop ], [])
+let xmlQed ?(attr=[]) loc = xmlWithLoc loc "qed" attr []
 
-let xmlPatvar id loc =
-  let start, stop = unlock loc in
-  Element("patvar", [
-    "id", id;
-    "begin", start;
-    "end", stop ], [])
+let xmlPatvar id loc = xmlWithLoc loc "patvar" ["id", id] []
+
+let xmlReference name = Element("reference",["name", name],[])
+
+let xmlRequire loc ?(attr=[]) xml = xmlWithLoc loc "require" attr xml
+
+let xmlImport loc ?(attr=[]) xml = xmlWithLoc loc "import" attr xml
+
+(* tactics *)
+let xmlLtac xml = Element("ltac",[],xml)
+
+(* toplevel commands *)
+let xmlGallina xml = Element("gallina",[],xml)
 
 let string_of_name n =
   match n with
