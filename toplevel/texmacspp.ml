@@ -344,6 +344,7 @@ and pp_expr ?(attr=[]) e =
        xmlApply ~attr loc
          (xmlCst (Libnames.string_of_reference r)
                  (Libnames.loc_of_reference r) :: List.map pp_expr args)
+  (* FIXME: Non applied operator -- bug or feature? *)
   | CNotation (loc, notation,  ([],_,_)) ->
        xmlOperator notation loc
   | CNotation (loc, notation,  (args,_,_)) ->
