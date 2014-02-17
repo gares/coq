@@ -456,8 +456,21 @@ let rec tmpp v loc =
   (* Gallina extensions *)
   | VernacBeginSection (_, id) -> xmlBeginSection loc (Id.to_string id)
   | VernacEndSegment (_, id) -> xmlEndSegment loc (Id.to_string id)
-  | VernacRequire _ -> assert false
-  | VernacImport _ -> assert false
+  | VernacRequire (None,l) ->
+      xmlRequire loc (List.map (fun ref ->
+        xmlReference (Libnames.string_of_reference ref)) l)
+  | VernacRequire (Some true,l) ->
+      xmlRequire loc ~attr:["export","true"] (List.map (fun ref ->
+        xmlReference (Libnames.string_of_reference ref)) l)
+  | VernacRequire (Some false,l) ->
+      xmlRequire loc ~attr:["import","true"] (List.map (fun ref ->
+        xmlReference (Libnames.string_of_reference ref)) l)
+  | VernacImport (true,l) ->
+      xmlImport loc ~attr:["export","true"] (List.map (fun ref ->
+        xmlReference (Libnames.string_of_reference ref)) l)
+  | VernacImport (false,l) ->
+      xmlImport loc (List.map (fun ref ->
+        xmlReference (Libnames.string_of_reference ref)) l)
   | VernacCanonical r ->
       let attr =
         match r with
