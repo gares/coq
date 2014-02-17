@@ -266,11 +266,11 @@ and pp_cases_pattern_expr cpe =
            ~attr:["name", Libnames.string_of_reference ref] loc ::
          [Element ("impargs", [], (List.map pp_cases_pattern_expr cpel1));
           Element ("args", [], (List.map pp_cases_pattern_expr cpel2))])
-  | CPatAtom (loc, None) -> xmlApply loc (xmlOperator "atom" loc :: [])
-  | CPatAtom (loc, Some r) ->
-      xmlApply loc
-        (xmlOperator "atom"
-          ~attr:["name", Libnames.string_of_reference r] loc :: [])
+  | CPatAtom (loc, optr) ->
+      let attrs = match optr with
+      | None -> []
+      | Some r -> ["name", Libnames.string_of_reference r] in
+      xmlApply loc (xmlOperator "atom" ~attr:attrs loc :: [])
   | CPatOr (loc, cpel) ->
       xmlApply loc
         (xmlOperator "or" loc :: (List.map pp_cases_pattern_expr cpel))
