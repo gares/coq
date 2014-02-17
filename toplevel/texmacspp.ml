@@ -498,8 +498,8 @@ let rec tmpp v loc =
 
   (* Solving *)
 
-  | VernacSolve _ -> PCData "VernacSolve"
-  | VernacSolveExistential _ -> assert false
+  | (VernacSolve _ | VernacSolveExistential _) as x ->
+      xmlLtac [PCData (Pp.string_of_ppcmds (Ppvernac.pr_vernac x))]
 
   (* Auxiliary file and library management *)
   | VernacAddLoadPath _ -> PCData "VernacAddLoadPath"
@@ -590,3 +590,8 @@ let rec tmpp v loc =
   (* Flags *)
   | VernacProgram _ -> assert false
   | VernacLocal _ -> assert false
+
+let tmpp v loc =
+  match tmpp v loc with
+  | Element("ltac",_,_) as x -> x
+  | xml -> xmlGallina [xml]
