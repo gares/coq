@@ -1,4 +1,3 @@
-(*
 (* CProdN *)
 Lemma toto1 : forall (n m : list nat), forall (b : bool), n = m.
 Lemma toto2 : forall (n m : list nat) (b : bool), True.
@@ -22,14 +21,13 @@ Lemma toto : forall x : nat,
 
 Lemma toto : forall (i j : list nat) (x : nat),
     let f := (fun (n m : list nat) (y : nat) => y) in f i j x = x.
-*)
 
 (* CCases *)
 Lemma toto : forall x : nat,
-    match x with S y => y | O => x end = x - (S O).
+    match x as toto return nat with S y => y | O => x end = x - (S O).
 
 Lemma toto : forall x : nat,
-    match x with S y | O as y => x end = x - (S O).
+    match x with S y | O as y => y end = x - (S O).
 
 Lemma toto : forall x : nat,
     match x return nat with S y => y | O => x end = x - (S O).
