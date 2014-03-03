@@ -4,6 +4,37 @@ Import Logic.
 Delimit Scope foo with f.
 Bind Scope nat_scope with nat.
 
+(* Fixpoint *)
+Fixpoint add (n m:nat) {struct n} : nat :=
+  match n with
+  | O => m
+  | S p => S (add p m)
+  end.
+
+(* CoInductive *)
+CoInductive Stream : Set := Seq : nat -> Stream -> Stream.
+
+(* CoFixpoint *)
+CoFixpoint from (n:nat) : Stream := Seq n (from (S n)).
+
+(* Inductive *)
+Variables A B : Set.
+
+Inductive tree : Set := node : A -> forest -> tree
+  with forest : Set :=
+  | leaf : B -> forest
+  | cons : tree -> forest -> forest.
+
+Fixpoint tree_size (t:tree) : nat :=
+  match t with
+  | node a f => S (forest_size f)
+  end
+with forest_size (f:forest) : nat :=
+  match f with
+  | leaf b => 1
+  | cons t f' => (tree_size t + forest_size f')
+  end.
+
 (* CProdN *)
 Lemma toto1 : forall (n m : list nat), forall (b : bool), n = m.
 idtac.
