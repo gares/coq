@@ -58,6 +58,8 @@ let xmlWith xml = Element("with", [], xml)
 
 let xmlInductive kind loc xml = xmlWithLoc loc "inductive" ["kind",kind] xml
 
+let xmlFixpoint xml = Element("fixpoint", [], xml)
+
 let xmlCheck loc xml = xmlWithLoc loc "check" [] xml
 
 let xmlAssumption kind loc xml = xmlWithLoc loc "assumption" ["kind",kind] xml
@@ -192,6 +194,31 @@ and pp_inductive_expr ((_, (_, id)), lbl, ceo, _, cl_or_rdexpr) = (* inductive_e
   | None -> []
   end @
   (List.map pp_local_binder lbl)
+and pp_recursion_order_expr optid roe = (* don't know what it is for now *)
+  let attrs =
+    match optid with
+    | None -> []
+    | Some (loc, id) ->
+        let start, stop = unlock loc in
+        ["begin", start; "end", stop ; "name", Id.to_string id] in
+  let kind, expr =
+    match roe with
+    | CStructRec -> "struct", []
+    | CWfRec e -> "rec", [pp_expr e]
+    | CMeasureRec (e, None) -> "mesrec", [pp_expr e]
+    | CMeasureRec (e, Some rel) -> "mesrec", [pp_expr e] @ [pp_expr rel] in
+  Element ("recursion_order", ["kind", kind] @ attrs, expr)
+and pp_fixpoint_expr ((loc, id), (optid, roe), lbl, ce, ceo) = (* fixpoint_expr *)
+  let start, stop = unlock loc in
+  let id = Id.to_string id in
+  [Element ("lident", ["begin", start; "end", stop ; "name", id], [])] @ (* fixpoint name *)
+  [pp_recursion_order_expr optid roe] @
+  (List.map pp_local_binder lbl) @
+  [pp_expr ce] @
+  begin match ceo with (* don't know what it is for now *)
+  | Some ce -> [pp_expr ce]
+  | None -> []
+  end
 and pp_lident (loc, id) = xmlCst (Id.to_string id) loc
 and pp_simple_binder (idl, ce) =
   (List.map pp_lident idl) @ [pp_expr ce]
@@ -474,7 +501,13 @@ let rec tmpp v loc =
             (fun (ie, dnl) -> (pp_inductive_expr ie) @
                               (List.map pp_decl_notation dnl)) iednll) in
       xmlInductive kind loc exprs
-  | VernacFixpoint _ -> assert false
+  | VernacFixpoint (_, fednll) ->
+      let exprs =
+        List.flatten (* should probably not be flattened *)
+          (List.map
+            (fun (fe, dnl) -> (pp_fixpoint_expr fe) @
+                              (List.map pp_decl_notation dnl)) fednll) in
+      xmlFixpoint exprs
   | VernacCoFixpoint _ -> assert false
   | VernacScheme _ -> assert false
   | VernacCombinedScheme _ -> assert false
