@@ -58,6 +58,8 @@ let xmlWith xml = Element("with", [], xml)
 
 let xmlInductive kind loc xml = xmlWithLoc loc "inductive" ["kind",kind] xml
 
+let xmlCoFixpoint xml = Element("cofixpoint", [], xml)
+
 let xmlFixpoint xml = Element("fixpoint", [], xml)
 
 let xmlCheck loc xml = xmlWithLoc loc "check" [] xml
@@ -213,6 +215,18 @@ and pp_fixpoint_expr ((loc, id), (optid, roe), lbl, ce, ceo) = (* fixpoint_expr 
   let id = Id.to_string id in
   [Element ("lident", ["begin", start; "end", stop ; "name", id], [])] @ (* fixpoint name *)
   [pp_recursion_order_expr optid roe] @
+  (List.map pp_local_binder lbl) @
+  [pp_expr ce] @
+  begin match ceo with (* don't know what it is for now *)
+  | Some ce -> [pp_expr ce]
+  | None -> []
+  end
+and pp_cofixpoint_expr ((loc, id), lbl, ce, ceo) = (* cofixpoint_expr *)
+  (* Nota: it is like fixpoint_expr without (optid, roe)
+   * so could be merged if there is no more differences *)
+  let start, stop = unlock loc in
+  let id = Id.to_string id in
+  [Element ("lident", ["begin", start; "end", stop ; "name", id], [])] @ (* cofixpoint name *)
   (List.map pp_local_binder lbl) @
   [pp_expr ce] @
   begin match ceo with (* don't know what it is for now *)
@@ -508,7 +522,14 @@ let rec tmpp v loc =
             (fun (fe, dnl) -> (pp_fixpoint_expr fe) @
                               (List.map pp_decl_notation dnl)) fednll) in
       xmlFixpoint exprs
-  | VernacCoFixpoint _ -> assert false
+  | VernacCoFixpoint (_, cfednll) ->
+      (* Nota: it is like VernacFixpoint without so could be merged *)
+      let exprs =
+        List.flatten (* should probably not be flattened *)
+          (List.map
+            (fun (cfe, dnl) -> (pp_cofixpoint_expr cfe) @
+                              (List.map pp_decl_notation dnl)) cfednll) in
+      xmlCoFixpoint exprs
   | VernacScheme _ -> assert false
   | VernacCombinedScheme _ -> assert false
 
