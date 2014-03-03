@@ -183,7 +183,7 @@ and pp_local_decl_expr lde = (* don't know what it is for now *)
   | AssumExpr (_, ce) -> pp_expr ce
   | DefExpr (_, ce, _) -> pp_expr ce
 and pp_inductive_expr ((_, (_, id)), lbl, ceo, _, cl_or_rdexpr) = (* inductive_expr *)
-  [Element ("lident", ["name", Id.to_string id], [])] @ (* don't know what it is for now *)
+  [Element ("lident", ["name", Id.to_string id], [])] @ (* inductive name *)
   begin match cl_or_rdexpr with
   | Constructors coel -> List.map (fun (_, (_, ce)) -> pp_expr ce) coel
   | RecordDecl (_, ldewwwl) ->
@@ -496,7 +496,7 @@ let rec tmpp v loc =
             | Class _ -> "Class"
           end in
       let exprs =
-        List.flatten
+        List.flatten (* should probably not be flattened *)
           (List.map
             (fun (ie, dnl) -> (pp_inductive_expr ie) @
                               (List.map pp_decl_notation dnl)) iednll) in
