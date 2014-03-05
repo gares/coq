@@ -151,7 +151,7 @@ match sm with
   | SetOnlyParsing v -> ["compat", Flags.pr_version v]
   | SetFormat (system, (loc, s)) ->
       let start, stop = unlock loc in
-      ["format"^system, s; "begin", start; "end", stop]
+      ["format-"^system, s; "begin", start; "end", stop]
 
 let string_of_assumption_kind l a many =
   match l, a, many with
