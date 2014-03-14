@@ -1,6 +1,23 @@
 Require Import Init.Logic.
 Import Logic.
 
+Notation "A +++ B" := (A + B)
+  (format "'[hv'  A  '/'  +++  B  ']'",
+   format "tex" "#1 + #2", at level 40).
+
+Check 3 +++ 7.
+
+Section Test.
+Variable n : nat.
+Hypothesis H : 1 < n.
+
+Lemma foo1 : 0 < n.
+Proof with admit using H.
+generalize H; case n...
+Qed.
+
+End Test.
+
 Delimit Scope foo with f.
 Bind Scope nat_scope with nat.
 
