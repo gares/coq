@@ -86,6 +86,22 @@ let xmlExtend loc xml = xmlWithLoc loc "extend" [] xml
 let xmlScope loc action ?(attr=[]) name xml =
   xmlWithLoc loc "scope" (["name",name;"action",action] @ attr) xml
 
+let xmlProofMode loc name = xmlWithLoc loc "proofmode" ["name",name] []
+
+let xmlProof loc xml = xmlWithLoc loc "proof" [] xml
+
+let xmlRawTactic name rtac =
+  Element("rawtactic", ["name",name],
+    [PCData (Pp.string_of_ppcmds (Pptactic.pr_raw_tactic rtac))])
+
+let xmlSectionSubsetDescr name ssd =
+  Element("sectionsubsetdescr",["name",name],
+    [PCData (Proof_using.to_string ssd)])
+
+let xmlDeclareMLModule loc s =
+  xmlWithLoc loc "declarexmlmodule" []
+    (List.map (fun x -> Element("path",["value",x],[])) s)
+
 (* tactics *)
 let xmlLtac loc xml = xmlWithLoc loc "ltac" [] xml
 
@@ -590,7 +606,7 @@ let rec tmpp v loc =
   | VernacAddLoadPath _ -> PCData "VernacAddLoadPath"
   | VernacRemoveLoadPath _ -> assert false
   | VernacAddMLPath _ -> assert false
-  | VernacDeclareMLModule _ -> assert false
+  | VernacDeclareMLModule sl -> xmlDeclareMLModule loc sl
   | VernacChdir _ -> assert false
 
   (* State management *)
@@ -644,8 +660,8 @@ let rec tmpp v loc =
       | Observe _ -> assert false
       | Command v -> tmpp v Loc.ghost (* note: loc might be optionnal*)
       | PGLast _ -> assert false
-      | PrintDag _ -> assert false
-      | Wait _ -> assert false
+      | PrintDag -> assert false
+      | Wait -> assert false
       end
 
   (* Proof management *)
@@ -664,8 +680,12 @@ let rec tmpp v loc =
   | VernacEndSubproof -> assert false
   | VernacShow _ -> assert false
   | VernacCheckGuard -> assert false
-  | VernacProof _ -> assert false
-  | VernacProofMode _ -> assert false
+  | VernacProof (tac,using) ->
+      let tac = Option.map (xmlRawTactic "closingtactic") tac in
+      let using = Option.map (xmlSectionSubsetDescr "using") using in
+      xmlProof loc (Option.List.(cons tac (cons using [])))
+  | VernacProofMode name -> xmlProofMode loc name
+
   (* Toplevel control *)
   | VernacToplevelControl _ -> assert false
 
