@@ -954,6 +954,14 @@ let find_notation_printing_rule ntn =
 let find_notation_extra_printing_rules ntn =
   try snd (String.Map.find ntn !printing_rules)
   with Not_found -> []
+let add_notation_extra_printing_rule ntn k v =
+  try
+    printing_rules := 
+      let p, pp = String.Map.find ntn !printing_rules in
+      String.Map.add ntn (p, (k,v) :: pp) !printing_rules
+  with Not_found ->
+    user_err_loc (Loc.ghost,"add_notation_extra_printing_rule",
+      str "No such Notation.")
 
 (**********************************************************************)
 (* Synchronisation with reset *)

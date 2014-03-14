@@ -290,6 +290,7 @@ type vernac_expr =
   | VernacNotation of
       obsolete_locality * constr_expr * (lstring * syntax_modifier list) *
       scope_name option
+  | VernacNotationAddFormat of string * string * string
 
   (* Gallina *)
   | VernacDefinition of

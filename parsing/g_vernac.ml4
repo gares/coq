@@ -1026,6 +1026,8 @@ GEXTEND Gram
          modl = [ "("; l = LIST1 syntax_modifier SEP ","; ")" -> l | -> [] ];
 	 sc = OPT [ ":"; sc = IDENT -> sc ] ->
            VernacNotation (local,c,(s,modl),sc)
+     | IDENT "Format"; IDENT "Notation"; n = STRING; s = STRING; fmt = STRING ->
+           VernacNotationAddFormat (n,s,fmt)
 
      | IDENT "Tactic"; IDENT "Notation"; n = tactic_level;
 	 pil = LIST1 production_item; ":="; t = Tactic.tactic

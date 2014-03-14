@@ -572,6 +572,8 @@ let rec pr_vernac = function
   | VernacSyntaxExtension (_,(s,l)) ->
       str"Reserved Notation" ++ spc() ++ pr_located qs s ++
       pr_syntax_modifiers l
+  | VernacNotationAddFormat(s,k,v) ->
+      str"Format Notation " ++ qs s ++ spc () ++ qs k ++ spc() ++ qs v
 
   (* Gallina *)
   | VernacDefinition (d,id,b) -> (* A verifier... *)

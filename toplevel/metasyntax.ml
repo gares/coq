@@ -1318,6 +1318,13 @@ let add_notation local c ((loc,df),modifiers) sc =
   in
   Dumpglob.dump_notation (loc,df') sc true
 
+let add_notation_extra_printing_rule df k v =
+  let notk = 
+    let dfs = split_notation_string df in
+    let _,_, symbs = analyze_notation_tokens dfs in
+    make_notation_key symbs in
+  Notation.add_notation_extra_printing_rule notk k v
+
 (* Infix notations *)
 
 let inject_var x = CRef (Ident (Loc.ghost, Id.of_string x),None)

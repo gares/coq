@@ -5,7 +5,10 @@ Notation "A +++ B" := (A + B)
   (format "'[hv'  A  '/'  +++  B  ']'",
    format "tex" "#1 + #2", at level 40).
 
-Check 3 +++ 7.
+Format Notation "A /\ B" "tex" "#1 \wedge #2".
+Format Notation "Foo /\ Bar" "mathml" "&and;".
+
+Check 3 +++ 7 = 10 /\ True.
 
 Section Test.
 Variable n : nat.

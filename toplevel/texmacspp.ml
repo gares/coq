@@ -475,6 +475,7 @@ let rec tmpp v loc =
         | Some scope -> ["scope", scope]
         | None -> [] in
       xmlNotation (sc_attr @ attrs) name loc [pp_expr ce]
+  | VernacNotationAddFormat _ -> assert false
 
   (* Gallina *)
   | VernacDefinition (ldk, (_,id), de) ->
