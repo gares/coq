@@ -39,8 +39,9 @@ let xmlReservedNotation attr name loc =
 let xmlCst name ?(attr=[]) loc =
   xmlWithLoc loc "constant" (("name", name) :: attr) []
 
-let xmlOperator name ?(attr=[]) loc =
-  xmlWithLoc loc "operator" (("name", name) :: attr) []
+let xmlOperator name ?(attr=[]) ?(pprules=[]) loc =
+  xmlWithLoc loc "operator"
+    (("name", name) :: List.map (fun (a,b) -> "format"^a,b) pprules @ attr) []
 
 let xmlApply loc ?(attr=[]) xml = xmlWithLoc loc "apply" attr xml
 
@@ -132,9 +133,9 @@ match sm with
       end
   | SetEntryType (s, _) -> ["entrytype", s]
   | SetOnlyParsing v -> ["compat", Flags.pr_version v]
-  | SetFormat (loc, s) ->
-      let start, stop= unlock loc in
-      ["format", s; "begin", start; "end", stop]
+  | SetFormat (system, (loc, s)) ->
+      let start, stop = unlock loc in
+      ["format"^system, s; "begin", start; "end", stop]
 
 let string_of_assumption_kind l a many =
   match l, a, many with
@@ -330,7 +331,11 @@ and pp_expr ?(attr=[]) e =
   | CNotation (loc, notation,  ([],_,_)) ->
        xmlOperator notation loc
   | CNotation (loc, notation,  (args,_,_)) ->
-       xmlApply loc (xmlOperator notation loc :: List.map pp_expr args)
+       xmlApply loc
+         (xmlOperator notation
+            ~pprules:(Notation.find_notation_extra_printing_rules notation)
+            loc
+          :: List.map pp_expr args)
   | CSort(loc, s) ->
        xmlOperator (string_of_glob_sort s) loc
   | CDelimiters (loc, scope, ce) ->
