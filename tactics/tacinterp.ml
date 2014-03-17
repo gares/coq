@@ -635,7 +635,8 @@ let interp_may_eval f ist env sigma = function
   | ConstrEval (r,c) ->
       let (sigma,redexp) = interp_red_expr ist  sigma env r in
       let (sigma,c_interp) = f ist env sigma c in
-      sigma , (fst (Redexpr.reduction_of_red_expr env redexp) env sigma c_interp)
+      sigma , (Redexpr.redfun_of_red_expr
+                 (Environ.oracle env) redexp env sigma c_interp)
   | ConstrContext ((loc,s),c) ->
       (try
 	let (sigma,ic) = f ist env sigma c
@@ -989,6 +990,8 @@ and eval_tactic ist = function
          Proofview.V82.tactic begin
            tclSHOWHYPS (Proofview.V82.of_tactic (interp_tactic ist tac))
          end
+  | TacCheckAndCache tac ->
+      Proofview.V82.tactic (Tactics.tclCHECKANDCACHE (interp_tactic ist tac))
   | TacAbstract (tac,ido) ->
       Proofview.V82.tactic begin fun gl -> Tactics.tclABSTRACT
         (Option.map (pf_interp_ident ist gl) ido) (interp_tactic ist tac) gl

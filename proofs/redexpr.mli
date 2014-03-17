@@ -18,8 +18,21 @@ type red_expr =
  
 val out_with_occurrences : 'a with_occurrences -> occurrences * 'a
 
-val reduction_of_red_expr :
-  Environ.env -> red_expr -> reduction_function * cast_kind
+(* A trusted reduction will ask the kernel to sign the result,
+ * an untrusted one will leave a cast to help the kernel check
+ * the reduction in an effective way *)
+type get_evar_val = existential -> constr option
+type stamp = constr -> constr
+type reduction =
+  [ `Trusted of get_evar_val -> Environ.env -> types -> stamp * types
+  | `Untrusted of reduction_function * cast_kind ]
+
+val reduction_of_red_expr : Conv_oracle.oracle -> red_expr -> reduction
+
+(* Projects the result of reduction_of_red_expr *)
+val redfun_cast_of_red_expr :
+  Conv_oracle.oracle -> red_expr -> reduction_function * cast_kind
+val redfun_of_red_expr : Conv_oracle.oracle -> red_expr -> reduction_function
 
 (** [true] if we should use the vm to verify the reduction *)
 

@@ -299,3 +299,4 @@ let cbv_vm env c t  =
   if not transp then set_transp_values false;
   c
 
+let () = Safe_typing.set_cbv_vm cbv_vm

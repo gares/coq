@@ -1018,7 +1018,8 @@ module Strategies =
 
     let reduce (r : Redexpr.red_expr) : 'a pure_strategy =
       fun state env avoid t ty cstr evars ->
-        let rfn, ckind = Redexpr.reduction_of_red_expr env r in
+        let rfn, ckind =
+          Redexpr.redfun_cast_of_red_expr (Environ.oracle env) r in
 	  let t' = rfn env (goalevars evars) t in
 	    if eq_constr t' t then
 	      state, Same

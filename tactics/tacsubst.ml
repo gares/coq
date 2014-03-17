@@ -236,6 +236,7 @@ and subst_tactic subst (t:glob_tactic_expr) = match t with
   | TacId _ | TacFail _ as x -> x
   | TacProgress tac -> TacProgress (subst_tactic subst tac:glob_tactic_expr)
   | TacShowHyps tac -> TacShowHyps (subst_tactic subst tac:glob_tactic_expr)
+  | TacCheckAndCache tac -> TacCheckAndCache (subst_tactic subst tac)
   | TacAbstract (tac,s) -> TacAbstract (subst_tactic subst tac,s)
   | TacThen (t1,tf,t2,tl) ->
       TacThen (subst_tactic subst t1,Array.map (subst_tactic subst) tf,

@@ -423,6 +423,10 @@ and mk_hdgoals sigma goal goalacc trm =
 	let (gl,ev,sigma) = mk_goal hyps (nf_betaiota sigma ty) in
 	gl::goalacc,ty,sigma,ev
 
+    | Cast (t,CACHEcast s, ty) ->
+	check_typability env sigma ty;
+        let gls,ty,sigma,t = mk_refgoals sigma goal goalacc ty t in
+        gls,ty,sigma,mkCast (t,CACHEcast s, ty)
     | Cast (t,_, ty) ->
 	check_typability env sigma ty;
 	mk_refgoals sigma goal goalacc ty t

@@ -69,6 +69,7 @@ GEXTEND Gram
       | IDENT "once"; ta = tactic_expr -> TacOnce ta
       | IDENT "exactly_once"; ta = tactic_expr -> TacExactlyOnce ta
       | IDENT "infoH"; ta = tactic_expr -> TacShowHyps ta
+      | IDENT "check_and_cache"; tc = NEXT -> TacCheckAndCache tc
 (*To do: put Abstract in Refiner*)
       | IDENT "abstract"; tc = NEXT -> TacAbstract (tc,None)
       | IDENT "abstract"; tc = NEXT; "using";  s = ident ->

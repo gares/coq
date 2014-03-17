@@ -1350,7 +1350,7 @@ let vernac_check_may_eval redexp glopt rc =
     | Some r ->
         Tacintern.dump_glob_red_expr r;
         let (sigma',r_interp) = interp_redexp env sigma' r in
-	let redfun = fst (reduction_of_red_expr env r_interp) in
+	let redfun = redfun_of_red_expr (Environ.oracle env) r_interp in
 	msg_notice (print_eval redfun env sigma' rc j)
 
 let vernac_declare_reduction locality s r =

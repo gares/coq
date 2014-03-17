@@ -16,7 +16,12 @@ open Declarations
 
 (** {6 Typing functions (not yet tagged as safe) } *)
 
-val infer      : env -> constr       -> unsafe_judgment * constraints
+type notary = signature -> env -> constr -> types ->
+  [ `Invalid
+  | `Skip of constraints
+  | `SkipConv ]
+
+val infer      : ?tp:notary -> env -> constr -> unsafe_judgment * constraints
 val infer_v    : env -> constr array -> unsafe_judgment array * constraints
 val infer_type : env -> types        -> unsafe_type_judgment * constraints
 
@@ -94,7 +99,7 @@ val type_fixpoint : env -> Name.t array -> types array
     -> unsafe_judgment array -> constraints
 
 (** Kernel safe typing but applicable to partial proofs *)
-val typing : env -> constr -> unsafe_judgment
+val typing : env -> constr -> unsafe_judgment * constraints
 
 val type_of_constant : env -> constant -> types
 

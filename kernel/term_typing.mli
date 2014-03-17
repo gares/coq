@@ -23,7 +23,7 @@ val translate_local_assum : env -> types -> types * constraints
  * type checked proof *)
 val handle_side_effects : env -> definition_entry -> definition_entry
 
-val translate_constant : env -> constant -> constant_entry -> constant_body
+val translate_constant : ?tp:Typeops.notary -> env -> constant -> constant_entry -> constant_body
 
 val translate_mind :
   env -> mutual_inductive -> mutual_inductive_entry -> mutual_inductive_body
@@ -32,7 +32,7 @@ val translate_recipe : env -> constant -> Cooking.recipe -> constant_body
 
 (** Internal functions, mentioned here for debug purpose only *)
 
-val infer_declaration : env -> constant_entry -> Cooking.result
+val infer_declaration : ?tp:Typeops.notary -> env -> constant_entry -> Cooking.result
 val build_constant_declaration :
   constant -> env -> Cooking.result -> constant_body
 

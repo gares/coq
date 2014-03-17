@@ -296,18 +296,66 @@ let bind_red_expr_occurrences occs nbcl redexp =
    reduction function either to the conclusion or to a
    certain hypothesis *)
 
-let reduct_in_concl (redfun,sty) gl =
-  convert_concl_no_check (pf_reduce redfun gl (pf_concl gl)) sty gl
+let interpretable_as_section_decl d1 d2 = match d1,d2 with
+  | (_,Some _,_), (_,None,_) -> false
+  | (_,Some b1,t1), (_,Some b2,t2) -> eq_constr b1 b2 && eq_constr t1 t2
+  | (_,None,t1), (_,_,t2) -> eq_constr t1 t2
+
+let analyze_goal_context gl =
+  let current_sign = Global.named_context()
+  and global_sign = pf_hyps gl in
+  let sign,secsign =
+    List.fold_right
+      (fun (id,_,_ as d) (s1,s2) ->
+	if mem_named_context id current_sign &&
+          interpretable_as_section_decl (Context.lookup_named id current_sign) d
+        then (s1,push_named_context_val d s2)
+	else (add_named_decl d s1,s2))
+      global_sign (empty_named_context,empty_named_context_val) in
+  sign, secsign
+
+let reduct_in_concl redfun gl =
+  match redfun with
+  | `Trusted redfun ->
+      let goal, concl, sigma = gl.it, pf_concl gl, project gl in
+      let hyps = Goal.V82.hyps sigma goal in
+      let sign, secsign = analyze_goal_context gl in
+      let open_concl, enclosing_env =
+        let rec push env l c = match l, kind_of_term c with
+          | [], _ -> c, env
+          | _::l, Prod (n,ty,c) -> push (push_rel (n,None,ty) env) l c
+          | _::l, LetIn (n,bo,ty,c) -> push (push_rel (n,Some bo,ty) env) l c 
+          | _ -> assert false in
+        push (Global.env()) sign (it_mkNamedProd_or_LetIn concl sign) in
+      let cast, open_concl' = redfun (fun _ -> None) enclosing_env open_concl in
+      let concl' = substl (List.map (fun x -> mkVar (pi1 x)) sign) open_concl' in
+      let g, ev, sigma =
+        Goal.V82.mk_goal sigma hyps concl' (Goal.V82.extra sigma goal) in
+      let psol =
+        applist (it_mkNamedLambda_or_LetIn (cast ev) sign,
+          (List.rev (instance_from_named_context sign))) in
+      let sigma = Goal.V82.partial_solution sigma goal psol in
+      re_sig [g] sigma
+  | `Untrusted (redfun,k) ->
+      convert_concl_no_check (pf_reduce redfun gl (pf_concl gl)) k gl
 
 let reduct_in_hyp redfun (id,where) gl =
-  convert_hyp_no_check
-    (pf_reduce_decl redfun where (pf_get_hyp gl id) gl) gl
+  match redfun with
+  | `Trusted redfun ->
+      let redfun e s t = snd (redfun (Reductionops.safe_evar_value s) e t) in
+      convert_hyp_no_check
+        (pf_reduce_decl redfun where (pf_get_hyp gl id) gl) gl
+  | `Untrusted (redfun,_) ->
+      convert_hyp_no_check
+        (pf_reduce_decl redfun where (pf_get_hyp gl id) gl) gl
 
-let revert_cast (redfun,kind as r) =
-  if kind == DEFAULTcast then (redfun,REVERTcast) else r
+let revert_cast = function
+  | `Untrusted (redfun,kind) as r ->
+      if kind == DEFAULTcast then `Untrusted (redfun,REVERTcast) else r
+  | `Trusted _ as r -> r
 
 let reduct_option redfun = function
-  | Some id -> reduct_in_hyp (fst redfun) id
+  | Some id -> reduct_in_hyp redfun id
   | None    -> reduct_in_concl (revert_cast redfun)
 
 (* Now we introduce different instances of the previous tacticals *)
@@ -325,10 +373,12 @@ let change_on_subterm cv_pb t = function
         (fun subst -> change_and_check Reduction.CONV (replace_vars (Id.Map.bindings subst) t))
 
 let change_in_concl occl t =
-  reduct_in_concl ((change_on_subterm Reduction.CUMUL t occl),DEFAULTcast)
+  reduct_in_concl
+    (`Untrusted (change_on_subterm Reduction.CUMUL t occl,DEFAULTcast))
 
 let change_in_hyp occl t id  =
-  with_check (reduct_in_hyp (change_on_subterm Reduction.CONV t occl) id)
+  with_check (reduct_in_hyp
+    (`Untrusted (change_on_subterm Reduction.CONV t occl,DEFAULTcast)) id)
 
 let change_option occl t = function
   | Some id -> change_in_hyp occl t id
@@ -344,23 +394,24 @@ let change chg c cls gl =
     cls gl
 
 (* Pour usage interne (le niveau User est pris en compte par reduce) *)
-let red_in_concl        = reduct_in_concl (red_product,REVERTcast)
-let red_in_hyp          = reduct_in_hyp   red_product
-let red_option          = reduct_option   (red_product,REVERTcast)
-let hnf_in_concl        = reduct_in_concl (hnf_constr,REVERTcast)
-let hnf_in_hyp          = reduct_in_hyp   hnf_constr
-let hnf_option          = reduct_option   (hnf_constr,REVERTcast)
-let simpl_in_concl      = reduct_in_concl (simpl,REVERTcast)
-let simpl_in_hyp        = reduct_in_hyp   simpl
-let simpl_option        = reduct_option   (simpl,REVERTcast)
-let normalise_in_concl  = reduct_in_concl (compute,REVERTcast)
-let normalise_in_hyp    = reduct_in_hyp   compute
-let normalise_option    = reduct_option   (compute,REVERTcast)
-let normalise_vm_in_concl = reduct_in_concl (Redexpr.cbv_vm,VMcast)
-let unfold_in_concl loccname = reduct_in_concl (unfoldn loccname,REVERTcast)
-let unfold_in_hyp   loccname = reduct_in_hyp   (unfoldn loccname)
-let unfold_option   loccname = reduct_option (unfoldn loccname,DEFAULTcast)
-let pattern_option l = reduct_option (pattern_occs l,DEFAULTcast)
+let red_in_concl        = reduct_in_concl (`Untrusted (red_product,REVERTcast))
+let red_in_hyp          = reduct_in_hyp   (`Untrusted (red_product,DEFAULTcast))
+let red_option          = reduct_option   (`Untrusted (red_product,REVERTcast))
+let hnf_in_concl        = reduct_in_concl (`Untrusted (hnf_constr,REVERTcast))
+let hnf_in_hyp          = reduct_in_hyp   (`Untrusted (hnf_constr,DEFAULTcast))
+let hnf_option          = reduct_option   (`Untrusted (hnf_constr,REVERTcast))
+let simpl_in_concl      = reduct_in_concl (`Untrusted (simpl,REVERTcast))
+let simpl_in_hyp        = reduct_in_hyp   (`Untrusted (simpl,DEFAULTcast))
+let simpl_option        = reduct_option   (`Untrusted (simpl,REVERTcast))
+let normalise_in_concl  = reduct_in_concl (`Untrusted (compute,REVERTcast))
+let normalise_in_hyp    = reduct_in_hyp   (`Untrusted (compute,DEFAULTcast))
+let normalise_option    = reduct_option   (`Untrusted (compute,REVERTcast))
+let normalise_vm_in_concl =
+  reduct_in_concl (`Trusted (fun _ -> Safe_typing.vm_normalise_type))
+let unfold_in_concl occ = reduct_in_concl (`Untrusted (unfoldn occ,REVERTcast))
+let unfold_in_hyp   occ = reduct_in_hyp   (`Untrusted (unfoldn occ,DEFAULTcast))
+let unfold_option   occ = reduct_option (`Untrusted (unfoldn occ,DEFAULTcast))
+let pattern_option l = reduct_option (`Untrusted (pattern_occs l,DEFAULTcast))
 
 (* The main reduction function *)
 
@@ -377,7 +428,7 @@ let reduce redexp cl goal =
   let redexps = reduction_clause redexp cl in
   let tac = tclMAP (fun (where,redexp) ->
     reduct_option
-      (Redexpr.reduction_of_red_expr (pf_env goal) redexp) where) redexps in
+      (Redexpr.reduction_of_red_expr (Environ.oracle (pf_env goal)) redexp) where) redexps in
   match redexp with
   | Fold _ | Pattern _ -> with_check tac goal
   | _ -> tac goal
@@ -568,9 +619,8 @@ let pf_lookup_hypothesis_as_renamed_gen red h gl =
   let rec aux ccl =
     match pf_lookup_hypothesis_as_renamed env ccl h with
       | None when red ->
-          aux
-	    ((fst (Redexpr.reduction_of_red_expr env (Red true)))
-	       env (project gl) ccl)
+          aux (Redexpr.redfun_of_red_expr 
+                (Environ.oracle env) (Red true) env (project gl) ccl)
       | x -> x
   in
   try aux (pf_concl gl)
@@ -2024,8 +2074,8 @@ let unfold_body x gl =
   let xvar = mkVar x in
   let rfun _ _ c = replace_term xvar xval c in
   tclTHENLIST
-    [tclMAP (fun h -> reduct_in_hyp rfun h) hl;
-     reduct_in_concl (rfun,DEFAULTcast)] gl
+    [tclMAP (fun h -> reduct_in_hyp (`Untrusted (rfun,DEFAULTcast)) h) hl;
+     reduct_in_concl (`Untrusted (rfun,DEFAULTcast))] gl
 
 (* Unfolds x by its definition everywhere and clear x. This may raise
    an error if x is not defined. *)
@@ -3825,17 +3875,7 @@ let interpretable_as_section_decl d1 d2 = match d1,d2 with
   | (_,None,t1), (_,_,t2) -> eq_constr t1 t2
 
 let abstract_subproof id tac gl =
-  let current_sign = Global.named_context()
-  and global_sign = pf_hyps gl in
-  let sign,secsign =
-    List.fold_right
-      (fun (id,_,_ as d) (s1,s2) ->
-	if mem_named_context id current_sign &&
-          interpretable_as_section_decl (Context.lookup_named id current_sign) d
-        then (s1,push_named_context_val d s2)
-	else (add_named_decl d s1,s2))
-      global_sign (empty_named_context,empty_named_context_val) in
-  let id = next_global_ident_away id (pf_ids_of_hyps gl) in
+  let sign,secsign = analyze_goal_context gl in
   let concl = it_mkNamedProd_or_LetIn (pf_concl gl) sign in
   let concl =
     try flush_and_check_evars (project gl) concl
@@ -3845,18 +3885,7 @@ let abstract_subproof id tac gl =
   try
   let (const,_) = Pfedit.build_constant_by_tactic id secsign concl
     (Tacticals.New.tclCOMPLETE (Tacticals.New.tclTHEN (Tacticals.New.tclDO (List.length sign) intro) tac)) in
-  let cd = Entries.DefinitionEntry const in
-  let decl = (cd, IsProof Lemma) in
-  (** ppedrot: seems legit to have abstracted subproofs as local*)
-  let cst = Declare.declare_constant ~internal:Declare.KernelSilent ~local:true id decl in
-  let lem = mkConst cst in
-  let open Declareops in
-  let eff = Safe_typing.sideff_of_con (Global.safe_env ()) cst in
-  let effs = cons_side_effects eff no_seff in
-  let gl = { gl with sigma = Evd.emit_side_effects effs gl.sigma; } in
-  exact_no_check
-    (applist (lem,List.rev (instance_from_named_context sign)))
-    gl
+  const, sign
   with Proof_errors.TacticFailure e ->
     (* if the tactic [tac] fails, it reports a [TacticFailure e],
        which is an error irrelevant to the proof system (in fact it
@@ -3874,8 +3903,30 @@ let tclABSTRACT name_op tac gl =
       let name = try get_current_proof_name () with NoCurrentProof -> anon_id in
       add_suffix name "_subproof"
   in
-  abstract_subproof s tac gl
+  let id = next_global_ident_away s (pf_ids_of_hyps gl) in
+  let de, sign = abstract_subproof id tac gl in
+  let cd = Entries.DefinitionEntry de in
+  let decl = (cd, IsProof Lemma) in
+  (** ppedrot: seems legit to have abstracted subproofs as local*)
+  let cst = Declare.declare_constant ~internal:Declare.KernelSilent ~local:true id decl in
+  let lem = mkConst cst in
+  let open Declareops in
+  let eff = Safe_typing.sideff_of_con (Global.safe_env ()) cst in
+  let effs = cons_side_effects eff no_seff in
+  let gl = { gl with sigma = Evd.emit_side_effects effs gl.sigma; } in
+  exact_no_check
+    (applist (lem,List.rev (instance_from_named_context sign)))
+    gl
 
+let tclCHECKANDCACHE tac gl =
+  let de, sign = abstract_subproof (Names.Id.of_string "_subproof") tac gl in
+  let j =
+    Safe_typing.typing (Global.safe_env ())
+      (fst (Future.force de.Entries.const_entry_body)) in
+  let t = Safe_typing.j_val j in
+  exact_no_check
+    (applist (t,List.rev (instance_from_named_context sign)))
+    gl
 
 let admit_as_an_axiom =
   Proofview.tclUNIT () >>= fun () -> (* delay for Coqlib.build_coq_proof_admitted *)
@@ -3939,3 +3990,7 @@ module New = struct
     end
 
 end
+
+let reduct_in_hyp redfun = reduct_in_hyp (`Untrusted (redfun,DEFAULTcast))
+let reduct_option (redfun,k) = reduct_option (`Untrusted (redfun,k))
+let reduct_in_concl (redfun,k) = reduct_in_concl (`Untrusted (redfun,k))

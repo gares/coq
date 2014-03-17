@@ -227,6 +227,7 @@ and ('t,'p,'c,'i,'r,'n,'l) gen_tactic_expr =
   | TacRepeat of ('t,'p,'c,'i,'r,'n,'l) gen_tactic_expr
   | TacProgress of ('t,'p,'c,'i,'r,'n,'l) gen_tactic_expr
   | TacShowHyps of ('t,'p,'c,'i,'r,'n,'l) gen_tactic_expr
+  | TacCheckAndCache of ('t,'p,'c,'i,'r,'n,'l) gen_tactic_expr
   | TacAbstract of
       ('t,'p,'c,'i,'r,'n,'l) gen_tactic_expr * Id.t option
   | TacId of 'n message_token list

@@ -117,7 +117,7 @@ let make_flag_constant = function
   | EvalVarRef id -> fVAR id
   | EvalConstRef sp -> fCONST sp
 
-let make_flag env f =
+let make_flag oracle f =
   let red = no_red in
   let red = if f.rBeta then red_add red fBETA else red in
   let red = if f.rIota then red_add red fIOTA else red in
@@ -125,8 +125,8 @@ let make_flag env f =
   let red =
     if f.rDelta then (* All but rConst *)
         let red = red_add red fDELTA in
-        let red = red_add_transparent red 
-                    (Conv_oracle.get_transp_state (Environ.oracle env)) in
+        let red =
+          red_add_transparent red (Conv_oracle.get_transp_state oracle) in
 	List.fold_right
 	  (fun v red -> red_sub red (make_flag_constant v))
 	  f.rConst red
@@ -173,27 +173,38 @@ let out_arg = function
 let out_with_occurrences (occs,c) =
   (Locusops.occurrences_map (List.map out_arg) occs, c)
 
-let reduction_of_red_expr env =
-  let make_flag = make_flag env in
-  let rec reduction_of_red_expr = function
+type get_evar_val = existential -> constr option
+type stamp = constr -> constr
+
+type reduction =
+  [ `Trusted of get_evar_val -> Environ.env -> types -> stamp * types
+  | `Untrusted of reduction_function * cast_kind ]
+
+let reduction_of_red_expr oracle =
+  let make_flag = make_flag oracle in
+  let rec reduction_of_red_expr : red_expr -> reduction = function
   | Red internal ->
-      if internal then (try_red_product,DEFAULTcast)
-      else (red_product,DEFAULTcast)
-  | Hnf -> (hnf_constr,DEFAULTcast)
+      if internal then `Untrusted (try_red_product,DEFAULTcast)
+      else `Untrusted (red_product,DEFAULTcast)
+  | Hnf -> `Untrusted (hnf_constr,DEFAULTcast)
   | Simpl (Some (_,c as lp)) ->
-    (contextually (is_reference c) (out_with_occurrences lp)
+    `Untrusted (contextually (is_reference c) (out_with_occurrences lp)
       (fun _ -> simpl),DEFAULTcast)
-  | Simpl None -> (simpl,DEFAULTcast)
-  | Cbv f -> (cbv_norm_flags (make_flag f),DEFAULTcast)
+  | Simpl None -> `Untrusted (simpl,DEFAULTcast)
+  | Cbv f -> `Untrusted (cbv_norm_flags (make_flag f),DEFAULTcast)
   | Cbn f ->
-    (strong (fun env evd x -> Stack.zip ~refold:true
-      (fst (whd_state_gen true (make_flag f) env evd (x, Stack.empty)))),DEFAULTcast)
-  | Lazy f -> (clos_norm_flags (make_flag f),DEFAULTcast)
-  | Unfold ubinds -> (unfoldn (List.map out_with_occurrences ubinds),DEFAULTcast)
-  | Fold cl -> (fold_commands cl,DEFAULTcast)
-  | Pattern lp -> (pattern_occs (List.map out_with_occurrences lp),DEFAULTcast)
+     `Untrusted(strong
+        (fun env evd x -> Stack.zip ~refold:true
+          (fst (whd_state_gen true (make_flag f) env evd (x, Stack.empty)))),
+        DEFAULTcast)
+  | Lazy f -> `Trusted (Safe_typing.normalise_type (make_flag f))
+  | Unfold ubinds ->
+     `Untrusted(unfoldn (List.map out_with_occurrences ubinds),DEFAULTcast)
+  | Fold cl -> `Untrusted(fold_commands cl,DEFAULTcast)
+  | Pattern lp ->
+     `Untrusted(pattern_occs (List.map out_with_occurrences lp),DEFAULTcast)
   | ExtraRedExpr s ->
-      (try (String.Map.find s !reduction_tab,DEFAULTcast)
+      (try `Untrusted (String.Map.find s !reduction_tab,DEFAULTcast)
       with Not_found ->
 	(try reduction_of_red_expr (String.Map.find s !red_expr_tab)
 	 with Not_found ->
@@ -205,9 +216,8 @@ let reduction_of_red_expr env =
       let tpe = Retyping.get_type_of env map c in
       Vnorm.cbv_vm env c tpe
     in
-    let redfun = contextually b lp vmfun in
-    (redfun, VMcast)
-  | CbvVm None -> (cbv_vm, VMcast)
+    `Untrusted (contextually b lp vmfun, VMcast)
+  | CbvVm None -> `Trusted (fun _ -> Safe_typing.vm_normalise_type)
   | CbvNative (Some lp) ->
     let b = is_reference (snd lp) in
     let lp = out_with_occurrences lp in
@@ -216,11 +226,18 @@ let reduction_of_red_expr env =
       let evars = Nativenorm.evars_of_evar_map map in
       Nativenorm.native_norm env evars c tpe
     in
-    let redfun = contextually b lp nativefun in
-    (redfun, NATIVEcast)
-  | CbvNative None -> (cbv_native, NATIVEcast)
+    `Untrusted(contextually b lp nativefun, NATIVEcast)
+  | CbvNative None -> `Untrusted(cbv_native, NATIVEcast)
   in
     reduction_of_red_expr
+
+let redfun_cast_of_red_expr oracle e =
+  match reduction_of_red_expr oracle e with
+  | `Untrusted (f, ck) -> f, ck
+  | `Trusted f ->
+       (fun env sigma ty -> snd (f (safe_evar_value sigma) env ty)), DEFAULTcast
+
+let redfun_of_red_expr oracle e = fst (redfun_cast_of_red_expr oracle e)
 
 let subst_flags subs flags =
   { flags with rConst = List.map subs flags.rConst }

@@ -263,6 +263,9 @@ let judge_of_cast env cj k tj =
       | DEFAULTcast ->
           mkCast (cj.uj_val, k, expected_type),
           conv_leq false env cj.uj_type expected_type
+      | CACHEcast _ ->
+          cj.uj_val,
+          conv_leq false env cj.uj_type expected_type
       | REVERTcast ->
           cj.uj_val,
           conv_leq true env cj.uj_type expected_type
@@ -358,11 +361,16 @@ let type_fixpoint env lna lar vdefj =
 let univ_combinator (cst,univ) (j,c') =
   (j,(union_constraints cst c', merge_constraints c' univ))
 
+type notary = signature -> env -> constr -> types ->
+  [ `Invalid
+  | `Skip of constraints
+  | `SkipConv ]
+
 (* The typing machine. *)
     (* ATTENTION : faudra faire le typage du contexte des Const,
     Ind et Constructsi un jour cela devient des constructions
     arbitraires et non plus des variables *)
-let rec execute env cstr cu =
+let rec execute tp env cstr cu =
   match kind_of_term cstr with
     (* Atomic terms *)
     | Sort (Prop c) ->
@@ -382,7 +390,7 @@ let rec execute env cstr cu =
 
     (* Lambda calculus operators *)
     | App (f,args) ->
-        let (jl,cu1) = execute_array env args cu in
+        let (jl,cu1) = execute_array tp env args cu in
 	let (j,cu2) =
 	  match kind_of_term f with
 	    | Ind ind ->
@@ -393,34 +401,46 @@ let rec execute env cstr cu =
 		judge_of_constant_knowing_parameters env cst jl, cu1
 	    | _ ->
 		(* No sort-polymorphism *)
-		execute env f cu1
+		execute tp env f cu1
 	in
 	univ_combinator cu2 (judge_of_apply env j jl)
 
     | Lambda (name,c1,c2) ->
-        let (varj,cu1) = execute_type env c1 cu in
+        let (varj,cu1) = execute_type tp env c1 cu in
 	let env1 = push_rel (name,None,varj.utj_val) env in
-        let (j',cu2) = execute env1 c2 cu1 in
+        let (j',cu2) = execute tp env1 c2 cu1 in
         (judge_of_abstraction env name varj j', cu2)
 
     | Prod (name,c1,c2) ->
-        let (varj,cu1) = execute_type env c1 cu in
+        let (varj,cu1) = execute_type tp env c1 cu in
 	let env1 = push_rel (name,None,varj.utj_val) env in
-        let (varj',cu2) = execute_type env1 c2 cu1 in
+        let (varj',cu2) = execute_type tp env1 c2 cu1 in
 	(judge_of_product env name varj varj', cu2)
 
     | LetIn (name,c1,c2,c3) ->
-        let (j1,cu1) = execute env c1 cu in
-        let (j2,cu2) = execute_type env c2 cu1 in
+        let (j1,cu1) = execute tp env c1 cu in
+        let (j2,cu2) = execute_type tp env c2 cu1 in
         let (_,cu3) =
 	  univ_combinator cu2 (judge_of_cast env j1 DEFAULTcast j2) in
         let env1 = push_rel (name,Some j1.uj_val,j2.utj_val) env in
-        let (j',cu4) = execute env1 c3 cu3 in
+        let (j',cu4) = execute tp env1 c3 cu3 in
         (judge_of_letin env name j1 j2 j', cu4)
 
+    | Cast (c,(CACHEcast s as k), t) ->
+        (match tp s env c t with
+        | `Skip u -> univ_combinator cu ({ uj_val = c; uj_type = t }, u)
+        | `SkipConv ->
+            let (cj,cu1) = execute tp env c cu in
+            let (tj,cu2) = execute_type tp env t cu1 in
+            { uj_val = cj.uj_val; uj_type = tj.utj_val }, cu2
+        | `Invalid -> 
+            let (cj,cu1) = execute tp env c cu in
+            let (tj,cu2) = execute_type tp env t cu1 in
+	    univ_combinator cu2
+              (judge_of_cast env cj k tj))
     | Cast (c,k, t) ->
-        let (cj,cu1) = execute env c cu in
-        let (tj,cu2) = execute_type env t cu1 in
+        let (cj,cu1) = execute tp env c cu in
+        let (tj,cu2) = execute_type tp env t cu1 in
 	univ_combinator cu2
           (judge_of_cast env cj k tj)
 
@@ -432,20 +452,20 @@ let rec execute env cstr cu =
 	(judge_of_constructor env c, cu)
 
     | Case (ci,p,c,lf) ->
-        let (cj,cu1) = execute env c cu in
-        let (pj,cu2) = execute env p cu1 in
-        let (lfj,cu3) = execute_array env lf cu2 in
+        let (cj,cu1) = execute tp env c cu in
+        let (pj,cu2) = execute tp env p cu1 in
+        let (lfj,cu3) = execute_array tp env lf cu2 in
         univ_combinator cu3
           (judge_of_case env ci pj cj lfj)
 
     | Fix ((vn,i as vni),recdef) ->
-        let ((fix_ty,recdef'),cu1) = execute_recdef env recdef i cu in
+        let ((fix_ty,recdef'),cu1) = execute_recdef tp env recdef i cu in
         let fix = (vni,recdef') in
         check_fix env fix;
 	(make_judge (mkFix fix) fix_ty, cu1)
 
     | CoFix (i,recdef) ->
-        let ((fix_ty,recdef'),cu1) = execute_recdef env recdef i cu in
+        let ((fix_ty,recdef'),cu1) = execute_recdef tp env recdef i cu in
         let cofix = (i,recdef') in
         check_cofix env cofix;
 	(make_judge (mkCoFix cofix) fix_ty, cu1)
@@ -457,37 +477,39 @@ let rec execute env cstr cu =
     | Evar _ ->
 	anomaly (Pp.str "the kernel does not support existential variables")
 
-and execute_type env constr cu =
-  let (j,cu1) = execute env constr cu in
+and execute_type tp env constr cu =
+  let (j,cu1) = execute tp env constr cu in
   (type_judgment env j, cu1)
 
-and execute_recdef env (names,lar,vdef) i cu =
-  let (larj,cu1) = execute_array env lar cu in
+and execute_recdef tp env (names,lar,vdef) i cu =
+  let (larj,cu1) = execute_array tp env lar cu in
   let lara = Array.map (assumption_of_judgment env) larj in
   let env1 = push_rec_types (names,lara,vdef) env in
-  let (vdefj,cu2) = execute_array env1 vdef cu1 in
+  let (vdefj,cu2) = execute_array tp env1 vdef cu1 in
   let vdefv = Array.map j_val vdefj in
   let cst = type_fixpoint env1 names lara vdefj in
   univ_combinator cu2
     ((lara.(i),(names,lara,vdefv)),cst)
 
-and execute_array env = Array.fold_map' (execute env)
+and execute_array tp env = Array.fold_map' (execute tp env)
+
+let no_notary _ _ _ _ = `Invalid
 
 (* Derived functions *)
-let infer env constr =
+let infer ?(tp=no_notary) env constr =
   let (j,(cst,_)) =
-    execute env constr (empty_constraint, universes env) in
+    execute tp env constr (empty_constraint, universes env) in
   assert (eq_constr j.uj_val constr);
   (j, cst)
 
 let infer_type env constr =
   let (j,(cst,_)) =
-    execute_type env constr (empty_constraint, universes env) in
+    execute_type no_notary env constr (empty_constraint, universes env) in
   (j, cst)
 
 let infer_v env cv =
   let (jv,(cst,_)) =
-    execute_array env cv (empty_constraint, universes env) in
+    execute_array no_notary env cv (empty_constraint, universes env) in
   (jv, cst)
 
 (* Typing of several terms. *)
@@ -514,4 +536,4 @@ let infer_local_decls env decls =
 let typing env c =
   let (j,cst) = infer env c in
   let _ = add_constraints cst env in
-  j
+  j, cst

@@ -50,8 +50,9 @@ type case_info = Constr.case_info =
     ci_pp_info    : case_printing
   }
 
+type signature = Constr.signature
 type cast_kind = Constr.cast_kind =
-  VMcast | NATIVEcast | DEFAULTcast | REVERTcast
+  VMcast | NATIVEcast | DEFAULTcast | REVERTcast | CACHEcast of signature
 
 type rec_declaration = Constr.rec_declaration
 type fixpoint = Constr.fixpoint

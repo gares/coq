@@ -66,9 +66,12 @@ val mkProp : types
 val mkSet  : types
 val mkType : Univ.universe -> types
 
+(* Extensible data type: each layer can define its own private data type *)
+type signature = exn
 
 (** This defines the strategy to use for verifiying a Cast *)
-type cast_kind = VMcast | NATIVEcast | DEFAULTcast | REVERTcast
+type cast_kind =
+  VMcast | NATIVEcast | DEFAULTcast | REVERTcast | CACHEcast of signature
 
 (** Constructs the term [t1::t2], i.e. the term t{_ 1} casted with the
    type t{_ 2} (that means t2 is declared as the type of t1). *)

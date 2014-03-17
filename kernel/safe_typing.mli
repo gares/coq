@@ -145,7 +145,14 @@ val safe_infer : safe_environment -> Term.constr -> judgment * Univ.constraints
 
 val typing : safe_environment -> Term.constr -> judgment
 
-(** {6 Queries } *)
+val normalise_type :
+  Closure.RedFlags.reds -> (Term.existential -> Term.constr option) ->
+    Environ.env -> Term.types -> (Term.constr -> Term.constr) * Term.types
+
+val set_cbv_vm : (Environ.env -> Term.constr -> Term.types -> Term.constr) -> unit
+val vm_normalise_type : Environ.env -> Term.types -> (Term.constr -> Term.constr) * Term.types
+
+(** {7 Query } *)
 
 val exists_objlabel : Label.t -> safe_environment -> bool
 

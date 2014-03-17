@@ -38,6 +38,7 @@ let sig_it   = Refiner.sig_it
 let project  = Refiner.project
 let pf_env   = Refiner.pf_env
 let pf_hyps  = Refiner.pf_hyps
+let pf_oracle e = Environ.oracle (Refiner.pf_env e)
 
 let pf_concl gls = Goal.V82.concl (project gls) (sig_it gls)
 let pf_hyps_types gls  =
@@ -74,7 +75,7 @@ let pf_global gls id = Constrintern.construct_reference (pf_hyps gls) id
 let pf_parse_const gls = compose (pf_global gls) Id.of_string
 
 let pf_reduction_of_red_expr gls re c =
-  (fst (reduction_of_red_expr (pf_env gls) re)) (pf_env gls) (project gls) c
+  redfun_of_red_expr (pf_oracle gls) re (pf_env gls) (project gls) c
 
 let pf_apply f gls = f (pf_env gls) (project gls)
 let pf_reduce = pf_apply

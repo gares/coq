@@ -378,6 +378,7 @@ val resolve_classes : tactic
 val tclABSTRACT : Id.t option -> unit Proofview.tactic -> tactic
 
 val admit_as_an_axiom : unit Proofview.tactic
+val tclCHECKANDCACHE : unit Proofview.tactic -> tactic
 
 val abstract_generalize : ?generalize_vars:bool -> ?force_dep:bool -> Id.t -> unit Proofview.tactic
 val specialize_eqs : Id.t -> tactic

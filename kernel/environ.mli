@@ -35,6 +35,9 @@ val env_of_pre_env : Pre_env.env -> env
 val oracle : env -> Conv_oracle.oracle
 val set_oracle : env -> Conv_oracle.oracle -> env
 
+(* Incomplete but fast *)
+val leq_env : env -> env -> bool
+
 type named_context_val
 val eq_named_context_val : named_context_val -> named_context_val -> bool
 

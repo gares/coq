@@ -541,6 +541,7 @@ let llet = 5
 let lfun = 5
 let lcomplete = 1
 let labstract = 3
+let lcheckcache = 3
 let lmatch = 1
 let latom = 0
 let lcall = 1
@@ -831,6 +832,8 @@ in
 
 let rec pr_tac inherited tac =
   let (strm,prec) = match tac with
+  | TacCheckAndCache t ->
+      str "check_and_cache " ++ pr_tac (lcheckcache,L) t, lcheckcache
   | TacAbstract (t,None) ->
       str "abstract " ++ pr_tac (labstract,L) t, labstract
   | TacAbstract (t,Some s) ->

@@ -124,6 +124,64 @@ let lookup_named_val id (ctxt,_) = Context.lookup_named id ctxt
 let eq_named_context_val c1 c2 =
    c1 == c2 || named_context_equal (named_context_of_val c1) (named_context_of_val c2)
 
+let option_forall2 f a b =
+  match a, b with
+  | None, None -> true
+  | Some x, Some y -> f x y
+  | _ -> false
+
+let rec leq_list f l1 l2 = l1 == l2 ||
+  match l1, l2 with
+  | [], _ -> true
+  | _::_, [] -> false
+  | x::l1, y::l2 -> f x y && leq_list f l1 l2
+
+let leq_rel_context l1 l2 = l1 == l2 ||
+  leq_list (fun (_,ob1,ty1) (_,ob2,ty2) ->
+    Term.eq_constr ty1 ty2 &&
+    option_forall2 Term.eq_constr ob1 ob2)
+  l1 l2
+
+let leq_named_context l1 l2 = l1 == l2 ||
+  leq_list (fun (n1,ob1,ty1) (n2,ob2,ty2) ->
+    Id.equal n1 n2 &&
+    Term.eq_constr ty1 ty2 &&
+    option_forall2 Term.eq_constr ob1 ob2)
+  l1 l2
+
+let leq_cmap m1 m2 =
+  Cmap_env.for_all (fun k1 _ -> Cmap_env.mem k1 m2) m1
+
+(* We allow more lemmas (like admit/abstract...) *)
+let leq_globals g1 g2 = g1 == g2 ||
+  (   g1.env_inductives == g2.env_inductives
+   && g1.env_modules    == g2.env_modules
+   && g1.env_modtypes   == g2.env_modtypes
+   && leq_cmap g1.env_constants g2.env_constants)
+
+let leq_stratification u1 u2 = u1 == u2 ||
+  (   u1.env_engagement == u2.env_engagement
+   && true (* Universes added later anyway *))
+
+let leq_rel_vals rv1 rv2 = true
+
+let leq_named_vals nv1 nv2 = true
+
+let dbg _s b = (*Printf.eprintf " %d = %b\n" _s b;*) b
+
+(* Is e2 an extension of e1? *)
+let leq_env e1 e2 = e1 == e2 ||
+  begin
+       dbg 1 (leq_globals e1.env_globals e2.env_globals)
+    && dbg 2 (leq_named_vals e1.env_named_vals e2.env_named_vals)
+    && dbg 3 (leq_rel_vals e1.env_rel_val e2.env_rel_val)
+    && dbg 4 (e1.env_nb_rel         <= e2.env_nb_rel)
+    && dbg 5 (leq_stratification e1.env_stratification e2.env_stratification)
+    && dbg 6 (e1.retroknowledge     == e2.retroknowledge)
+    && dbg 7 (leq_named_context e1.env_named_context e2.env_named_context)
+    && dbg 8 (leq_rel_context e1.env_rel_context e2.env_rel_context)
+  end
+
 (* A local const is evaluable if it is defined  *)
 
 let named_type id env =

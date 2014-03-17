@@ -308,6 +308,126 @@ let push_named_assum (id,t) senv =
   let env'' = safe_push_named (id,None,t) senv'.env in
   (cst, {senv' with env=env''})
 
+(* Signatures are private exceptions carrying enough info so that
+   we can verify their integrity later on.  Two signatures are implemented:
+
+   - AlreadyTyped
+     signs:
+       typing judgement like "E |- t : ty  with-univ-cst u"
+     generates:
+       "Cast(t, CACHE(AlreadyTyped(E,t,ty,u)), ty)"
+
+   - AlreadyReduced
+     signs:
+       reduction like "E |- t1 ~> t2"
+     generates:
+       fun x -> "Cast( Cast(x,DEFAULT,t2), CACHE(AlreadyReduced(E,t1,t2)), t1)"
+     note:
+       no constraints are stored since at type checking time the type of t
+       (taking the place of x) will be converted to t2 (standard cast
+       judgement), and t1 will be converted with the type expected by the
+       context of this proof.
+
+   Verification of signatures amounts to:
+
+   - Validity:
+       the cast is applied to the same term/type (eq_constr).  Note that
+       the signature is a private exception, hence you can't (by mistake)
+       modify its content, but you can try to apply the same signature to
+       another term/type building a new Cast.
+
+   - Consistency:
+       the cast is being typechecked in a compatible environment (leq_env).
+       Note that this amounts to checking weakening.
+       We denote: E = safe environment, N = named context, G = De Bruijn context
+
+       For AlreadyTyped we have:
+         if "E; []; G |- t : ty"     (with "u" universe constaints to be added)
+         then "E; N; G',G |- t : ty" (with the same "u" to be added)
+       We can skip the type checking of "t" and "ty" but we have to add "u" to
+       the global graph of universe constraints.
+       Currently "G" is always empty for AlreadyTyped, since the subproof
+       is abstracted (as tclABSTRACT) and typed as in "E; []; [] |- t : ty".
+
+       For AlreadyReduced we have:
+         if "E; []; G |- t1 ~> t2"
+         then "E; N; G',G |- t1 ~> t2"
+       This is tricky, since during proof construction "t1" uses named binders
+       like in "E; N |- t1" but at type checking time we will find the CACHE
+       cast as "E; []; G |- Cast(..., t1)" and the relation between "G" and
+       "N" does not seem to be trivial.  Again the tactic engine will
+       tclABSTRACT things obtaining "E; [] |- Lam(g1...gn,t1)", we then
+       push_rel obtaining
+         "E; []; G |- t1"                                                  (1)
+       this time "t1" uses De Bruijn (exactly as it will use De Bruijn during
+       type checking).  We obtain "t2" and we stock in the proof term the
+       following stuff:
+         "E; N |- Lam(g1...gn,Cast(Cast(?,DEFAULT,t2),CACHE,t1)) n1..nn"
+       so that the type checker will reach the Cast in the following condition:
+         "E; []; G',G |- Cast(Cast(t,DEFAULT,t2),CACHE,t1))"               (2)
+       and we are back at checking weakening.  tclABSTRACT makes the leq_env
+       check implementable in an efficient way because just before encountering
+       the cast the type checker pushes into the context the binders "g1..gn"
+       corresponding to "G" (look at the contexts in (1) and (2)).  *)
+exception AlreadyTyped of
+  (Environ.env * Constr.t * Constr.t * float * Univ.constraints)
+
+(* If we unshare we are sure that noboty alters the mutable signature
+   by mistake (yes constr is mutable).  But even safe_env is mutable,
+   so I guess we can ignore the issue.  Only checker/ will spot this anyway. *)
+let rec unshare c = (* Constr.map unshare c *) c
+
+let sign_typed env t ty time cst =
+  let t = unshare t in
+  let ty = unshare ty in
+  let signature = AlreadyTyped(env,t,ty,time,cst) in
+  Constr.mkCast (t,Constr.CACHEcast signature,ty)
+
+let dbg _s b = (*Printf.eprintf "%d = %b\n" _s b;*) b
+
+let verify_typed env t ty (env', t', ty', time, cst) =
+  let start = Unix.gettimeofday () in
+  let valid =
+       dbg 1 (Environ.leq_env env' env)
+    && dbg 2 (Term.eq_constr t t') && dbg 3 (Term.eq_constr ty ty') in
+  let stop = Unix.gettimeofday () in
+  let cost_verif = stop -. start in
+  if valid then begin
+    Printf.eprintf "Saving %6.3fs\n" (time -. cost_verif); `Skip cst
+  end else begin
+    Printf.eprintf "Wasting %6.3fs\n" cost_verif; `Invalid
+  end
+
+exception AlreadyReduced of
+  (Environ.env * Constr.t * Constr.t * float)
+
+let sign_reduced env t ty1 ty2 time =
+  let ty1 = unshare ty1 in
+  let ty2 = unshare ty2 in
+  let signature = AlreadyReduced(env,ty1,ty2,time) in
+  Constr.mkCast
+    (Constr.mkCast (t,Constr.DEFAULTcast,ty2),Constr.CACHEcast signature,ty1)
+
+let verify_reduced env t ty (env', ty1, ty2, time) =
+  match Constr.kind t with
+  | Constr.Cast(_,Constr.DEFAULTcast, ty_t) ->
+      let start = Unix.gettimeofday () in
+      let valid =
+           dbg 1 (Environ.leq_env env' env)
+        && dbg 2 (Term.eq_constr ty_t ty2) && dbg 3 (Term.eq_constr ty ty1) in
+      let stop = Unix.gettimeofday () in
+      let cost_verif = stop -. start in
+      if valid then begin
+        Printf.eprintf "Saving %6.3fs\n" (time -. cost_verif); `SkipConv
+      end else begin
+        Printf.eprintf "Wasting %6.3fs\n" cost_verif; `Invalid
+      end
+  | _ -> `Invalid
+
+let notary s env t ty = match s with
+  | AlreadyTyped data -> verify_typed env t ty data
+  | AlreadyReduced data -> verify_reduced env t ty data
+  | _ -> `Invalid
 
 (** {6 Insertion of new declarations to current environment } *)
 
@@ -385,7 +505,7 @@ type global_declaration =
 let add_constant dir l decl senv =
   let kn = make_con senv.modpath dir l in
   let cb = match decl with
-    | ConstantEntry ce -> Term_typing.translate_constant senv.env kn ce
+    | ConstantEntry ce -> Term_typing.translate_constant ~tp:notary senv.env kn ce
     | GlobalRecipe r ->
       let cb = Term_typing.translate_recipe senv.env kn r in
       if DirPath.is_empty dir then Declareops.hcons_const_body cb else cb
@@ -813,3 +933,44 @@ Would this be correct with respect to undo's and stuff ?
 let set_strategy e k l = { e with env =
    (Environ.set_oracle e.env
       (Conv_oracle.set_strategy (Environ.oracle e.env) k l)) }
+
+let is_worth_caching f = f > 0.01
+
+let typing senv t =
+  let start = Unix.gettimeofday () in
+  let { Environ.uj_val = t; uj_type = ty }, cst = typing senv t in
+  let stop = Unix.gettimeofday () in
+  let cost = stop -. start in
+  { Environ.uj_val =
+      if is_worth_caching cost then sign_typed (env_of_safe_env senv) t ty cost cst
+      else t;
+    uj_type = ty }
+
+let normalise_type flags evars env ty =
+  let closed = ref true in
+  let evars x = closed := false; evars x in
+  let start = Unix.gettimeofday () in
+  let ty' =
+    Closure.norm_val
+      (Closure.create_clos_infos ~evars flags env) (Closure.inject ty) in
+  let stop = Unix.gettimeofday () in
+  let cost = stop -. start in
+  (fun t ->
+     if !closed && is_worth_caching cost then sign_reduced env t ty ty' cost
+     else t),
+  ty'
+
+let cbv_vm = ref (fun env ty _ ->
+  Closure.norm_val
+    (Closure.create_clos_infos Closure.betadeltaiota env) (Closure.inject ty))
+let set_cbv_vm f = cbv_vm := f
+
+let vm_normalise_type env ty =
+  let start = Unix.gettimeofday () in
+  let ty' = !cbv_vm env ty (fst (Typeops.infer env ty)).Environ.uj_type in
+  let stop = Unix.gettimeofday () in
+  let cost = stop -. start in
+  (fun t ->
+     if is_worth_caching cost then sign_reduced env t ty ty' cost else t),
+  ty'
+

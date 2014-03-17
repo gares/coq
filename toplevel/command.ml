@@ -68,11 +68,9 @@ let red_constant_entry n ce = function
   | None -> ce
   | Some red ->
       let proof_out = ce.const_entry_body in
-      let env = Global.env () in
-      { ce with const_entry_body = Future.chain ~greedy:true ~pure:true proof_out
-        (fun (body,eff) ->
-           under_binders env
-             (fst (reduction_of_red_expr env red)) n body,eff) }
+      { ce with const_entry_body = Future.chain ~greedy:true ~pure:true proof_out (fun (body,eff) ->
+        under_binders (Global.env())
+          (redfun_of_red_expr (Environ.oracle (Global.env())) red) n body,eff) }
 
 let interp_definition bl red_option c ctypopt =
   let env = Global.env() in

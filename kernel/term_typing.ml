@@ -86,7 +86,7 @@ let hcons_j j =
 let feedback_completion_typecheck =
   Option.iter (fun state_id -> Pp.feedback ~state_id Interface.Complete)
   
-let infer_declaration env dcl =
+let infer_declaration ?tp env dcl =
   match dcl with
   | ParameterEntry (ctx,t,nl) ->
       let j, cst = infer env t in
@@ -99,7 +99,7 @@ let infer_declaration env dcl =
       let proofterm =
         Future.chain ~greedy:true ~pure:true body (fun (body, side_eff) ->
           let body = handle_side_effects env body side_eff in
-          let j, cst = infer env body in
+          let j, cst = infer ?tp env body in
           let j = hcons_j j in
           let _typ, cst = constrain_type env j cst (`SomeWJ (typ,tyj,tycst)) in
           feedback_completion_typecheck feedback_id;
@@ -112,7 +112,7 @@ let infer_declaration env dcl =
       let { const_entry_body = body; const_entry_feedback = feedback_id } = c in
       let body, side_eff = Future.join body in
       let body = handle_side_effects env body side_eff in
-      let j, cst = infer env body in
+      let j, cst = infer ?tp env body in
       let j = hcons_j j in
       let typ, cst = constrain_type env j cst (map_option_typ typ) in
       feedback_completion_typecheck feedback_id;
@@ -194,8 +194,8 @@ let build_constant_declaration kn env (def,typ,cst,inline_code,ctx) =
 
 (*s Global and local constant declaration. *)
 
-let translate_constant env kn ce =
-  build_constant_declaration kn env (infer_declaration env ce)
+let translate_constant ?tp env kn ce =
+  build_constant_declaration kn env (infer_declaration ?tp env ce)
 
 let translate_recipe env kn r =
   let def,typ,cst,inline_code,hyps = Cooking.cook_constant env r in

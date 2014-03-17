@@ -99,7 +99,7 @@ let rename_type_of_constructor env cstruct =
   rename_type ty (ConstructRef cstruct)
 
 let rename_typing env c =
-  let j = Typeops.typing env c in
+  let j,_ = Typeops.typing env c in
   match kind_of_term c with
   | Const c -> { j with uj_type = rename_type j.uj_type (ConstRef c) }
   | Ind i -> { j with uj_type = rename_type j.uj_type (IndRef i) }
