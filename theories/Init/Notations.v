@@ -10,52 +10,52 @@
 
 (** Notations for propositional connectives *)
 
-Reserved Notation "x -> y" (at level 99, right associativity, y at level 200).
-Reserved Notation "x <-> y" (at level 95, no associativity).
-Reserved Notation "x /\ y" (at level 80, right associativity).
-Reserved Notation "x \/ y" (at level 85, right associativity).
-Reserved Notation "~ x" (at level 75, right associativity).
+Reserved Notation "x -> y"  (at level 99, right associativity, y at level 200, format "tex" "#1 \rightarrow\ #2").
+Reserved Notation "x <-> y" (at level 95, no associativity,    format "tex" "#1 \leftrightarrow\ #2").
+Reserved Notation "x /\ y"  (at level 80, right associativity, format "tex" "#1 \wedge\ #2").
+Reserved Notation "x \/ y"  (at level 85, right associativity, format "tex" "#1 \vee\ #2").
+Reserved Notation "~ x"     (at level 75, right associativity, format "tex" "\neg\ #1").
 
 (** Notations for equality and inequalities *)
 
 Reserved Notation "x = y  :>  T"
 (at level 70, y at next level, no associativity).
-Reserved Notation "x = y" (at level 70, no associativity).
+Reserved Notation "x = y" (at level 70, no associativity, format "tex" "#1 = #2").
 Reserved Notation "x = y = z"
-(at level 70, no associativity, y at next level).
+(at level 70, no associativity, y at next level, format "tex" "#1 = #2 = #3").
 
 Reserved Notation "x <> y  :>  T"
 (at level 70, y at next level, no associativity).
-Reserved Notation "x <> y" (at level 70, no associativity).
+Reserved Notation "x <> y" (at level 70, no associativity, format "tex" "#1 \ne #2").
 
-Reserved Notation "x <= y" (at level 70, no associativity).
-Reserved Notation "x < y" (at level 70, no associativity).
-Reserved Notation "x >= y" (at level 70, no associativity).
-Reserved Notation "x > y" (at level 70, no associativity).
+Reserved Notation "x <= y" (at level 70, no associativity, format "tex" "#1 \le #2").
+Reserved Notation "x < y"  (at level 70, no associativity, format "tex" "#1  <  #2").
+Reserved Notation "x >= y" (at level 70, no associativity, format "tex" "#1 \ge #2").
+Reserved Notation "x > y"  (at level 70, no associativity, format "tex" "#1  >  #2").
 
-Reserved Notation "x <= y <= z" (at level 70, y at next level).
-Reserved Notation "x <= y < z" (at level 70, y at next level).
-Reserved Notation "x < y < z" (at level 70, y at next level).
-Reserved Notation "x < y <= z" (at level 70, y at next level).
+Reserved Notation "x <= y <= z" (at level 70, y at next level, format "tex" "#1  \le #2 \le #3").
+Reserved Notation "x <= y < z"  (at level 70, y at next level, format "tex" "#1  \le #2  <  #3").
+Reserved Notation "x < y < z"   (at level 70, y at next level, format "tex" "#1   <  #2  <  #3").
+Reserved Notation "x < y <= z"  (at level 70, y at next level, format "tex" "#1   <  #2 \le #3").
 
 (** Arithmetical notations (also used for type constructors) *)
 
-Reserved Notation "x + y" (at level 50, left associativity).
-Reserved Notation "x - y" (at level 50, left associativity).
-Reserved Notation "x * y" (at level 40, left associativity).
-Reserved Notation "x / y" (at level 40, left associativity).
-Reserved Notation "- x" (at level 35, right associativity).
-Reserved Notation "/ x" (at level 35, right associativity).
-Reserved Notation "x ^ y" (at level 30, right associativity).
+Reserved Notation "x + y" (at level 50, left associativity,  format "tex" "#1 + #2").
+Reserved Notation "x - y" (at level 50, left associativity,  format "tex" "#1 - #2").
+Reserved Notation "x * y" (at level 40, left associativity,  format "tex" "#1 * #2").
+Reserved Notation "x / y" (at level 40, left associativity,  format "tex" "#1 / #2").
+Reserved Notation "- x"   (at level 35, right associativity, format "tex"    "- #1").
+Reserved Notation "/ x"   (at level 35, right associativity, format "tex"    "/ #1").
+Reserved Notation "x ^ y" (at level 30, right associativity, format "tex" "#1 ^ #2").
 
 (** Notations for booleans *)
 
-Reserved Notation "x || y" (at level 50, left associativity).
-Reserved Notation "x && y" (at level 40, left associativity).
+Reserved Notation "x || y" (at level 50, left associativity, format "tex" "#1 || #2").
+Reserved Notation "x && y" (at level 40, left associativity, format "tex" "#1 \&\& #2").
 
 (** Notations for pairs *)
 
-Reserved Notation "( x , y , .. , z )" (at level 0).
+Reserved Notation "( x , y , .. , z )" (at level 0, format "tex" "\left(#1, #2, .. , #3\right)").
 
 (** Notation "{ x }" is reserved and has a special status as component
     of other notations such as "{ A } + { B }" and "A + { B }" (which
