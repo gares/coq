@@ -20,6 +20,33 @@ let xmlWithLoc loc ename attr xml =
   let start, stop = unlock loc in
   Element(ename, [ "begin", start; "end", stop ] @ attr, xml)
 
+let get_fst_attr_in_xml_list attr xml_list =
+  let attrs_list = List.map
+                     (fun x ->
+                       match x with
+                       | Element (_, attrs, _)
+                           -> (List.filter (fun (a,_) -> a = attr) attrs)
+                       | _ -> [])
+                   xml_list
+  in
+  match List.flatten attrs_list with
+  | [] -> (attr, "")
+  | l  -> (List.hd l)
+
+let backstep_loc xmllist =
+  let start_att = get_fst_attr_in_xml_list "begin" xmllist in
+  let stop_att =  get_fst_attr_in_xml_list "end" (List.rev xmllist) in
+  [start_att ; stop_att]
+
+let compare_begin_att xml1 xml2 =
+  let att1 = get_fst_attr_in_xml_list "begin" [xml1] in
+  let att2 = get_fst_attr_in_xml_list "begin" [xml2] in
+  match att1, att2 with
+  | (_, s1), (_, s2) when s1 == "" || s2 == "" -> 0
+  | (_, s1), (_, s2) when int_of_string s1 > int_of_string s2 -> 1
+  | (_, s1), (_, s2) when int_of_string s1 < int_of_string s2 -> -1
+  | _ -> 0
+
 let xmlBeginSection loc name = xmlWithLoc loc "beginsection" ["name", name] []
 
 let xmlEndSegment loc name = xmlWithLoc loc "endsegment" ["name", name] []
@@ -47,7 +74,7 @@ let xmlApply loc ?(attr=[]) xml = xmlWithLoc loc "apply" attr xml
 
 let xmlToken loc ?(attr=[]) xml = xmlWithLoc loc "token" attr xml
 
-let xmlTyped xml = Element("typed", [], xml)
+let xmlTyped xml = Element("typed", (backstep_loc xml), xml)
 
 let xmlReturn ?(attr=[]) xml = Element("return", attr, xml)
 
@@ -194,9 +221,9 @@ and pp_local_binder lb = (* don't know what it is for now *)
       let attrs = ["name", string_of_name nam] in
       pp_expr ~attr:attrs ce
   | LocalRawAssum (namll, _, ce) ->
-      let attrs =
-        List.map (fun (_, nam) -> ("name", string_of_name nam)) namll in
-      pp_expr ~attr:attrs ce
+      let ppl =
+        List.map (fun (loc, nam) -> (xmlCst (string_of_name nam) loc)) namll in
+      xmlTyped (ppl @ [pp_expr ce])
 and pp_local_decl_expr lde = (* don't know what it is for now *)
   match lde with
   | AssumExpr (_, ce) -> pp_expr ce
@@ -329,6 +356,12 @@ and pp_token loc tok =
     | String s -> PCData s
     | Numeral n -> PCData (to_string n) in
   xmlToken loc [tokstr]
+and pp_local_binder_list lbl =
+  let l = (List.map pp_local_binder lbl) in
+  Element ("recurse", (backstep_loc l), l)
+and pp_const_expr_list cel =
+  let l = List.map pp_expr cel in
+  Element ("recurse", (backstep_loc l), l)
 and pp_expr ?(attr=[]) e =
   match e with
   | CRef r ->
@@ -343,17 +376,17 @@ and pp_expr ?(attr=[]) e =
        xmlApply ~attr loc
          (xmlCst (Libnames.string_of_reference r)
                  (Libnames.loc_of_reference r) :: List.map pp_expr args)
-  (* FIXME: Non applied operator -- bug or feature? *)
-  | CNotation (loc, notation,  ([],_,_)) ->
+  | CNotation (loc, notation,  ([],[],[])) ->
        xmlOperator notation loc
-  | CNotation (loc, notation,  (args,_,_)) ->
-       xmlApply loc
-         (xmlOperator notation
-            ~pprules:(Notation.find_notation_extra_printing_rules notation)
-            loc
-          :: List.map pp_expr args)
+  | CNotation (loc, notation,  (args, cell, lbll)) ->
+      let fmts = Notation.find_notation_extra_printing_rules notation in
+      let oper = xmlOperator notation loc ~pprules:fmts in
+      let cels = List.map pp_const_expr_list cell in
+      let lbls = List.map pp_local_binder_list lbll in
+      let args = List.map pp_expr args in
+      xmlApply loc (oper :: (List.sort compare_begin_att (args @ cels @ lbls)))
   | CSort(loc, s) ->
-       xmlOperator (string_of_glob_sort s) loc
+      xmlOperator (string_of_glob_sort s) loc
   | CDelimiters (loc, scope, ce) ->
       xmlApply loc (xmlOperator "delimiter" ~attr:["name", scope] loc ::
         [pp_expr ce])
