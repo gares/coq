@@ -55,7 +55,7 @@ Reserved Notation "x && y" (at level 40, left associativity, format "tex" "#1 \&
 
 (** Notations for pairs *)
 
-Reserved Notation "( x , y , .. , z )" (at level 0, format "tex" "\left(#1, #2, .. , #3\right)").
+Reserved Notation "( x , y , .. , z )" (at level 0, format "tex" "\left(#1, #2,  .. , #3\right)").
 
 (** Notation "{ x }" is reserved and has a special status as component
     of other notations such as "{ A } + { B }" and "A + { B }" (which

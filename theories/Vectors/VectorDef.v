@@ -297,7 +297,8 @@ Notation "[]" := [] : vector_scope.
 Notation "h :: t" := (h :: t) (at level 60, right associativity)
   : vector_scope.
 Notation " [ x ] " := (x :: []) : vector_scope.
-Notation " [ x ; .. ; y ] " := (cons _ x _ .. (cons _ y _ (nil _)) ..) : vector_scope
+Notation " [ x ; .. ; y ] " := (cons _ x _ .. (cons _ y _ (nil _)) ..)
+  (format "tex" "\left[ #1;  .. ; #2 \right]") : vector_scope
 .
 Notation "v [@ p ]" := (nth v p) (at level 1, format "v [@ p ]") : vector_scope.
 Open Scope vector_scope.

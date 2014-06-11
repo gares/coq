@@ -26,7 +26,8 @@ Require Import Omega Relations Multiset SetoidList.
 Set Implicit Arguments.
 
 Local Notation "[ ]" := nil.
-Local Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..).
+Local Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)
+  (format "tex" "\left[ #1;  .. ; #2 \right]").
 
 Section Permut.
 

@@ -179,7 +179,8 @@ Inductive prod (A B:Type) : Type :=
 Add Printing Let prod.
 
 Notation "x * y" := (prod x y) : type_scope.
-Notation "( x , y , .. , z )" := (pair .. (pair x y) .. z) : core_scope.
+Notation "( x , y , .. , z )" := (pair .. (pair x y) .. z)
+  (format "tex" "\left( #1,  .. , #2 \right)"): core_scope.
 
 Arguments pair {A B} _ _.
 

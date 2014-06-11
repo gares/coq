@@ -16,7 +16,8 @@ Require Import List Setoid Permutation Sorted Orders.
 (** Notations and conventions *)
 
 Local Notation "[ ]" := nil.
-Local Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..).
+Local Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)
+  (format "tex" "\left[ #1;  .. ; #2 \right]").
 
 Open Scope bool_scope.
 

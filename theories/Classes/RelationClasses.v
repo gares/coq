@@ -269,6 +269,10 @@ Program Instance iff_equivalence : Equivalence iff.
 
 Local Open Scope list_scope.
 
+(* Notation " [ ] " := nil : list_scope. *)
+(* Notation " [ x ; .. ; y ] " := (cons x .. (cons y nil) ..)
+  (at level 1, format "tex" "\left[ #1;  .. ; #2 \right]") : list_scope. *)
+
 (** A compact representation of non-dependent arities, with the codomain singled-out. *)
 
 (* Note, we do not use [list Type] because it imposes unnecessary universe constraints *)

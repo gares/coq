@@ -26,7 +26,8 @@ Require Import List Relations Relations_1.
 
 Set Implicit Arguments.
 Local Notation "[ ]" := nil (at level 0).
-Local Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..) (at level 0).
+Local Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)
+  (at level 0, format "tex" "\left[ #1;  .. ; #2 \right]").
 Arguments Transitive [U] R.
 
 Section defs.
