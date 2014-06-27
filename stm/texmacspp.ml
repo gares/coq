@@ -364,7 +364,7 @@ and pp_const_expr_list cel =
   Element ("recurse", (backstep_loc l), l)
 and pp_expr ?(attr=[]) e =
   match e with
-  | CRef r ->
+  | CRef (r, _) ->
       xmlCst ~attr
         (Libnames.string_of_reference r) (Libnames.loc_of_reference r)
   | CProdN (loc, bl, e) ->
@@ -372,7 +372,7 @@ and pp_expr ?(attr=[]) e =
         (xmlOperator "forall" loc :: [pp_bindlist bl] @ [pp_expr e])
   | CApp (loc, (_, hd), args) ->
        xmlApply ~attr loc (pp_expr hd :: List.map (fun (e,_) -> pp_expr e) args)
-  | CAppExpl (loc, (_, r), args) ->
+  | CAppExpl (loc, (_, r, _), args) ->
        xmlApply ~attr loc
          (xmlCst (Libnames.string_of_reference r)
                  (Libnames.loc_of_reference r) :: List.map pp_expr args)
@@ -462,12 +462,11 @@ let pp_comment (c) =
 let rec tmpp v loc =
   match v with
   (* Control *)
-  | VernacList ll ->
-      xmlApply loc (Element("list",[],[]) ::
-                    List.map (fun(loc,e) ->tmpp e loc) ll)
   | VernacLoad (verbose,f) ->
       xmlWithLoc loc "load" ["verbose",string_of_bool verbose;"file",f] []
-  | VernacTime e -> xmlApply loc (Element("time",[],[]) :: [tmpp e loc])
+  | VernacTime l ->
+      xmlApply loc (Element("time",[],[]) ::
+                    List.map (fun(loc,e) ->tmpp e loc) l)
   | VernacTimeout (s,e) ->
       xmlApply loc (Element("timeout",["val",string_of_int s],[]) ::
                     [tmpp e loc])
@@ -523,7 +522,7 @@ let rec tmpp v loc =
         | DefineBody (_, None  , ce, None) -> ce
         | DefineBody (_, Some _, ce, Some _) -> ce
         | DefineBody (_, None  , ce, Some _) -> ce in
-      let str_dk = Kindops.string_of_definition_kind (l, dk) in
+      let str_dk = Kindops.string_of_definition_kind (l, false, dk) in
       let str_id = Id.to_string id in
       (xmlDef str_dk str_id loc [pp_expr e])
   | VernacStartTheoremProof (tk, [ Some (_,id), ([], statement, None) ], b) ->
@@ -553,7 +552,7 @@ let rec tmpp v loc =
       let l = match l with Some x -> x | None -> Decl_kinds.Global in
       let kind = string_of_assumption_kind l a many in
       xmlAssumption kind loc exprs
-  | VernacInductive (_, _, iednll) ->
+  | VernacInductive (_, _, _, iednll) ->
       let kind =
         let (_, _, _, k, _),_ = List.hd iednll in
 	  begin
