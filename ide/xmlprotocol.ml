@@ -187,6 +187,7 @@ module ReifType : sig
   val string_t       : string val_t
   val int_t          : int val_t
   val bool_t         : bool val_t
+  val xml_t          : Xml_datatype.xml val_t
   
   val option_t       : 'a val_t -> 'a option val_t
   val list_t         : 'a val_t -> 'a list val_t
@@ -217,7 +218,7 @@ module ReifType : sig
 end = struct
 
   type value_type =
-    | Unit | String | Int | Bool
+    | Unit | String | Int | Bool | Xml
 
     | Option of value_type
     | List of value_type
@@ -237,6 +238,7 @@ end = struct
   let string_t       = String
   let int_t          = Int
   let bool_t         = Bool
+  let xml_t          = Xml
 
   let option_t x     = Option x
   let list_t x       = List x
@@ -257,6 +259,7 @@ end = struct
     let rec convert ty : 'a -> xml = match ty with
       | Unit          -> Obj.magic of_unit
       | Bool          -> Obj.magic of_bool
+      | Xml           -> Obj.magic (fun x -> x)
       | String        -> Obj.magic of_string
       | Int           -> Obj.magic of_int
       | State         -> Obj.magic of_status
@@ -279,6 +282,7 @@ end = struct
     let rec convert ty : xml -> 'a = match ty with
       | Unit          -> Obj.magic to_unit
       | Bool          -> Obj.magic to_bool
+      | Xml           -> Obj.magic (fun x -> x)
       | String        -> Obj.magic to_string
       | Int           -> Obj.magic to_int
       | State         -> Obj.magic to_status
@@ -353,6 +357,7 @@ end = struct
   | Unit          -> Obj.magic pr_unit
   | Bool          -> Obj.magic pr_bool
   | String        -> Obj.magic pr_string
+  | Xml           -> Obj.magic (fun xml -> "TODO")
   | Int           -> Obj.magic pr_int
   | State         -> Obj.magic pr_status
   | Option_state  -> Obj.magic pr_option_state
@@ -375,6 +380,7 @@ end = struct
   | Unit          -> "unit"
   | Bool          -> "bool"
   | String        -> "string"
+  | Xml           -> "xml"
   | Int           -> "int"
   | State         -> assert(true : status exists); "Interface.status"
   | Option_state  -> assert(true : option_state exists); "Interface.option_state"
