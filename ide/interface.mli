@@ -209,6 +209,8 @@ type interp_rty = state_id * (string,string) Util.union
 type stop_worker_sty = string
 type stop_worker_rty = unit
 
+type print_ast_sty = state_id
+type print_ast_rty = Xml_datatype.xml
 
 type handler = {
   add         : add_sty         -> add_rty;
@@ -229,5 +231,7 @@ type handler = {
   quit        : quit_sty        -> quit_rty;
   (* Retrocompatibility stuff *)
   interp      : interp_sty      -> interp_rty;
+  (* texmacs *)
+  print_ast   : print_ast_sty   -> print_ast_rty;
 }
 

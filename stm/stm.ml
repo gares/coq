@@ -1645,10 +1645,6 @@ let handle_failure e vcs tty =
       raise e
 
 let process_transaction ?(newtip=Stateid.fresh ()) ~tty verbose c (loc, expr) =
-  let xml =
-    try Texmacspp.tmpp expr loc
-    with e -> Xml_datatype.PCData ("ERROR " ^ Printexc.to_string e) in
-  Pp.msg_info (Pp.str (Xml_printer.to_string_fmt xml));
   let warn_if_pos a b =
     if b then msg_warning(pr_ast a ++ str" should not be part of a script") in
   let v, x = expr, { verbose = verbose && Flags.is_verbose(); loc; expr } in
@@ -1822,6 +1818,20 @@ let process_transaction ?(newtip=Stateid.fresh ()) ~tty verbose c (loc, expr) =
     handle_failure e vcs tty
 
 (** STM interface ******************************************************* **)
+  
+let print_ast id =
+  try
+    match VCS.visit id with
+    | { step = `Cmd ({ loc; expr }, _) } 
+    | { step = `Fork ({ loc; expr }, _, _, _) } 
+    | { step = `Qed ({ qast = { loc; expr } }, _) } ->
+        let xml = 
+          try Texmacspp.tmpp expr loc
+          with e -> Xml_datatype.PCData ("ERROR " ^ Printexc.to_string e) in
+        xml;
+    | _ -> Xml_datatype.PCData "ERROR"
+  with _ -> Xml_datatype.PCData "ERROR"
+ 
 
 let stop_worker n = Slaves.cancel_worker n
 
