@@ -31,6 +31,7 @@ type class_rawexpr = FunClass | SortClass | RefClass of reference or_by_notation
 type goal_selector =
   | SelectNth of int
   | SelectAll
+  | SelectAllParallel of int
 
 type goal_identifier = string
 type scope_name = string
