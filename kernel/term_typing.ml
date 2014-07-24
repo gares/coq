@@ -153,12 +153,14 @@ let infer_declaration env kn dcl =
       let { const_entry_body = body; const_entry_feedback = feedback_id } = c in
       let tyj = infer_type env typ in
       let proofterm =
-        Future.chain ~greedy:true ~pure:true body (fun ((body, ctx), side_eff) ->
+        Future.chain ~greedy:true ~pure:true body (fun ((body, ctx),side_eff) ->
           let body = handle_side_effects env body side_eff in
 	  let env' = push_context_set ctx env in
           let j = infer env' body in
           let j = hcons_j j in
-          let _typ = constrain_type env' j c.const_entry_polymorphic (`SomeWJ (typ,tyj)) in
+          let _typ =
+            constrain_type
+              env' j c.const_entry_polymorphic (`SomeWJ (typ,tyj)) in
           feedback_completion_typecheck feedback_id;
           j.uj_val, ctx) in
       let def = OpaqueDef (Opaqueproof.create proofterm) in
@@ -176,7 +178,9 @@ let infer_declaration env kn dcl =
 	if c.const_entry_proj then
 	  (** This should be the projection defined as a match. *)
 	  let j = infer env body in
-	  let typ = constrain_type env j c.const_entry_polymorphic (map_option_typ typ) in
+	  let typ =
+            constrain_type
+              env j c.const_entry_polymorphic (map_option_typ typ) in
 	  (** We check it does indeed have the shape of a projection. *)
 	  let inst = Univ.UContext.instance c.const_entry_universes in
 	  let pb = check_projection env (Option.get kn) inst body in
