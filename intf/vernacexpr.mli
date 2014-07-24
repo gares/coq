@@ -448,7 +448,7 @@ type vernac_type =
   | VtStartProof of vernac_start
   | VtSideff of vernac_sideff_type
   | VtQed of vernac_qed_type
-  | VtProofStep
+  | VtProofStep of int option (* parallelize, n of workers *)
   | VtProofMode of string
   | VtQuery of vernac_part_of_script
   | VtStm of vernac_control * vernac_part_of_script

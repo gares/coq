@@ -220,6 +220,6 @@ END
 
 VERNAC COMMAND EXTEND WhelpHint CLASSIFIED AS QUERY
 | [ "Whelp" "Hint" constr(c) ] -> [ whelp_constr_expr "hint" c ]
-| [ "Whelp" "Hint" ] => [ Vernacexpr.VtProofStep, Vernacexpr.VtLater ] ->
+| [ "Whelp" "Hint" ] => [ Vernacexpr.VtProofStep None, Vernacexpr.VtLater ] ->
   [ on_goal (whelp_constr "hint") ]
 END

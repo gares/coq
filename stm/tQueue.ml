@@ -12,7 +12,10 @@ type 'a t = {
   cond : Condition.t;
   mutable nwaiting : int;
   cond_waiting : Condition.t;
+  mutable release : bool;
 }
+
+exception BeingDestroyed
 
 let create () = {
   queue = Queue.create ();
@@ -20,15 +23,18 @@ let create () = {
   cond = Condition.create ();
   nwaiting = 0;
   cond_waiting = Condition.create ();
+  release = false;
 }
 
 let pop ({ queue = q; lock = m; cond = c; cond_waiting = cn } as tq) =
+  if tq.release then raise BeingDestroyed;
   Mutex.lock m;
   while Queue.is_empty q do
     tq.nwaiting <- tq.nwaiting + 1;
     Condition.signal cn;
     Condition.wait c m;
     tq.nwaiting <- tq.nwaiting - 1;
+    if tq.release then (Mutex.unlock m; raise BeingDestroyed)
   done;
   let x = Queue.pop q in
   Condition.signal c;
@@ -36,7 +42,9 @@ let pop ({ queue = q; lock = m; cond = c; cond_waiting = cn } as tq) =
   Mutex.unlock m;
   x
 
-let push { queue = q; lock = m; cond = c } x =
+let push { queue = q; lock = m; cond = c; release } x =
+  if release then Errors.anomaly(Pp.str
+    "TQueue.push while being destroyed! Only 1 producer/destroyer allowed");
   Mutex.lock m;
   Queue.push x q;
   Condition.signal c;
@@ -46,6 +54,15 @@ let clear { queue = q; lock = m; cond = c } =
   Mutex.lock m;
   Queue.clear q;
   Mutex.unlock m
+
+let destroy tq =
+  tq.release <- true;
+  while tq.nwaiting > 0 do
+    Mutex.lock tq.lock;
+    Condition.signal tq.cond;
+    Mutex.unlock tq.lock;
+  done;
+  tq.release <- false
 
 let is_empty { queue = q } = Queue.is_empty q
 

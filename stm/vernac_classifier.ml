@@ -18,7 +18,8 @@ let string_of_vernac_type = function
   | VtSideff _ -> "Sideff"
   | VtQed VtKeep -> "Qed(keep)"
   | VtQed VtDrop -> "Qed(drop)"
-  | VtProofStep -> "ProofStep"
+  | VtProofStep None -> "ProofStep"
+  | VtProofStep (Some n) -> "ProofStep |"^string_of_int n^"|"
   | VtProofMode s -> "ProofMode " ^ s
   | VtQuery b -> "Query" ^ string_of_in_script b
   | VtStm ((VtFinish|VtJoinDocument|VtObserve _|VtPrintDag|VtWait), b) ->
@@ -80,9 +81,9 @@ let rec classify_vernac e =
     | VernacTime e -> classify_vernac_list e
     | VernacFail e -> (* Fail Qed or Fail Lemma must not join/fork the DAG *)
         (match classify_vernac e with
-        | ( VtQuery _ | VtProofStep | VtSideff _
+        | ( VtQuery _ | VtProofStep _ | VtSideff _
           | VtStm _ | VtProofMode _ ), _ as x -> x
-        | VtQed _, _ -> VtProofStep, VtNow
+        | VtQed _, _ -> VtProofStep None, VtNow
         | (VtStartProof _ | VtUnknown), _ -> VtUnknown, VtNow)
     (* Qed *)
     | VernacEndProof Admitted | VernacAbort _ -> VtQed VtDrop, VtLater
@@ -91,6 +92,7 @@ let rec classify_vernac e =
     | VernacShow _ | VernacPrint _ | VernacSearch _ | VernacLocate _
     | VernacCheckMayEval _ -> VtQuery true, VtLater
     (* ProofStep *)
+    | VernacSolve (SelectAllParallel n,_,_) -> VtProofStep (Some n), VtLater
     | VernacProof _ 
     | VernacBullet _ 
     | VernacFocus _ | VernacUnfocus
@@ -98,7 +100,7 @@ let rec classify_vernac e =
     | VernacSolve _ 
     | VernacCheckGuard
     | VernacUnfocused
-    | VernacSolveExistential _ -> VtProofStep, VtLater
+    | VernacSolveExistential _ -> VtProofStep None, VtLater
     (* Options changing parser *)
     | VernacUnsetOption (["Default";"Proof";"Using"])
     | VernacSetOption (["Default";"Proof";"Using"],_) -> VtSideff [], VtNow
