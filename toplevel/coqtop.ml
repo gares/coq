@@ -319,6 +319,8 @@ let schedule_vi_compilation () =
   if !vi_files <> [] && not !vi_checking then
     Vi_checking.schedule_vi_compilation !vi_files_j !vi_files
 
+let cyril = ref false
+
 let parse_args arglist =
   let args = ref arglist in
   let extras = ref [] in
@@ -356,6 +358,9 @@ let parse_args arglist =
       | d :: p :: rem -> set_include d p true true; args := rem
       | _ -> error_missing_arg opt
       end
+
+
+    | "-cyril" -> cyril := true
 
     (* Options with two arg *)
     |"-check-vi-tasks" ->
@@ -517,6 +522,15 @@ let init arglist =
       load_vernac_obj ();
       require ();
       Stm.init ();
+
+      if !cyril then  begin
+                    let time0 = Unix.gettimeofday () in
+                    Library.scan_all_vo ();
+                    let time1 = Unix.gettimeofday () in
+                    Printf.eprintf "time: %3.2f\n" (time1 -. time0);
+                    exit 0
+      end;
+
       load_rcfile();
       load_vernacular ();
       compile_files ();

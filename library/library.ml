@@ -22,6 +22,9 @@ open Lib
 
 type compilation_unit_name = DirPath.t
 
+type header_disk = compilation_unit_name
+type seg_header = header_disk
+
 type library_disk = {
   md_name : compilation_unit_name;
   md_compiled : Safe_typing.compiled_library;
@@ -232,6 +235,16 @@ let locate_absolute_library dir =
   | [vo;vi] -> dir, vo
   | _ -> assert false
 
+let scan_all_vo () =
+  let paths = List.map Loadpath.physical (Loadpath.get_load_paths ()) in
+  let vos = System.where_in_path_rex paths (Str.regexp ".*\\.vo") in
+  List.iter (fun (_,file) ->
+(*     Printf.eprintf "%s\n" file; *)
+    let ch = System.with_magic_number_check raw_intern_library file in
+    let (dp : seg_header), _, _ = System.marshal_in_segment file ch in
+(*     Printf.eprintf "%s\n" (Names.DirPath.to_string dp); *)
+    close_in ch) vos
+
 let locate_qualified_library warn qid =
   (* Search library in loadpath *)
   let dir, base = repr_qualid qid in
@@ -383,6 +396,7 @@ let mk_library md digests univs =
 
 let intern_from_file f =
   let ch = System.with_magic_number_check raw_intern_library f in
+  let _ = System.skip_in_segment f ch in
   let (lmd : seg_lib), pos, digest_lmd = System.marshal_in_segment f ch in
   let (univs : seg_univ option), _, digest_u = System.marshal_in_segment f ch in
   let _ = System.skip_in_segment f ch in
@@ -635,6 +649,7 @@ let load_library_todo f =
     System.find_file_in_path ~warn:(Flags.is_verbose()) paths (f^".v") in
   let f = longf^"i" in
   let ch = System.with_magic_number_check raw_intern_library f in
+  let _ = System.skip_in_segment f ch in
   let (s1 : seg_lib), _, _ = System.marshal_in_segment f ch in
   let (s2 : seg_univ option), _, _ = System.marshal_in_segment f ch in
   let (s3 : seg_discharge option), _, _ = System.marshal_in_segment f ch in
@@ -715,6 +730,7 @@ let save_library_to ?todo dir f otab =
   let (f',ch) = raw_extern_library f in
   try
     (* Writing vo payload *)
+    System.marshal_out_segment f' ch (md.md_name   : seg_header);
     System.marshal_out_segment f' ch (md           : seg_lib);
     System.marshal_out_segment f' ch (utab         : seg_univ option);
     System.marshal_out_segment f' ch (dtab         : seg_discharge option);
@@ -735,6 +751,7 @@ let save_library_to ?todo dir f otab =
 
 let save_library_raw f lib univs proofs =
   let (f',ch) = raw_extern_library (f^"o") in
+  System.marshal_out_segment f' ch (lib.md_name: seg_header);
   System.marshal_out_segment f' ch (lib        : seg_lib);
   System.marshal_out_segment f' ch (Some univs : seg_univ option);
   System.marshal_out_segment f' ch (None       : seg_discharge option);

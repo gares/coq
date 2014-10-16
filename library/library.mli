@@ -10,6 +10,8 @@ open Loc
 open Names
 open Libnames
 
+val scan_all_vo : unit -> unit
+
 (** This module provides functions to load, open and save
   libraries. Libraries correspond to the subclass of modules that
   coincide with a file on disk (the ".vo" files). Libraries on the
