@@ -1209,14 +1209,11 @@ module QueryTask = struct
   let forward_feedback = forward_feedback
 
   let perform { r_where; r_doc; r_what; r_for } =
-    prerr_endline "restoring";
     VCS.restore r_doc;
     VCS.print ();
-    prerr_endline "reaching";
     !reach_known_state ~cache:`No r_where;
     try
-      Pp.set_id_for_feedback (Feedback.State r_for);
-      vernac_interp r_where { r_what with verbose = true };
+      vernac_interp r_for { r_what with verbose = true };
       Pp.feedback ~state_id:r_for Feedback.Processed     
     with e when Errors.noncritical e ->
       let msg = string_of_ppcmds (print e) in
