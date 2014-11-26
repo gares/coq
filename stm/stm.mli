@@ -86,6 +86,26 @@ module ProofTask : AsyncTaskQueue.Task
 module TacTask   : AsyncTaskQueue.Task
 module QueryTask : AsyncTaskQueue.Task
 
+(** customization ********************************************************** **)
+
+(* From the master *)
+val state_computed_hook : (Stateid.t -> in_cache:bool -> unit) Hook.t
+
+val parse_error_hook :
+  (Feedback.edit_or_state_id -> Loc.t -> Pp.std_ppcmds -> unit) Hook.t
+val execution_error_hook : (Stateid.t -> Loc.t -> Pp.std_ppcmds -> unit) Hook.t
+
+(* Messages from the workers to the master *)
+val forward_feedback_hook :
+  (Stateid.t -> Feedback.route_id -> Feedback.feedback_content -> unit) Hook.t
+
+type state = {
+  system : States.state;
+  proof : Proof_global.state;
+  shallow : bool
+}
+val state_of_id : Stateid.t -> state option
+
 (** read-eval-print loop compatible interface ****************************** **)
 
 (* Adds a new line to the document.  It replaces the core of Vernac.interp.
