@@ -348,8 +348,8 @@ object(self)
           remove_flag sentence `PROCESSING;
           remove_flag sentence `ERROR;
           self#mark_as_needed sentence
-      | ProcessingInMaster,  Some (id,sentence) ->
-          log "ProcessingInMaster" id;
+      | ProcessingIn _,  Some (id,sentence) ->
+          log "ProcessingIn" id;
           add_flag sentence `PROCESSING;
           self#mark_as_needed sentence
       | Incomplete, Some (id, sentence) ->
@@ -375,8 +375,8 @@ object(self)
       | InProgress n, _ ->
           if n < 0 then processed <- processed + abs n
           else to_process <- to_process + n
-      | SlaveStatus(id,status), _ ->
-          log "SlaveStatus" None;
+      | WorkerStatus(id,status), _ ->
+          log "WorkerStatus" None;
           slaves_status <- CString.Map.add id status slaves_status
 
       | _ ->

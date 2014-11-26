@@ -460,17 +460,20 @@ let std_logger lvl msg = std_logger ~id:!feedback_id lvl msg
 (** Feedback *)
 
 let feeder = ref ignore
-let set_id_for_feedback ?(route=0) i = feedback_id := i; feedback_route := route
-let feedback ?state_id ?route what =
+let set_id_for_feedback ?(route=Feedback.default_route) i =
+  feedback_id := i; feedback_route := route
+let feedback ?state_id ?edit_id ?route what =
   !feeder {
      Feedback.content = what;
      Feedback.route = Option.default !feedback_route route;
      Feedback.id =
-       match state_id with
-       | Some id -> Feedback.State id
-       | None -> !feedback_id;
+       match state_id, edit_id with
+       | Some id, _ -> Feedback.State id
+       | None, Some eid -> Feedback.Edit eid
+       | None, None -> !feedback_id;
   }
 let set_feeder f = feeder := f
+let get_id_for_feedback () = !feedback_id, !feedback_route
 
 (** Utility *)
 
