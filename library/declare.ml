@@ -205,9 +205,11 @@ let declare_sideff env fix_exn se =
   let id_of c = Names.Label.to_id (Names.Constant.label c) in
   let pt_opaque_of cb pt =
     match cb, pt with
-    | { const_body = Def sc }, _ -> (Mod_subst.force_constr sc, Univ.ContextSet.empty), false
-    | { const_body = OpaqueDef _ }, `Opaque(pt,univ) -> (pt, univ), true
-    | _ -> assert false
+    | { const_body = Def sc }, _ ->
+         Some (Mod_subst.force_constr sc, Univ.ContextSet.empty), false
+    | { const_body = OpaqueDef _ }, `Opaque(pt,univ) ->
+         Some (pt, univ), true
+    | _ -> None, true
   in
   let ty_of cb =
     match cb.Declarations.const_type with
@@ -221,22 +223,32 @@ let declare_sideff env fix_exn se =
 	  univs, Vars.subst_instance_constr (Univ.UContext.instance univs)
       else cb.const_universes, fun x -> x
     in
-    let pt = (subst (fst pt), snd pt) in
     let ty = Option.map subst (ty_of cb) in
-    { cst_decl = ConstantEntry (DefinitionEntry {
-        const_entry_body = Future.from_here ~fix_exn (pt, Declareops.no_seff);
-        const_entry_secctx = Some cb.Declarations.const_hyps;
-        const_entry_type = ty;
-        const_entry_opaque = opaque;
-        const_entry_inline_code = false;
-        const_entry_feedback = None;
-	const_entry_polymorphic = cb.const_polymorphic;
-	const_entry_universes = univs;
-    });
-    cst_hyps = [] ;
-    cst_kind =  Decl_kinds.IsDefinition Decl_kinds.Definition;
-    cst_locl = true;
-  } in
+    match pt, ty with
+    | None, None -> Errors.anomaly Pp.(str "Axiom with no type")
+    | None, Some ty ->
+        { cst_decl = ConstantEntry (ParameterEntry
+            (Some (cb.Declarations.const_hyps), false, (ty,univs), None));
+          cst_hyps = [] ;
+          cst_kind = Decl_kinds.(IsAssumption Logical);
+          cst_locl = true }
+    | Some (p,u), _ ->
+        let pt = subst p, u in
+        { cst_decl = ConstantEntry (DefinitionEntry {
+            const_entry_body =
+              Future.from_here ~fix_exn (pt,Declareops.no_seff);
+            const_entry_secctx = Some cb.Declarations.const_hyps;
+            const_entry_type = ty;
+            const_entry_opaque = opaque;
+            const_entry_inline_code = false;
+            const_entry_feedback = None;
+            const_entry_polymorphic = cb.const_polymorphic;
+            const_entry_universes = univs;
+            });
+          cst_hyps = [] ;
+          cst_kind =  Decl_kinds.IsDefinition Decl_kinds.Definition;
+          cst_locl = true; }
+  in
   let exists c =
     try ignore(Environ.lookup_constant c env); true
     with Not_found -> false in 

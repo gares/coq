@@ -189,7 +189,9 @@ let refine_by_tactic env sigma ty tac =
       those goals rely on effects that are not present anymore. Hopefully,
       this hack will work in most cases. *)
   let ans = Term_typing.handle_side_effects env ans neff in
-  ans, sigma
+  match ans with
+  | None -> Errors.error "Definition entry incomplete"
+  | Some ans -> ans, sigma
 
 (**********************************************************************)
 (* Support for resolution of evars in tactic interpretation, including

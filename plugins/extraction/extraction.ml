@@ -1029,7 +1029,9 @@ let extract_constant env kn cb =
 	  | OpaqueDef c ->
 	    add_opaque r;
 	    if access_opaque () then
-              mk_typ (Opaqueproof.force_proof (Environ.opaque_tables env) c)
+              match Opaqueproof.force_proof (Environ.opaque_tables env) c with
+              | None -> mk_typ_ax ()
+              | Some x -> mk_typ x
             else mk_typ_ax ())
     | (Info,Default) ->
         (match cb.const_body with
@@ -1038,7 +1040,9 @@ let extract_constant env kn cb =
 	  | OpaqueDef c ->
 	    add_opaque r;
 	    if access_opaque () then
-              mk_def (Opaqueproof.force_proof (Environ.opaque_tables env) c)
+              match Opaqueproof.force_proof (Environ.opaque_tables env) c with
+              | None -> mk_ax ()
+              | Some x -> mk_def x
             else mk_ax ())
 
 let extract_constant_spec env kn cb =

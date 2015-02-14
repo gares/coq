@@ -4341,12 +4341,29 @@ let abstract_subproof id gk tac =
     with Uninstantiated_evar _ ->
       error "\"abstract\" cannot handle existentials." in
 
-  let evd, ctx, concl =
+  let evd, ctx, ctxs, concl =
     (* FIXME: should be done only if the tactic succeeds *)
     let evd, nf = nf_evars_and_universes !evdref in
     let ctx = Evd.universe_context_set evd in
-      evd, ctx, nf concl
+    let ctxs = Evd.universe_context evd in
+      evd, ctx, ctxs, nf concl
   in
+ let args = List.rev (instance_from_named_context sign) in
+ let safe, evd, term, effs =
+  match tac with
+  | None ->
+  let cd = Entries.ParameterEntry (None, false, (concl, ctxs), None) in
+  let decl = (cd, IsAssumption Logical) in
+  let cst = Declare.declare_constant ~internal:Declare.KernelSilent ~local:true id decl in
+  let evd, lem = Evd.fresh_global (Global.env()) evd (ConstRef cst) in
+  let evd, _ =
+    Typing.e_type_of
+      (Environ.push_named_context global_sign (Global.env())) evd
+      (mkCast (applist (lem, args),DEFAULTcast,(Proofview.Goal.concl gl))) in
+  let open Declareops in
+  false, evd, applist (lem, args), 
+  side_effects_of_list [Safe_typing.sideff_of_con (Global.safe_env ()) cst]
+  | Some tac ->
   let solve_tac = tclCOMPLETE (tclTHEN (tclDO (List.length sign) intro) tac) in
   let ectx = Evd.evar_universe_context evd in
   let (const, safe, ectx) =
@@ -4363,25 +4380,26 @@ let abstract_subproof id gk tac =
   let decl = (cd, IsProof Lemma) in
   (** ppedrot: seems legit to have abstracted subproofs as local*)
   let cst = Declare.declare_constant ~internal:Declare.KernelSilent ~local:true id decl in
-  (* let evd, lem = Evd.fresh_global (Global.env ()) evd (ConstRef cst) in *)
-  let lem, ctx = Universes.unsafe_constr_of_global (ConstRef cst) in
-  let evd = Evd.set_universe_context evd ectx in
   let open Declareops in
   let eff = Safe_typing.sideff_of_con (Global.safe_env ()) cst in
   let effs = cons_side_effects eff
     Entries.(snd (Future.force const.const_entry_body)) in
-  let args = List.rev (instance_from_named_context sign) in
+  let lem, ctx = Universes.unsafe_constr_of_global (ConstRef cst) in
+  let evd = Evd.set_universe_context evd ectx in
+  safe, evd, applist (lem, args), effs
+ in
+  (* let evd, lem = Evd.fresh_global (Global.env ()) evd (ConstRef cst) in *)
   let solve =
     Proofview.Unsafe.tclEVARS evd <*>
     Proofview.tclEFFECTS effs <*>
-    new_exact_no_check (applist (lem, args))
+    new_exact_no_check term
   in
   if not safe then Proofview.mark_as_unsafe <*> solve else solve
   end
 
 let anon_id = Id.of_string "anonymous"
 
-let tclABSTRACT name_op tac =
+let tclABSTRACT_aux name_op suffix tac =
   let open Proof_global in
   let default_gk = (Global, false, Proof Theorem) in
   let s, gk = match name_op with
@@ -4392,14 +4410,13 @@ let tclABSTRACT name_op tac =
       let name, gk =
 	try let name, gk, _ = current_proof_statement () in name, gk
 	with NoCurrentProof -> anon_id, default_gk in
-      add_suffix name "_subproof", gk
+      add_suffix name suffix, gk
   in
   abstract_subproof s gk tac
 
-let admit_as_an_axiom =
-  Proofview.tclUNIT () >>= fun () -> (* delay for Coqlib.build_coq_proof_admitted *)
-  simplest_case (Coqlib.build_coq_proof_admitted ()) <*>
-  Proofview.mark_as_unsafe
+let admit_as_an_axiom = tclABSTRACT_aux None "_admitted" None
+
+let tclABSTRACT name_op tac = tclABSTRACT_aux name_op "_subproof" (Some tac)
 
 let unify ?(state=full_transparent_state) x y =
   Proofview.Goal.nf_enter begin fun gl ->

@@ -625,9 +625,14 @@ let print_full_pure_context () =
 		str "Parameter " ++
 		print_basename con ++ str " : " ++ cut () ++ pr_ltype typ
 	      | OpaqueDef lc ->
-		str "Theorem " ++ print_basename con ++ cut () ++
-		str " : " ++ pr_ltype typ ++ str "." ++ fnl () ++
-		str "Proof " ++ pr_lconstr (Opaqueproof.force_proof (Global.opaque_tables ()) lc)
+                (match Opaqueproof.force_proof (Global.opaque_tables ()) lc with
+                | None -> 
+		    str "Parameter " ++
+                    print_basename con ++ str " : " ++ cut () ++ pr_ltype typ
+                | Some t ->
+                    str "Theorem " ++ print_basename con ++ cut () ++
+                    str " : " ++ pr_ltype typ ++ str "." ++ fnl () ++
+                    str "Proof " ++ pr_lconstr t)
 	      | Def c ->
 		str "Definition " ++ print_basename con ++ cut () ++
 		str "  : " ++ pr_ltype typ ++ cut () ++ str " := " ++

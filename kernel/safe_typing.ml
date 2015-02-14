@@ -197,12 +197,14 @@ let set_type_in_type senv =
 
 let get_opaque_body env cbo =
   match cbo.const_body with
-  | Undef _ -> assert false
+  | Undef _ -> `Nothing
   | Def _ -> `Nothing
   | OpaqueDef opaque ->
-      `Opaque
-        (Opaqueproof.force_proof (Environ.opaque_tables env) opaque,
-         Opaqueproof.force_constraints (Environ.opaque_tables env) opaque)
+      match Opaqueproof.force_proof (Environ.opaque_tables env) opaque with
+      | None -> `Nothing
+      | Some bo ->
+         `Opaque (bo,
+            Opaqueproof.force_constraints (Environ.opaque_tables env) opaque)
 
 let sideff_of_con env c =
   let cbo = Environ.lookup_constant c env.env in
@@ -336,10 +338,13 @@ let push_named_def (id,de) senv =
   let c, senv' = match c with
     | Def c -> Mod_subst.force_constr c, senv'
     | OpaqueDef o ->
-        Opaqueproof.force_proof (Environ.opaque_tables senv'.env) o,
-        push_context_set
-          (Opaqueproof.force_constraints (Environ.opaque_tables senv'.env) o)
-          senv'
+        (match Opaqueproof.force_proof (Environ.opaque_tables senv'.env) o with
+        | None -> Errors.error "Definition entry incomplete"
+        | Some bo ->
+           bo,
+           push_context_set
+            (Opaqueproof.force_constraints (Environ.opaque_tables senv'.env) o)
+            senv')
     | _ -> assert false in
   let env'' = safe_push_named (id,Some c,typ) senv'.env in
     {senv' with env=env''}

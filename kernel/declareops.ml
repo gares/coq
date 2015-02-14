@@ -45,7 +45,10 @@ let instantiate cb c =
 let body_of_constant otab cb = match cb.const_body with
   | Undef _ -> None
   | Def c -> Some (instantiate cb (force_constr c))
-  | OpaqueDef o -> Some (instantiate cb (Opaqueproof.force_proof otab o))
+  | OpaqueDef o ->
+      match Opaqueproof.force_proof otab o with
+      | None -> None
+      | Some p -> Some (instantiate cb p)
 
 let type_of_constant cb =
   match cb.const_type with

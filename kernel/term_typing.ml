@@ -65,8 +65,11 @@ let handle_side_effects env body side_eff =
     let rec sub_body c u b i x = match kind_of_term x with
       | Const (c',u') when eq_constant c c' -> 
 	Vars.subst_instance_constr u' b
-      | _ -> map_constr_with_binders ((+) 1) (fun i x -> sub_body c u b i x) i x in
+      | _ ->
+        map_constr_with_binders ((+) 1) (fun i x -> sub_body c u b i x) i x in
+    let sub_body c u b i x = Some (sub_body c u b i x) in
     let fix_body (c,cb,b) t =
+      match t with None -> None | Some t ->
       match cb.const_body, b with
       | Def b, _ ->
           let b = Mod_subst.force_constr b in
@@ -74,7 +77,7 @@ let handle_side_effects env body side_eff =
 	    if not poly then
               let b_ty = Typeops.type_of_constant_type env cb.const_type in
               let t = sub c 1 (Vars.lift 1 t) in
-		mkLetIn (cname c, b, b_ty, t)
+		Some (mkLetIn (cname c, b, b_ty, t))
 	    else 
 	      let univs = cb.const_universes in
 		sub_body c (Univ.UContext.instance univs) b 1 (Vars.lift 1 t)
@@ -83,16 +86,16 @@ let handle_side_effects env body side_eff =
 	    if not poly then
               let b_ty = Typeops.type_of_constant_type env cb.const_type in
               let t = sub c 1 (Vars.lift 1 t) in
-		mkApp (mkLambda (cname c, b_ty, t), [|b|]) 
+		Some (mkApp (mkLambda (cname c, b_ty, t), [|b|]) )
 	    else
 	      let univs = cb.const_universes in
 		sub_body c (Univ.UContext.instance univs) b 1 (Vars.lift 1 t)
-      | _ -> assert false
+      | _ -> None
     in
       List.fold_right fix_body cbl t
   in
   (* CAVEAT: we assure a proper order *)
-  Declareops.fold_side_effects handle_sideff body
+  Declareops.fold_side_effects handle_sideff (Some body)
     (Declareops.uniquize_side_effects side_eff)
 
 let hcons_j j =
@@ -120,7 +123,9 @@ let infer_declaration env kn dcl =
       let tyj = infer_type env typ in
       let proofterm =
         Future.chain ~greedy:true ~pure:true body (fun ((body, ctx),side_eff) ->
-          let body = handle_side_effects env body side_eff in
+          match handle_side_effects env body side_eff with
+          | None -> feedback_completion_typecheck feedback_id; None, ctx
+          | Some body ->
 	  let env' = push_context_set ctx env in
           let j = infer env' body in
           let j = hcons_j j in
@@ -128,7 +133,7 @@ let infer_declaration env kn dcl =
           let _typ = constrain_type env' j c.const_entry_polymorphic subst
 	    (`SomeWJ (typ,tyj)) in
           feedback_completion_typecheck feedback_id;
-          j.uj_val, ctx) in
+          Some j.uj_val, ctx) in
       let def = OpaqueDef (Opaqueproof.create proofterm) in
       def, RegularArity typ, None, c.const_entry_polymorphic, 
 	c.const_entry_universes,
@@ -141,13 +146,15 @@ let infer_declaration env kn dcl =
       let (body, ctx), side_eff = Future.join body in
       assert(Univ.ContextSet.is_empty ctx);
       let body = handle_side_effects env body side_eff in
+      if body = None then anomaly Pp.(str"Definition processed asynchronously");
+      let body = Option.get body in
       let abstract = c.const_entry_polymorphic && not (Option.is_empty kn) in
       let usubst, univs = Univ.abstract_universes abstract c.const_entry_universes in
       let j = infer env body in
       let typ = constrain_type env j c.const_entry_polymorphic usubst (map_option_typ typ) in
       let def = hcons_constr (Vars.subst_univs_level_constr usubst j.uj_val) in
       let def = 
-	if opaque then OpaqueDef (Opaqueproof.create (Future.from_val (def, Univ.ContextSet.empty)))
+	if opaque then OpaqueDef (Opaqueproof.create (Future.from_val (Some def, Univ.ContextSet.empty)))
 	else Def (Mod_subst.from_val def) 
       in
 	feedback_completion_typecheck feedback_id;
@@ -211,8 +218,9 @@ let build_constant_declaration kn env (def,typ,proj,poly,univs,inline_code,ctx) 
         | Def cs -> global_vars_set env (Mod_subst.force_constr cs)
         | OpaqueDef lc ->
             let vars =
-              global_vars_set env
+              Option.map (global_vars_set env)
                 (Opaqueproof.force_proof (opaque_tables env) lc) in
+            let vars = Option.default Id.Set.empty vars in
             (* we force so that cst are added to the env immediately after *)
             ignore(Opaqueproof.force_constraints (opaque_tables env) lc);
             !suggest_proof_using kn env vars ids_typ context_ids;
@@ -285,8 +293,13 @@ let translate_local_def env id centry =
 
 let translate_mind env kn mie = Indtypes.check_inductive env kn mie
 
+let assert_Some = function
+  | Some x -> x
+  | None -> error "Definition entry incomplete"
+
 let handle_entry_side_effects env ce = { ce with
   const_entry_body = Future.chain ~greedy:true ~pure:true
     ce.const_entry_body (fun ((body, ctx), side_eff) ->
-      (handle_side_effects env body side_eff, ctx), Declareops.no_seff);
+      (assert_Some (handle_side_effects env body side_eff), ctx),
+       Declareops.no_seff);
 }

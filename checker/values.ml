@@ -326,7 +326,7 @@ let v_libraryobjs = Tuple ("library_objects",[|v_libobjs;v_libobjs|])
 let v_lib =
   Tuple ("library",[|v_dp;v_compiled_lib;v_libraryobjs;v_deps;Array v_dp|])
 
-let v_opaques = Array (v_computation v_constr)
+let v_opaques = Array (v_computation (Opt v_constr))
 let v_univopaques =
   Opt (Tuple ("univopaques",[|Array (v_computation v_context_set);v_context_set;v_bool|]))
 

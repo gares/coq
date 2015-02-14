@@ -19,9 +19,10 @@ val translate_local_assum : env -> types -> types
 
 val mk_pure_proof : constr -> proof_output
 
-val handle_side_effects : env -> constr -> Declareops.side_effects -> constr
+val handle_side_effects :
+  env -> constr -> Declareops.side_effects -> constr option
 (** Returns the term where side effects have been turned into let-ins or beta
-    redexes. *)
+    redexes.  An Undef side effect (an axiom) results in None. *)
 
 val handle_entry_side_effects : env -> definition_entry -> definition_entry
 (** Same as {!handle_side_effects} but applied to entries. Only modifies the

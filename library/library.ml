@@ -331,7 +331,7 @@ type 'a table_status =
   | Fetched of 'a Future.computation array
 
 let opaque_tables =
-  ref (LibraryMap.empty : (Term.constr table_status) LibraryMap.t)
+  ref (LibraryMap.empty : (Term.constr option table_status) LibraryMap.t)
 let univ_tables =
   ref (LibraryMap.empty : (Univ.universe_context_set table_status) LibraryMap.t)
 
@@ -372,7 +372,7 @@ type seg_lib = library_disk
 type seg_univ = (* true = vivo, false = vi *)
   Univ.universe_context_set Future.computation array * Univ.universe_context_set * bool
 type seg_discharge = Opaqueproof.cooking_info list array
-type seg_proofs = Term.constr Future.computation array
+type seg_proofs = Term.constr option Future.computation array
 
 let mk_library md digests univs =
   {

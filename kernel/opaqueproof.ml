@@ -17,7 +17,7 @@ type work_list = (Instance.t * Id.t array) Cmap.t *
 type cooking_info = { 
   modlist : work_list; 
   abstract : Context.named_context * Univ.universe_level_subst * Univ.UContext.t } 
-type proofterm = (constr * Univ.universe_context_set) Future.computation
+type proofterm = (constr option * Univ.universe_context_set) Future.computation
 type opaque =
   | Indirect of substitution list * DirPath.t * int (* subst, lib, index *)
   | Direct of cooking_info list * proofterm
@@ -45,7 +45,8 @@ let create cu = Direct ([],cu)
 let turn_indirect dp o (prfs,odp) = match o with
   | Indirect _ -> Errors.anomaly (Pp.str "Already an indirect opaque")
   | Direct (d,cu) ->
-      let cu = Future.chain ~pure:true cu (fun (c, u) -> hcons_constr c, u) in
+      let cu =
+        Future.chain ~pure:true cu (fun (c,u) -> Option.map hcons_constr c,u) in
       let id = Int.Map.cardinal prfs in
       let prfs = Int.Map.add id (d,cu) prfs in
       let ndp =
@@ -62,12 +63,13 @@ let subst_opaque sub = function
 let iter_direct_opaque f = function
   | Indirect _ -> Errors.anomaly (Pp.str "Not a direct opaque")
   | Direct (d,cu) ->
-      Direct (d,Future.chain ~pure:true cu (fun (c, u) -> f c; c, u))
+      Direct (d,Future.chain ~pure:true cu (fun (c,u) -> Option.iter f c; c, u))
 
 let discharge_direct_opaque ~cook_constr ci = function
   | Indirect _ -> Errors.anomaly (Pp.str "Not a direct opaque")
   | Direct (d,cu) ->
-      Direct (ci::d,Future.chain ~pure:true cu (fun (c, u) -> cook_constr c, u))
+      Direct (ci::d,
+        Future.chain ~pure:true cu (fun (c,u) -> Option.map cook_constr c, u))
 
 let join_opaque (prfs,odp) = function
   | Direct (_,cu) -> ignore(Future.join cu)
@@ -92,7 +94,8 @@ let force_proof (prfs,odp) = function
         then Future.chain ~pure:true (snd (Int.Map.find i prfs)) fst
         else !get_opaque dp i in
       let c = Future.force pt in
-      force_constr (List.fold_right subst_substituted l (from_val c))
+      Option.map (fun c ->
+        force_constr (List.fold_right subst_substituted l (from_val c))) c
 
 let force_constraints (prfs,odp) = function
   | Direct (_,cu) -> snd(Future.force cu)
@@ -117,12 +120,12 @@ let get_proof (prfs,odp) = function
         if DirPath.equal dp odp
         then Future.chain ~pure:true (snd (Int.Map.find i prfs)) fst
         else !get_opaque dp i in
-      Future.chain ~pure:true pt (fun c ->
-        force_constr (List.fold_right subst_substituted l (from_val c)))
+      Future.chain ~pure:true pt (fun c -> Option.map (fun c ->
+        force_constr (List.fold_right subst_substituted l (from_val c))) c)
  
 module FMap = Future.UUIDMap
 
-let a_constr = Future.from_val (Term.mkRel 1)
+let a_constr = Future.from_val (Some (Term.mkRel 1))
 let a_univ = Future.from_val Univ.ContextSet.empty
 let a_discharge : cooking_info list = []
 

@@ -163,7 +163,7 @@ let on_body ml hy f = function
 
 let constr_of_def otab = function
   | Undef _ -> assert false
-  | Def cs -> Mod_subst.force_constr cs
+  | Def cs -> Some (Mod_subst.force_constr cs)
   | OpaqueDef lc -> Opaqueproof.force_proof otab lc
 
 let expmod_constr_subst cache modlist subst c =
@@ -212,8 +212,11 @@ let cook_constant env { from = cb; info } =
     | TemplateArity (ctx,s) ->
   	let t = mkArity (ctx,Type s.template_level) in
   	let typ = abstract_constant_type (expmod t) hyps in
-  	let j = make_judge (constr_of_def (opaque_tables env) body) typ in
-  	Typeops.make_polymorphic_if_constant_for_ind env j
+        match constr_of_def (opaque_tables env) body with
+        | None -> RegularArity typ
+        | Some pt ->
+            let j = make_judge pt typ in
+            Typeops.make_polymorphic_if_constant_for_ind env j
   in
   let projection pb =
     let c' = abstract_constant_body (expmod pb.proj_body) hyps in

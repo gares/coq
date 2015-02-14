@@ -19,7 +19,8 @@ open Mod_subst
     When it is [turn_indirect] the data is relocated to an opaque table
     and the [opaque] is turned into an index. *)
 
-type proofterm = (constr * Univ.universe_context_set) Future.computation
+(* The option type signals a proof that was incomplete (contained admit) *)
+type proofterm = (constr option * Univ.universe_context_set) Future.computation
 type opaquetab
 type opaque
 
@@ -34,9 +35,9 @@ val turn_indirect : DirPath.t -> opaque -> opaquetab -> opaque * opaquetab
 
 (** From a [opaque] back to a [constr]. This might use the
     indirect opaque accessor configured below. *)
-val force_proof : opaquetab -> opaque -> constr
+val force_proof : opaquetab -> opaque -> constr option
 val force_constraints : opaquetab -> opaque -> Univ.universe_context_set
-val get_proof : opaquetab -> opaque -> Term.constr Future.computation
+val get_proof : opaquetab -> opaque -> Term.constr option Future.computation
 val get_constraints :
   opaquetab -> opaque -> Univ.universe_context_set Future.computation option
 
@@ -61,7 +62,7 @@ val uuid_opaque : opaquetab -> opaque -> Future.UUID.t option
 val join_opaque : opaquetab -> opaque -> unit
 
 val dump : opaquetab ->
-  Constr.t Future.computation array *
+  Constr.t option Future.computation array *
   Univ.universe_context_set Future.computation array *
   cooking_info list array *
   int Future.UUIDMap.t
@@ -74,7 +75,7 @@ val dump : opaquetab ->
 *)
 
 val set_indirect_opaque_accessor :
-  (DirPath.t -> int -> Term.constr Future.computation) -> unit
+  (DirPath.t -> int -> Term.constr option Future.computation) -> unit
 val set_indirect_univ_accessor :
   (DirPath.t -> int -> Univ.universe_context_set Future.computation option) -> unit
 

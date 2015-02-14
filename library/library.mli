@@ -33,7 +33,7 @@ type seg_lib
 type seg_univ = (* cst, all_cst, finished? *)
   Univ.universe_context_set Future.computation array * Univ.universe_context_set * bool
 type seg_discharge = Opaqueproof.cooking_info list array
-type seg_proofs = Term.constr Future.computation array
+type seg_proofs = Term.constr option Future.computation array
 
 (** Open a module (or a library); if the boolean is true then it's also
    an export otherwise just a simple import *)

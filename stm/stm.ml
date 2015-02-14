@@ -1199,7 +1199,9 @@ end = struct (* {{{ *)
     match check_task_aux (Printf.sprintf ", bucket %d" bucket) name l i with
     | None -> exit 1
     | Some (po,_) ->
-        let discharge c = List.fold_right Cooking.cook_constr d.(bucket) c in
+        let discharge c =
+          Option.map (List.fold_right Cooking.cook_constr d.(bucket)) c in
+        let hcons c = Option.map Constr.hcons c in
         let con =
           Nametab.locate_constant
             (Libnames.qualid_of_ident po.Proof_global.id) in
@@ -1210,13 +1212,12 @@ end = struct (* {{{ *)
         let uc =
           Option.get
             (Opaqueproof.get_constraints (Global.opaque_tables ()) o) in
-        let pr =
-          Future.from_val (Option.get (Global.body_of_constant_body c)) in
+        let pr = Future.from_val (Global.body_of_constant_body c) in
         let uc =
           Future.chain
             ~greedy:true ~pure:true uc Univ.hcons_universe_context_set in
         let pr = Future.chain ~greedy:true ~pure:true pr discharge in
-        let pr = Future.chain ~greedy:true ~pure:true pr Constr.hcons in
+        let pr = Future.chain ~greedy:true ~pure:true pr hcons in
         Future.sink pr;
         let extra = Future.join uc in
         u.(bucket) <- uc;
