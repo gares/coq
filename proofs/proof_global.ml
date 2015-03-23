@@ -226,7 +226,8 @@ let disactivate_proof_mode mode =
     end of the proof to close the proof. The proof is started in the
     evar map [sigma] (which can typically contain universe
     constraints). *)
-let start_proof sigma id str goals terminator =
+let start_proof sigma id (_,univ_poly,_ as str) goals terminator =
+  let sigma = if univ_poly then sigma else Evd.fix_undefined_variables sigma in
   let initial_state = {
     pid = id;
     terminator = Ephemeron.create terminator;
@@ -371,9 +372,9 @@ let return_proof ?(allow_partial=false) () =
         error(strbrk"Attempt to save a proof with existential variables still non-instantiated") in
   let eff = Evd.eval_side_effects evd in
   let evd =
-    if poly || !Flags.compilation_mode = Flags.BuildVo
-    then Evd.nf_constraints evd
-    else evd in
+    (*if poly || !Flags.compilation_mode = Flags.BuildVo
+    then*) Evd.nf_constraints evd
+    (*else evd*) in
   (** ppedrot: FIXME, this is surely wrong. There is no reason to duplicate
       side-effects... This may explain why one need to uniquize side-effects
       thereafter... *)
