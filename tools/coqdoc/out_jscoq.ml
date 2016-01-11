@@ -150,7 +150,7 @@ module JsCoq : S = struct
   let start_coq () = printf "<div><textarea id=%a>@\n" pp_coq_id (new_coq_id ())
   let end_coq   () = printf "</textarea></div>@\n"
 
-  let start_doc () = printf "<div><p>@\n"
+  let start_doc () = printf "<div>@\n"
   let end_doc   () = printf "</div>@\n"
 
   let start_emph () = printf "<em>"
@@ -176,7 +176,7 @@ module JsCoq : S = struct
   let end_inline_coq_block   () = printf "</pre>"
 
   (* XXX: close pars like in XHTML??? *)
-  let paragraph () = printf "<p>@\n"
+  let paragraph () = printf ""
 
   (* XXX: *)
   let inf_rule _ _ _ = printf "#inf_rule @\n"
