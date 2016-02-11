@@ -1,0 +1,199 @@
+
+
+
+============================================================
+From tactics to intro-patterns and rewrite-patterns, and back.
+
+- The arrow is a generic tacticial, for performing introduction.
+  It takes the form:
+
+     tac => ipat1 ... ipatN
+
+- As introduction pattern ("ipat" above), we can provide an
+  arbitrary tactic using the "/tac" notation, or, when "tac" is not 
+  reduced to a single identifier, using the form "/(tac args)".
+
+- Similarly, we have a generic form for rewrite operations:
+  
+     rewrite rpat1 ... rpatN
+    
+  and one particular rewrite pattern is "/tac" or "/(tac)",
+  which allows us to perform arbitrary tactic calls in the
+  middle of a rewriting sequence.
+
+
+============================================================
+Introduction patterns
+   
+   x   introduces the next item with name x
+ 
+   ?   introduces the next item with a generated name
+
+   _   introduces and immediately clear the next item
+
+   -   expects a mark at the head of the goal, and clears it
+       (raises an error if there is no mark there)
+  
+   +   removes the next mark, acknowledging that there might
+       remain more items before the mark
+
+   *   introduces everything that remains with fresh names
+
+   *-  introduces everything until the next mark, including the mark
+
+   >   enters fast introduction mode: only non-dependent 
+       variables are considered by the following intropatterns
+       (remark: fast mode does not change the semantics of * and *-).
+
+   <   goes back to slow introduction mode: all variables are 
+       considered for as items for introduction.
+
+   prefix^-  introduces all variables with generated names build
+             using inductive name (as obtained from the constructor
+             that is carried by the next mark) and by adding "prefix"
+             to the front. See further for examples.
+ 
+   ^suffix-  same as above, except adding a suffix.
+
+   /[ ipat11 .. ipat1N | iipat21 .. | ... ]   
+
+       the above patter to distribution introduction over subgoals;
+       the number of subgoals must match the one given.
+
+   /tac            executes the tactic "tac".
+
+   /(tac arg)      executes the tactic "tac" with its argument "arg".
+
+   []              shorthand for "/case" 
+
+   [ .. | .. ]     shorthand for "/case /[ .. | .. ]", with an
+                   extended interpretation for standard binary
+                   operators (/\ and \/ and exists); see further.
+
+
+
+Note that ">" and "<" and "/" and "[" and "]" act as separators 
+and need not be separated by spaces. In particular, this allows 
+to write "move =>> H".
+
+Note that the "fast/slow" mode does distribute inside the bracket:
+we go back to slow mode inside the bracket. However, it is not hard 
+to re-enter fast mode in the brackets on a per-need basis, e.g.:
+    move =>> /invert [x y H | > H1 H2]
+
+
+
+============================================================
+Special introduction patterns for tactics
+
+   These are convenient notation for common variants of "/tac".
+
+   //               calls the tactic "slash_slash"; by convention,
+                    associated with "some form of automation that
+                    may kill the goal".
+
+   /-               calls the tactic "slash_minus"; by convention,
+                    associated with "some form of automation that
+                    must kill the goal".
+
+   /=               calls the tactic "slash_equal"; by convention, 
+                    associated with "some form of normalization".
+    
+   /->              calls "rewrite ->" with the head hypothesis
+
+   /<-              calls "rewrite <-" with the head hypothesis
+
+   /[occswitch]->   variant
+
+   /[occswitch]<-   variant
+
+   /:term           generalize "term" by putting it to the head
+                    of the goal (i.e. like "move: term").
+               
+   /~term           apply view (like "view term");
+
+   /n:tac           shorthand for "/(n:tac)", which applies
+                    tactic to the n-th subgoal.
+
+
+Note: one can chain a view with an destructive introduction,
+for example if the head hypothesis is "a && b", then one could
+do  "move => /~andb[H1 H2]".
+
+Note: one can chain several views at once using the syntax
+"/(~ term1 term2)", since the view tactic, written "~", may
+accept a variable number of arguments.
+
+Note: one can kill specific subgoals directly in a case analysis,
+for example "move => [ /- | > H1 H2 | x H ]" would kill the first 
+subgoal and introduce hypotheses in the second and third goals.
+
+
+
+============================================================
+Destruction of inductive datatypes
+
+- An inductive datatype in general can be destructed using
+  the introduction pattern:
+
+           [x1 .. xN | y1 .. yN | ...] 
+ 
+  This pattern raises an error if there are not exactly the
+  right number of branches and right number of arguments.
+  
+- Note: use [x1 +| y1 +] to give only the first names and leave
+  the others in the goal.
+
+- Note: use [x1 *-| y1 *-] to give only the first names and 
+  introduce the other ones in the hypotheses.
+
+- For the common operators /\ and \/ and "exists", we register
+  them as being "right-associative in intropattern". 
+  This means that one can destruct the term (A /\ B /\ C)
+  as [a b c] instead of [a [b c]]. The formal semantics is: 
+  if we have a destructing pattern (starting with a bracket) 
+  and if the head constructor of the term being destructed
+  is registered as right-associative intropattern,
+  and if there are more than 2 names provided, then
+  interpret "[a1 a2 .. an]" as "[a1 [a2 .. an]]".
+
+- Example: "A /\ B /\ C" can be decomposed using "[a b c]".
+
+- Example: "exists3 x y z, conj3 A B C" can be decomposed
+  using "[a b c]".
+
+- Example: "exists x y z, A /\ B /\ C" can be decomposed
+  using "[x y z [a b c]]". 
+  
+- Remark: we can interpret "exists x y z, A /\ B /\ C"
+   as either  "exists x, exists y, exists z, A /\ (B /\ C)"
+   or as      "exists3 x y z, conj3 A B C",
+   scripts should work either way. In other words, we have a 
+   properly of "independence w.r.t. internal representation of
+   n-ary conj/disj/exists".
+
+- Example: "A /\ exists x, C x"  CANNOT be decomposed using
+  "[a b c]" because the constructor for the second argument 
+  is not the same constructor as the one of the current term 
+  being destructed.
+  
+
+
+
+============================================================
+Free introduction patterns
+
+
+   /+               ... (free)
+
+   /*               ... (free)
+
+   /$               ... (free)
+
+   /&               ... (free)
+
+   /|               ... (free)
+
+   /term            purposely not used, to avoid clashes between
+                    terms and tactics
+
