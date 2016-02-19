@@ -1,35 +1,22 @@
 
 
-
 ============================================================
-From tactics to intro-patterns and rewrite-patterns, and back.
-
-- The arrow is a generic tacticial, for performing introduction.
-  It takes the form:
+Introduction patterns
+  
+   
+The arrow is a generic tacticial, for performing introduction.
 
      tac => ipat1 ... ipatN
 
-- As introduction pattern ("ipat" above), we can provide an
-  arbitrary tactic using the "/tac" notation, or, when "tac" is not 
-  reduced to a single identifier, using the form "/(tac args)".
-
-- Similarly, we have a generic form for rewrite operations:
-  
-     rewrite rpat1 ... rpatN
-    
-  and one particular rewrite pattern is "/tac" or "/(tac)",
-  which allows us to perform arbitrary tactic calls in the
-  middle of a rewriting sequence.
-
-
-============================================================
-Introduction patterns
-   
    x   introduces the next item with name x
  
    ?   introduces the next item with a generated name
 
    _   introduces and immediately clear the next item
+       TODO: an alternative would be "{}", which would
+       be more consistent with the general clear mechanism
+       proposed further; but maybe it's too heavy, and "_"
+       has a well-established meaning in ocaml patterns.
 
    -   expects a mark at the head of the goal, and clears it
        (raises an error if there is no mark there)
@@ -60,7 +47,8 @@ Introduction patterns
        the above patter to distribution introduction over subgoals;
        the number of subgoals must match the one given.
 
-   /tac            executes the tactic "tac".
+   /tac            executes the tactic "tac", when "tac" consists
+                   of a single identifier.
 
    /(tac arg)      executes the tactic "tac" with its argument "arg".
 
@@ -84,22 +72,29 @@ to re-enter fast mode in the brackets on a per-need basis, e.g.:
 
 
 ============================================================
-Special introduction patterns for tactics
+Special patterns for tactics  (both for intro and rewrite pattern)
 
-   These are convenient notation for common variants of "/tac".
+
+These are convenient notation for common variants of "/tac".
 
    //               calls the tactic "slash_slash"; by convention,
                     associated with "some form of automation that
                     may kill the goal".
 
+   /=               calls the tactic "slash_equal"; by convention, 
+                    associated with "some form of normalization".
+
    /-               calls the tactic "slash_minus"; by convention,
                     associated with "some form of automation that
                     must kill the goal".
-
-   /=               calls the tactic "slash_equal"; by convention, 
-                    associated with "some form of normalization".
     
    /->              calls "rewrite ->" with the head hypothesis
+                    TODO: ambiguité entre "/->" et "/- >"
+                          pas un pb car on peut supposer que l'espace joue 
+                          un rôle lorsqu'on enchaîne des tokens spéciaux
+                          comme "+" qui est différent de "++".
+                    TODO: /= serait mieux non? mais du coup,
+                          comment réécrire dans l'autre sens?
 
    /<-              calls "rewrite <-" with the head hypothesis
 
@@ -111,6 +106,8 @@ Special introduction patterns for tactics
                     of the goal (i.e. like "move: term").
                
    /~term           apply view (like "view term");
+                    TODO: would "/=" be better here? if so, can
+                    swap it with "/~".
 
    /n:tac           shorthand for "/(n:tac)", which applies
                     tactic to the n-th subgoal.
@@ -196,4 +193,263 @@ Free introduction patterns
 
    /term            purposely not used, to avoid clashes between
                     terms and tactics
+
+
+
+
+
+============================================================
+Multipliers
+
+For "rewrite" and "do" tactics
+
+   n!     exactly n times
+
+   n?     up to n times, possible less
+
+   !      as many times as possible, at least once
+          (think of it as "_!", i.e. with n not specified)
+ 
+   ?      as many times as possible, possibly zero
+          (think of it as "_?", i.e. with n not specified)
+ 
+
+============================================================
+General clear mechanism
+
+
+   {x}    denotes the term "x", with the interpretation that
+          the variable "x" will be cleared at the end of the
+          tactic execution (i.e. at next semi-column).
+
+Examples:  
+  - apply {H} x.
+  - rewrite H1 {H2}.
+  - apply (foo {H}).
+
+
+
+============================================================
+Rewrite-patterns
+
+The general form of rewrite is:
+  
+     rewrite rpat1 ... rpatN
+    
+with the following rewriting patterns supported:
+
+     term         attemps to rewrite with "term", 
+                  TODO: we might add:
+                  except if "term" has type "Prop", in which
+                  case the rule below applies.
+      
+                  TODO: pb of interpretation of "rewrite E"  
+                  for example when "E : a <-> b = c".
+                  More generally, with setoids...
+                  Is it fine to say that the outermost registered
+                  setoid symbol should be considered?
+
+
+     (term=term)  asserts that the equality is true and rewrites using it.
+                  The equality becomes a side-condition.
+                  TODO: should equality provable by reflexivity be
+                  automatically discharged? or they would need "//"?
+                  Remark: there is no ambiguity because "term=term"
+                  is a term of type "Prop", so rewriting could not
+                  TODO: is the syntax "(_:term=term)" too heavy? I think so.
+
+     -term
+
+                  TODO: ->term  et <-term  auraient du sens par
+                  uniformité avec les intro-patterns, si on utilise
+                  /-> et /<- 
+
+     &term        unfold term
+                  (Note: we cannot use "/" because of conflict
+                   with the general notation for tactics)
+
+     -&term       fold term
+
+     ~term        rewrite with a view; equivalent to "/~term"
+                  TODO: maybe this is not needed if views are equalities?
+
+     =base        autorewrite with a base of lemmas
+
+     [tpat]rpat   is for selecting a term pattern in which the rewriting
+                  will take place. See below for examples.
+                  Note that outer matching subterms are considered first.
+                  TODO: please remind me the logic of giving the target
+                  before the rewriting lemma "rewrite E in H" vs "in H rewrite E".
+
+     /tac         execute tactic
+
+
+Target subterms for rewriting: (TODO: i'm trying to guess here)
+
+   rewrite [foo _ _]E
+   => rewrites E inside subterms of the form "foo _ _"
+
+   rewrite [x in foo x _]E
+   => rewrites E inside the x in subterms of the form "foo x _"
+
+   TODO: comprendre quel est le besoin ici; et le cas général
+   de sélection de sous-terme avec patterns imbriqués (aussi utile 
+   pour d'autres tactiques).
+   rewrite [bar _ inside (foo _ _)]E
+   => rewrites E inside x inside subterms of the form "foo _ _"
+
+
+TODO: how to do "rewrite E in H" in ssr? 
+Is: "on H rewrite E" doing "protect; move: H; rewrite E; intro; unprotect".
+Could we make it so that the hypothesis goes back to its original place?
+
+
+
+
+
+============================================================
+Killing false subgoals
+
+
+   false_goal        replace the goal by "False".
+
+   false             call "false_goal", then try to kill the goal
+                     using one of: 
+                     - assumption
+                     - equal        (new name for "congruence")
+                     - inject       (subsumes "discriminate")
+                     - cyclic       (proving, e.g. "x <> S x")
+
+   false E          shorthand for "false_goal; apply E".
+
+ 
+
+============================================================
+Cycles in inductives
+
+   cyclic x         proves a contradiction by exploiting
+                    a cycle starting from variable x and
+                    going through inductive constructors,
+                    e.g. "x = S y /\ y = S x".
+
+   cyclic           equivalent to "try solve [cyclic x]" for every 
+                    variable "x" in the goal, but actually more
+                    efficient, since a O(n) DFS is possible.
+
+
+
+============================================================
+Tag mechanism on goals
+
+  - tactics attach tags to goals they produce
+
+  - e.g. invert attaches the constructor corresponding name to the case
+
+  - tags are actually list of names, useful e.g. for "invert H1; invert H2".
+
+  - a tactic, call it "goal" or "case", can be used to select one of
+    the remaining by a regexp-like on the tag (expects no ambiguity).
+  
+  - e.g.  "^beta" selects the case coming from constructor "red_expr_beta".
+
+
+============================================================
+Inject
+
+
+   inject_once      takes the head hyp "C x1 x2 = C y1 y2"
+                    and replaces it with "x1 = y1" and "x2 = y2".
+                    
+                    TODO: if the constructor involves dependent types,
+                    then it produces "sigma x1 x2 = sigma y1 y2". or not?
+
+   inject           repeats "inject" recursively.
+
+   inject: H        shorthand for moving H in the goal first
+
+   inject pat: H    shorthand for moving H in the goal first
+
+
+TODO: what names to give to tactics that immediately substitute
+      the equalities that they produce. "injects" would do this?
+      useful for dependent constructors, since there is no other way?
+
+
+LATER: (is it useful?)
+   inject pat       specify a pattern that inject should follow, in order
+                    to control the depth. e.g. on 
+                    "C x1 (D x2 (E x3)) = C y1 (D y2 (E y3))"
+                    we can call "inject [_ [_ _]]" to produce
+                    x1 = y1 and x2 = y2 and E x3 = E y3.
+
+
+============================================================
+Invert
+
+
+   invert         takes the head hyp and performs:  
+                  - case analysis, with remembered equalities
+                  - calls inject on equalities produced (includes discriminate)
+                  - possibly, try to kill goals using tactic "cyclic" 
+                  - perform substitutions of fresh variables that
+                    are involved in a single equality.
+
+  invert_nosubst  same but does not attempt to perform any substitution
+
+  invert: H       shorthand for moving H down before "invert".                    
+
+
+
+
+General pattern:
+
+  Cstr : forall n1 n2, P f1 f2
+  Goal : forall (H: P e1 e2), G H
+  Res  : forall n1 n2, (sigma f1 f2 = sigma e1 e2) -> (H: P e1 e2) -> G H
+
+Simplified case when the hypothesis is not dependently used:
+
+  Cstr : forall n1 n2, P f1 f2
+  Goal : P e1 e2 -> G
+  Res  : forall n1 n2, (sigma f1 f2 = sigma e1 e2) -> G
+
+Further simplification P is not dependent,
+then sigma is just a tuple operator and injection gives:
+
+  Res  : forall n1 n2, f1 = e1 -> f2 = e2 -> G
+
+
+Example 1: problematic subsitution of a fresh variable
+
+  Cstr : forall n, A n -> B n -> P n
+  Goal : P (big x) -> G
+  Res  : A (big x) -> B (big x) -> G
+
+
+Example 2: problematic subsitution of an existing variable
+
+  Cstr : forall n, P (big n)
+  Goal : P x -> A x -> B x -> G
+  Res  : forall n, A (big n) -> B (big n) -> G
+
+
+Example 3: combination of 1 and 2
+
+  Cstr : forall n m, A n -> B n -> P n (big m)
+  Goal : P (big x) y -> C y -> D y -> G
+  Res  : forall m, A (big x) -> B (big x) -> C (big m) -> D (big m) -> G
+
+
+Example 4: constructors involving explicit equalities
+
+  Cstr : forall n m, m = big n -> P m
+  Goal : P x -> A x -> B x -> G
+  Res  : forall n, m = big n -> A m -> B m -> G
+
+
+Example 5: no canonical choice for which equality to substitute
+
+  Cstr : forall n, A n -> B n -> P n n
+  Goal : P (big x) (big y) -> G
+  Res  : forall n, A n -> n = big x -> n = big y -> G
 
