@@ -653,7 +653,42 @@ are not needed if you have powerful "normalization" tactics, e.g.
 my tactic "rew_list" which normalizes all kind of list operations
 in a canonical way (with a confluent and terminating rewriting system).
 
+ET: Here we discuss about syntax.  Bad.
+One thing at a time, I would not make decisions on the language thinking
+that the ugly UIs we have today cannot get better.  Eg, we can already have Coq
+print intermediate goals in compound rewrite lines (not in PG, or not yet).
+Another thing is that, if we are brave enough, we could go toward a new
+parsing mode I'm crying for.  In
 
+  rewrite foo !bar [pat]baz
+
+"rewrite" could be a command in itself, activating a parser specific for
+rewrite arguments.  "foo" would be 1 complete sentence for this parser, and Coq
+could internally represent such state and print it.  "!bar" would be the next
+complete sentence... "/something" would be an escape: go back to the standard
+parser and parse "something".  No need to put a trailing ".", the UI could ask
+Coq to chop the document...
+
+OK, back on earth, all that is very ambitious.  The only thing I'd like to avoid
+is that choices made today could seem nonsensical for a system of tomorrow
+where parsing + UI interaction is not done as it was done in the 70'.
+
+Unfortunately I think that this box of text goes in the direction of 1 tactic =
+1 symbol, that is something I don't like (and also already tried in Matita), to
+help with crappy UIs.  Eg, the line above between { ... } is valid Matita:
+
+     ->subsetI // ->ucn_sub // <-commg_subr
+
+You can step trough it item by item.  It sucks, even if it is better than the Coq
+one (no . needed).  I strongly prefer the less Perl-ish:
+
+     rewrite subsetI // ucn_sub // -commg_subr
+
+where the mode is stated once per line.
+It was not coded like that in Matita because of bad reasons: only 1
+un-contextual parser for tactic arguments, lazy/busy coders, too ambiguous for
+a single parser.  Result: sprinkle symbols here and there to make it easy to
+parse.  Shame on us (Matita developers).
 
 ============================================================
 TODO: problem of interpretation of arguments of tactics.
