@@ -1,39 +1,32 @@
 
-
 ============================================================
 Introduction patterns
-  
    
-The arrow is a generic tacticial, for performing introduction.
-
-     tac => ipat1 ... ipatN
-
    x   introduces the next item with name x
  
    ?   introduces the next item with a generated name
 
-   _   introduces and immediately clear the next item
-       TODO: an alternative would be "{}", which would
+   _   introduces and clear the next item, but this clear is
+       delayed until the end of the tactic execution (otherwise
+       this would cause errors for dependent variables).
+       [Alternative: use "{}" a clear intropattern, which would
        be more consistent with the general clear mechanism
-       proposed further; but maybe it's too heavy, and "_"
-       has a well-established meaning in ocaml patterns.
-
-   -   expects a mark at the head of the goal, and clears it
-       (raises an error if there is no mark there)
+       proposed further, namely "{x}" uses the term x and later
+       clears it. But maybe it's too heavy, and "_"
+       has a well-established meaning in ocaml patterns,
+       so we should stick to it.]
   
-   +   removes the next mark, acknowledging that there might
-       remain more items before the mark
+   +   introduce all the dependent variables that are visible;
+       performs hnf if there are none, and fails if hnf does
+       not reveal any. [Alternative: do nothing instead of failing.]
 
-   *   introduces everything that remains with fresh names
+   *   introduces all the variables that are visible,
+       with fresh names; do nothing if there are none.
 
    *-  introduces everything until the next mark, including the mark
 
-   >   enters fast introduction mode: only non-dependent 
-       variables are considered by the following intropatterns
-       (remark: fast mode does not change the semantics of * and *-).
-
-   <   goes back to slow introduction mode: all variables are 
-       considered for as items for introduction.
+   -   expects a mark at the head of the goal, and clears it;
+       fails if there is no mark there.
 
    prefix^-  introduces all variables with generated names build
              using inductive name (as obtained from the constructor
@@ -58,16 +51,11 @@ The arrow is a generic tacticial, for performing introduction.
                    extended interpretation for standard binary
                    operators (/\ and \/ and exists); see further.
 
+Note that spaces are irrelevant between tokens. 
 
-
-Note that ">" and "<" and "/" and "[" and "]" act as separators 
-and need not be separated by spaces. In particular, this allows 
-to write "move =>> H".
-
-Note that the "fast/slow" mode does distribute inside the bracket:
-we go back to slow mode inside the bracket. However, it is not hard 
-to re-enter fast mode in the brackets on a per-need basis, e.g.:
-    move =>> /invert [x y H | > H1 H2]
+Examples:
+    move =>+ H
+    move =>+ /invert [x y H | + H1 H2 | *- ]
 
 
 
@@ -176,6 +164,8 @@ Destruction of inductive datatypes
   
 
 
+- TODO: maybe [S=>n|0=>]  as intropattern
+
 
 ============================================================
 Free introduction patterns
@@ -195,37 +185,6 @@ Free introduction patterns
                     terms and tactics
 
 
-
-
-
-============================================================
-Multipliers
-
-For "rewrite" and "do" tactics
-
-   n!     exactly n times
-
-   n?     up to n times, possible less
-
-   !      as many times as possible, at least once
-          (think of it as "_!", i.e. with n not specified)
- 
-   ?      as many times as possible, possibly zero
-          (think of it as "_?", i.e. with n not specified)
- 
-
-============================================================
-General clear mechanism
-
-
-   {x}    denotes the term "x", with the interpretation that
-          the variable "x" will be cleared at the end of the
-          tactic execution (i.e. at next semi-column).
-
-Examples:  
-  - apply {H} x.
-  - rewrite H1 {H2}.
-  - apply (foo {H}).
 
 
 
@@ -339,21 +298,6 @@ Cycles in inductives
 
 
 ============================================================
-Tag mechanism on goals
-
-  - tactics attach tags to goals they produce
-
-  - e.g. invert attaches the constructor corresponding name to the case
-
-  - tags are actually list of names, useful e.g. for "invert H1; invert H2".
-
-  - a tactic, call it "goal" or "case", can be used to select one of
-    the remaining by a regexp-like on the tag (expects no ambiguity).
-  
-  - e.g.  "^beta" selects the case coming from constructor "red_expr_beta".
-
-
-============================================================
 Inject
 
 
@@ -397,7 +341,6 @@ Invert
   invert_nosubst  same but does not attempt to perform any substitution
 
   invert: H       shorthand for moving H down before "invert".                    
-
 
 
 
@@ -452,4 +395,273 @@ Example 5: no canonical choice for which equality to substitute
   Cstr : forall n, A n -> B n -> P n n
   Goal : P (big x) (big y) -> G
   Res  : forall n, A n -> n = big x -> n = big y -> G
+
+
+
+============================================================
+Multipliers
+
+For "rewrite" and "do" tactics
+
+   n!     exactly n times
+
+   n?     up to n times, possible less
+
+   !      as many times as possible, at least once
+          (think of it as "_!", i.e. with n not specified)
+ 
+   ?      as many times as possible, possibly zero
+          (think of it as "_?", i.e. with n not specified)
+
+
+============================================================
+Tag mechanism on goals
+
+  - tactics attach tags to goals they produce
+
+  - e.g. invert attaches the constructor corresponding name to the case
+
+  - tags are actually list of names, useful e.g. for "invert H1; invert H2".
+
+  - a tactic, call it "goal" or "case", can be used to select one of
+    the remaining by a regexp-like on the tag (expects no ambiguity).
+  
+  - e.g.  "^beta" selects the case coming from constructor "red_expr_beta".
+
+
+ 
+
+============================================================
+General clear mechanism
+
+
+   {x}    denotes the term "x", with the interpretation that
+          the variable "x" will be cleared at the end of the
+          tactic execution (i.e. at next semi-column).
+
+Examples:  
+  - apply {H} x.
+  - rewrite H1 {H2}.
+  - apply (foo {H}).
+
+
+
+
+
+============================================================
+Discussion on intropatterns.
+
+Can we get away without fast mode, using only "+" to mean
+"intro all dependent variables"? Short answer is: yes.
+
+I would write "=>+" wherever I currently write "introv". 
+In a few cases, I would need an additional "+" in the list 
+of intropatterns. It turns out that there are only a limited number 
+of places where I need this throughout TLC. 
+I classified these situations that I encountered.
+
+
+*) Situation 1: unfolding definitions starting with a forall.
+
+Current script: 
+
+   Definition foreach P E :=
+      forall x, x \in E -> P x.
+
+   Lemma foreach_weaken : forall P Q E,
+     foreach P E -> pred_le P Q -> foreach Q E.
+   Proof using. introv H L K. Abort.
+   (* Here, K has type "x \in E" *)
+
+Proposed replacement:
+
+   Proof using. =>+ H L + K. Abort. 
+
+Remark: this assumes that "+" will call "hnf" if there is
+no visible quantifier at all. Otherwise, I'd need to call
+/hnf to unfold the head symbol, and write:
+
+   Proof using. =>+ H L /hnf + K. Abort. 
+
+Conclusion: the second possibility is a bit heavy, I think
+it is fine to assume that "+" will do an unfolding if there
+is nothing to introduce.
+
+
+*) Situation 2: proving elimination lemmas.
+
+Current script:
+
+   Lemma irrefl_neq : forall R,
+     irrefl R -> 
+     forall x y, R x y -> x <> y. 
+   Proof using. introv + H P E. Abort.
+
+Proposed replacement:
+
+   Proof using. =>+ H + P E. Abort. 
+
+Conclusion: fair enough to write the extra "+".
+
+
+*) Situation 3: proving induction principles (similar to above).
+
+   Definition eq_ind_r : forall (P:A -> Prop), 
+     P x -> forall y, y = x -> P y.
+   Proof using. introv Px H. Abort.
+
+Proposed replacement:
+
+   Proof using. =>+ Px + H. Abort. 
+
+Conclusion: fair enough. 
+
+
+*) Situation 4: lemmas requiring a type to be inhabited 
+   even though the statement itself does not use the instance.
+
+   Theorem rec_fixed_point : forall A B {IB:Inhab B} 
+    (F:(A->B)->(A->B)) (R:binary A) (P:A->Prop) (S:A->B->Prop) (E:binary B), 
+     equiv E -> (forall x, pred_compatible E (S x)) ->
+     wf R -> rec_contractive E P F R S ->
+     exists (f:A->B), partial_fixed_point E F (Build_partial f P)
+                  /\ (forall x, P x -> S x (f x)).
+   Proof using. introv IB Equiv Comp WfR Cont. Abort.
+
+Proposed replacement:
+
+   Proof using. =>+ IB + Equiv Comp WfR Cont. Abort.
+
+Conclusion: it is a bit unfortunate that I need an extra + here.
+One could argue that "Inhab B", if it not dependently used, 
+should appear later in the list of hypothesis. But, morally,
+I want "an inhabited type B", so I like to have "Inhab B"
+to place immediately next to "B".
+(Troll: IMO, types should be inhabited by default, like in HOL ;)
+
+
+I could live with the additional "+", sure, but it does not look nice.
+One possibility would be to do a special case to say that hypotheses 
+of the form "Inhab B" are treated as if there were dependently-used
+variables. Maybe this would generalize to other typeclasses?
+In this case, maybe we can have a command for registering 
+patterns of hypotheses that should be considered by "+".
+In fact, I would be happy to have just for myself an overloaded
+definition of the "plus" tactic. By this I mean that if the
+implementation of "=> ipat" when "ipat" is "+" is to call
+a tactic "intro_pattern_plus", and that I am able to bind my
+own tactic there, I would do:
+ 
+   Ltac intro_pattern_plus :=
+      match goal with
+      | _ -> _ => idtac
+      | Inhab _ -> _ => intro ?; intro_pattern_plus 
+      | forall _, _ => intro ?; intro_pattern_plus 
+      | _ => hnf; (... same process if a forall a is made visible ...)
+
+
+
+============================================================
+Need to optimize autorewrite
+
+Autorewrite needs primitive support, and needs cheap syntactic matching
+that does not trigger computations.
+
+
+   Hint Rewrite app_cons app_nil_l app_nil_r app_assoc 
+    app_cons_one 
+    fold_right_nil fold_right_cons fold_right_app
+    fold_right_last 
+    fold_left_nil fold_left_cons fold_left_app
+    fold_left_last 
+    length_nil length_cons length_app length_rev
+    length_last 
+    rev_nil rev_app rev_cons rev_last rev_rev
+    concat_nil concat_app concat_cons concat_last 
+     map_nil map_cons map_app map_last 
+    mem_nil mem_cons mem_app mem_last 
+    mem_cons_eq mem_last_eq 
+    keys_nil keys_cons keys_app keys_last
+    assoc_cons assoc_here 
+    .... : rew_list.
+
+where e.g.:
+
+   Lemma filter_nil : 
+     filter f nil = nil.
+   Lemma filter_cons : forall x l,
+     filter f (x::l) = if f x then x :: filter f l else filter f l.
+   Lemma filter_app : forall l1 l2,
+     filter f (l1 ++ l2) = filter f l1 ++ filter f l2.
+   Lemma filter_last : forall x l,
+     filter f (l & x) = filter f l ++ (if f x then x::nil else nil).
+
+
+
+============================================================
+Rewrite syntax.
+
+
+Problem: for debugging/developping scripts, it is useful to
+be able to step-execute series of rewrites.
+  
+        rewrite E F.
+  <->   rewrite E. rewrite F.
+
+However, if rewrite produces side-conditions first, then
+we can no longer easily edit this.
+
+        rewrite E F. solveSideOfE. solveSideOfF.
+  <->   rewrite E. solveSideOfE. rewrite F. solveSideOfF.
+
+One solution would be:
+
+        rewrite E /(side: solveSideOfE) F /(side: solveSideOfF).
+  <->   rewrite E /(side: solveSideOfE). rewrite F /(side: solveSideOfF).
+  <->   rewrite E. solveSideOfE. rewrite F. solveSideOfF.
+
+Another solution is to say that chaining is not such a great
+idea anyway, especially when side-conditions are produced.
+One could write scripts like:
+
+
+      rewrite E. rewrite F.
+ or   rew E. rew F.
+ or   -> E. -> F.
+
+Consider realistic examples before complaining.
+
+       rewrite subsetI ucn_sub // -commg_subr.
+  vs   rew subsetI //. rew ucn_sub //. rew -commg_subr.
+  vs   ->subsetI //. ->ucn_sub //. <-commg_subr.
+   
+       rewrite leq_divRL // divn_mulAC leq_divLR dvdn_mulr dvdn_lcmr //.
+  vs   -> leq_divRL // divn_mulAC leq_divLR dvdn_mulr dvdn_lcmr //.
+  vs   ->leq_divRL//. ->divn_mulAC. ->leq_divLR//. ->dvdn_mulr. ->dvdn_lcmr//.
+  vs   ->leq_divRL//. ->divn_mulAC. ->leq_divLR//. ->dvdn_mulr. ->dvdn_lcmr//.
+
+Remark: for stepping through the "main" steps of a proof, you could either
+have a shortcut for executing scripts line by line, or for a finer-grained
+mechanism, you could use brackets, and have a shortcut for stepping at once
+through brackets. e.g.:
+
+     { ->subsetI //. ->ucn_sub //. <-commg_subr. }
+
+
+Another comment: many of these tedious chained rewrite operations
+are not needed if you have powerful "normalization" tactics, e.g.
+my tactic "rew_list" which normalizes all kind of list operations
+in a canonical way (with a confluent and terminating rewriting system).
+
+
+
+============================================================
+TODO: problem of interpretation of arguments of tactics.
+
+
+
+
+============================================================
+TODO: other tactics needed in general.
+
 
