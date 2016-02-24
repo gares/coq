@@ -1,12 +1,11 @@
-- reparler du clear
 
-- can we access names that were not named explicitly?
-  we could do it on names that already come from a forall
-  and did not clash
+TODO => need to find a cool name for the new tactic set
 
-- bullets should have a mode to remove focusing.
+TODO => disable automatic focusing on bullets;
+        put an option (or IDE option) to activate it.
 
-- trouver un nom
+
+
 
 ============================================================
 Introduction patterns
@@ -26,8 +25,8 @@ Introduction patterns
        so we should stick to it.]
   
    >   introduce all the dependent variables that are visible;
-       performs hnf if there are none, and fails if hnf does
-       not reveal any. [Alternative: do nothing instead of failing.]
+       performs hnf if there are none, and do nothing otherwise.
+       Alternative: fail instead of doing nothing. [TODO: choose]
 
    *   introduces all the variables that are visible,
        with fresh names; do nothing if there are none.
@@ -38,7 +37,7 @@ Introduction patterns
    -   expects a mark at the head of the goal, and clears it;
        fails if there is no mark there.
   
-   --  decoration intropattern. TODO: is this needed.
+   --  decoration intropattern. TODO: is this needed?
 
    prefix^-  introduces all variables with generated names build
              using inductive name (as obtained from the constructor
@@ -58,18 +57,59 @@ Introduction patterns
         the last one can be a triple dot that would repeat the last branches
         in the same way as the previous ones.
 
-   /tac            executes the tactic "tac", when "tac" consists
-                   of a single identifier.
-
-   /(tac arg)      executes the tactic "tac" with its argument "arg".
-
-   []              shorthand for "/case" 
+   []              shorthand for "/case".
+                   TODO: suggestion that this could be "/invert"
+                   by default.
 
    [ .. | .. ]     shorthand for "/case /[ .. | .. ]", with an
                    extended interpretation for standard binary
                    operators (/\ and \/ and exists); see further.
 
-Note that spaces are irrelevant between tokens. 
+   /tac            executes the tactic "tac", when "tac" consists
+                   of a single identifier.
+                   TODO: do we have strong argument for justifying
+                   the need of this generality? but first, do we 
+                   need to argue, if we can provide generalitye easily?
+
+   /(tac arg)      executes the tactic "tac" with its argument "arg".
+                       
+   /n:tac          shorthand for "/(n:tac)", which applies
+                   tactic to the n-th subgoal.
+                   General form: "/n:(tac arg)".
+
+   //              calls "/tactic_slash"; by convention,
+                   associated with "some form of automation that
+                   may kill the goal".
+
+   /-              calls "/tactic_minus"; by convention,
+                   associated with "some form of automation that
+                   must kill the goal". 
+                   Same as "/(solve[tactic_slash])".
+
+   /=              calls "/tactic_equal"; by convention, 
+                   associated with "some form of normalization".
+
+   ->              calls "/(rewrite ->)" with the head hypothesis,
+                   and clears this hypothesis.
+                   Generalization: [occswitch]->. 
+
+   <-              calls "/(rewrite <-)" with the head hypothesis
+                   and clears this hypothesis.
+                   Generalization: [occswitch]<-.
+              
+   /view           Apply the view "view". Equivalent to:
+                      intro H; move: (regeneralize_constr:(#view H)).
+                   Proposal 1: ambiguity between term and tactics,
+                      possibly resolved by /tac:(foo) /term:(foo).
+                   Proposal 2: view lemmas are declared using the
+                      syntax "View Lemma foo" or "Add Existing View foo",
+                      and then "foo" becomes a propert tactic, so "/foo"
+                      is parse like "/tac".
+                   TODO: discuss proposals.
+
+
+Note that spaces between tokens are irrelevant. 
+
 
 Examples:
     move =>> H
@@ -77,99 +117,58 @@ Examples:
     move =>> /invert /[ toto_^- | .. ]
     move =>> /invert /[ -^1 | .. ]
 
+
 Examples:
+    => /andb[H1 H2]    on the goal "a && b -> G"
     => [H1|H2]
     => /invert /[H1|H2]    
-    => /invert [H1|H2]   
-    => /eqP H - H2
+    => /invert [H1|H2]  
+    => /invert[H]
+    => /eqP H - H2                  --TODO: add comment   
+    => /pdivP[p p_prime p_dvdv_X]   --TODO: add comment
     case: H => x1 x2 - H
 
-
-============================================================
-Special patterns for tactics  (both for intro and rewrite pattern)
-
-
-These are convenient notation for common variants of "/tac".
-
-   //               calls "/tactic_slash"; by convention,
-                    associated with "some form of automation that
-                    may kill the goal".
-
-   /=               calls "/tactic_equal"; by convention, 
-                    associated with "some form of normalization".
-
-   /-               calls "/tactic_minus"; by convention,
-                    associated with "some form of automation that
-                    must kill the goal". 
-                    TODO: equivalent to "/done", same as "solve[//]".
-
-   ->               calls "/(rewrite ->)" with the head hypothesis
-                    TODO: ambiguité entre "/->" et "/- >"
-                          pas un pb car on peut supposer que l'espace joue 
-                          un rôle lorsqu'on enchaîne des tokens spéciaux
-                          comme "+" qui est différent de "++".
-                    TODO: /= serait mieux non? mais du coup,
-                          comment réécrire dans l'autre sens?
-
-   <-               calls "/(rewrite <-)" with the head hypothesis
-
-   [occswitch]->    variant
-
-   [occswitch]<-    variant
-
-   /:term           generalize "term" by putting it to the head
-                    of the goal (i.e. like "move: term").
-               
-   /term            apply view (like "view term");
-
-   /tac:(foo)
-   /term:(foo)
-
-   /n:tac           shorthand for "/(n:tac)", which applies
-                    tactic to the n-th subgoal.
-
-
-TODO: discuss declaration of lemmas as "Views", with an automatic
-promotion as an Ltac tactic.
-            View Lemma foo := t.
- equiv to:  Lemma foo := t.   Ltac foo := view_from_lemma foo.
-
-TODO: comment chainer les views si on a l'ambiguité
-   Note: one can chain several views at once using the syntax
-   "/(~ term1 term2)", since the view tactic, written "~", may
-   accept a variable number of arguments.
-
-
-TODO: rediscuss
-   should "[]" do "/invert" always? 
-   problem: how to distinguish invert and invert_nosubst?
-
-
-LATER:
-   how many tactics we want to have in practice on intro-patterns => ARTHUR
-   
-
-TODO: rediscuss
-   => est-ce que c'est un problème d'avoir une ambiguité sur "/" ?
-   enrico aime bien
-   => /pdivP[p p_prime p_dvdv_X].
-   => /invert[H]
-
-Example:
+Examples:
   elim n => [ // | Hind ].
   elim: n => [ [] // | Hind].
 
-Note: one can chain a view with an destructive introduction,
-for example if the head hypothesis is "a && b", then one could
-do  "move => /~andb[H1 H2]".
+  induct M => [ /- | > H1 H2 | x H ].
+     kill the first subgoal, introduction in others.
 
 
-Note: one can kill specific subgoals directly in a case analysis,
-for example "move => [ /- | > H1 H2 | x H ]" would kill the first 
-subgoal and introduce hypotheses in the second and third goals.
+Proposal: have a mode that bans access to generated names, except
+in the typical case where the name comes from a "forall" statement
+and this name could be introduced without clash.
 
 
+Proposals for chaining views without making the space relevant:
+      /view1 /view2          (view1, then view2)
+  vs  /(view view1 view2)    (composed view)
+  vs  /view1~/view2          (composed view, without too much overhead)
+  where "view" is the name of the tactic that takes a variable
+  number of terms as arguments, and apply the composed view.
+  TODO:  discuss.
 
+
+TODO: is this intro pattern useful? maybe not.
+
+   /:term           generalize "term" by putting it to the head
+                    of the goal. Equivalent to /(move: term).
+
+
+============================================================
+Free introduction patterns
+
+
+   /+               ... (free)
+
+   /*               ... (free)
+
+   /$               ... (free)
+
+   /&               ... (free)
+
+   /|               ... (free)
 
 
 
@@ -222,30 +221,6 @@ Destruction of inductive datatypes
   
 
 
-- TODO: rediscuss
-    maybe [S=>n|0=>]  as intropattern with named branches.
-
-
-============================================================
-Free introduction patterns
-
-
-   /+               ... (free)
-
-   /*               ... (free)
-
-   /$               ... (free)
-
-   /&               ... (free)
-
-   /|               ... (free)
-
-   /term            purposely not used, to avoid clashes between
-                    terms and tactics
-
-
-
-
 ============================================================
 Rewrite-patterns
 
@@ -282,22 +257,21 @@ with the following rewriting patterns supported:
                      ENRICO: comment faire: (_ : f ?[x] = ?[x])
                   => GUILLAUME: replace (f ?x) with ?x.
                    
-
      -term        rewrite back
 
      &term        unfold term
                   (Note: we cannot use "/" because of conflict
-                   with the general notation for tactics)
+                   with the general notation for tactic patterns)
 
      -&term       fold term
 
      !base        autorewrite with a base of lemmas,
-                   repeat rewrite in a nonspecified order,
+                  repeat rewrite in a nonspecified order,
                   naively implemented as a tuple of lemmas
-                  possibly optimized for efficiency reasons
-
+                  possibly optimized for efficiency reasons.
+         
                   TODO: have an alternative matching mode,
-                  for only matching syntaxically
+                  for only matching syntaxically.
 
                      rewrite !base
 
@@ -309,15 +283,383 @@ with the following rewriting patterns supported:
                   TODO: please remind me the logic of giving the target
                   before the rewriting lemma "rewrite E in H" vs "in H rewrite E".
 
-     /tac         execute tactic
+     all intro pattern with a leading "/" can also be used here.
+
 
      {2}
      -[1 + 3]&(2 + 2).
      (erefl _ : 1 + 3 = 2 + 2)
+
+
+Principle: Rewrite produces subgoals before the main goal.
+  (Otherwise subgoals get stacked at the end.)
+
+Principle: the main goal is tagged "main", and side goals are tagged 
+  with names of the form "side_*". Side conditions can be selected
+  using "/side:tac".
+
+Example:
+        rewrite E F. solveSideOfE. solveSideOfF.
+  <->   rewrite E. solveSideOfE. rewrite F. solveSideOfF.
+
+Example:
+        rewrite E /(side: solveSideOfE) F /(side: solveSideOfF).
+  <->   rewrite E /(side: solveSideOfE). rewrite F /(side: solveSideOfF).
+  <->   rewrite E. solveSideOfE. rewrite F. solveSideOfF.
+
+
+Sepcial case: in a rewrite chain, two symbols apply only to side goals by default:
+  /-    kills side goals (all except main)
+  //    attemps killing side goals (all except main)
+
+Example:
+   rewrite E /- F.            expects to kill all side conditions produced by E.
+   rewrite E /(side: /-) F.   equivalent to the above.
+
+Remark:
+   When we want to kill the main goal using "/-", we can do one of:
+     rewrite E; last by /-. "continue on side of E".
+     rewrite E /(main:/-). "continue on side of E".
+     rewrite E. main: /-. "continue on side of E".
+
+LATER: the IDE could support executing until the middle point of a 
+sequence of tokens. On "rewrite E <cursor> F", we would see the state
+just after "rewrite E".
+
+
+
+
+
+============================================================
+Multipliers
+
+For "rewrite" and "do" tactics
+
+   n!     exactly n times
+
+   n?     up to n times, possible less
+
+   !      as many times as possible, at least once
+          (think of it as "_!", i.e. with n not specified)
+ 
+   ?      as many times as possible, possibly zero
+          (think of it as "_?", i.e. with n not specified)
+
+
+
+============================================================
+Semantics of evar resolution.
+
+Goal: give fine control on when instances (or other 
+automatically-dischargeable goals) should be resolved.
+
+Idea: define a tactic called "auto_discharge" which is
+called at every ";" or "." in a *user* script, but not
+at every ";" in a ltac script that is surrounded with
+a "resolution_block" construct.
+
+By default, to match the current behavior, "auto_discharge" 
+calls "eauto using typeclasses" on goals whose head symbol 
+is an instance of a typeclass. Variants can be interesting:
+- only call typeclass resolution if all arguments (or at least 
+  all the "important" arguments) are already fully resolved. 
+- extend the mechanism to automatically attempt to discharge
+  particular type of side-conditions, like "x \fresh_from E"
+  in the context of metatheory proofs.
+
+Consequence: in a user script (at top level),
+
+     tac1. tac2.
+
+  is in fact interpreted as:
+
+     tac1; auto_discharge. tac2; auto_discharge.
+
+Consequence: in a user script (at top level),
+
+     tac1; tac2.
+
+  is, similarly, interpreted as:
+
+     tac1; auto_discharge; tac2; auto_discharge.
+
+Principle: the programmer of a tactic can prevent the tactic
+ "auto_discharge" to be called by entering a resolution block.
+ In this case, the resolution will not be performed automatically.
+ Instead, the user can do a manual call to "auto_discharge",
+ with the effect of calling this tactic on all the evars (subgoals)
+ that have been created within the scope of this block.
+
+
+Example: 
+
+     Ltac foo :=
+       resolution_block (tac1; tac2).
+  
+   then "foo." calls "auto_discharge" only once, after "tac1" and "tac2".
+
+
+Example:
+
+   Ltac foo :=
+     resolution_block (tac1; tac2; auto_discharge; tac3).
+
+  allows calling "auto_discharge" explicitly on evars created by
+  either "tac1" or "tac2".
+
+
+Alternative syntax:   tac1;;tac2
+
+   would be the same as        resolution_block (tac1; tac2).
+   in the sense that ";;" does not auto_discharge,
+   and that ";" is equivalent to ";;resolve;;".
+
+   The difference is that ";;" may not have a nice nesting semantics.
+   Or maybe it does? Consider ((tac1;;tac2);(tac3;;tac4)),
+   in which auto_discharge is called at the ";" in the middle.
+
+
+
+============================================================
+Semantics of evar resolution, applied to "rewrite".
+
+
+Semantics of "rewrite E" where E is a term, possibly with holes:
+  (1) consider the term "E ?x ?y ?z" with as many evars
+      as needed to make a setoid symbol appear at the head,
+  (2) find an occurence where the left pattern matches,
+  (3) perform the substitution, by building a proof term alongs
+      the line of: [TODO: make more precise]
+         refine (eq_ind .. (E ?x ?y ?z) .. ?goal:(..) ..)
+
+
+Remark: the term E is interpreted just as any other constr,
+  with holes completed with evars; these evars are not regeneralized,
+  unless requested explicitly.
+
+Observation:
+
+     rewrite !(H _)
+
+  is equivalent to:
+
+     let E := constr:(H _) in
+     rewrite !E
+
+
+Observation:
+
+     rewrite !(H _)
+
+  is not equivalent to:
+
+     repeat (rewrite (H _)).
+
+
+Observation:
+
+     rewrite !(constr_generalize:(H _))
+
+  is [probably] equivalent to:
+
+     repeat (rewrite (H _)).
+
+
+Question: it may be surprizing that
+
+     rewrite 2*(H _) 
+
+   is not equivalent to
+
+     rewrite (H _) (H _) 
+
+   but I think this only reflects the ambiguity of the
+   underscore notation, which lacks a precise binding point.
+
+
+
+TODO: do we want to raise errors when some kind of evars
+      are not resolved? not sure this is desirable/useful.
+
+
+Example:
+
+  E : forall x, P x -> f x x = g x.
+  Goal : c (f 2 2).
+
+  New goal: c (g 2)
+  Subgoal: P 2.
+
+
+Example:
+
+  E: forall `{Inhab A}, forall (x:A), P x -> f x = inhab.
+  Goal : c (f 2)
+
+  New goal: c (inhab:nat)
+  Subgoal: Inhab nat  ==> discharged by tactic "auto_discharge"
+  Subgoal: P 2
+
+
+Example:
+
+  E : forall x y, P x y -> f x = g y.
+  Goal : c (f 2).
+
+  New goal: c (g ?y)
+  Subgoal: P 2 ?y.
+
+
+Example:
+  
+  E: forall `{Inhab A} `{Inhab B} (x:A) (y:B), @P A B x y -> f x = g y.
+  Goal : c (f 2).
+
+  New goal: c (g ?y)
+  Subgoal: Inhab nat  ==> discharged by tactic "auto_discharge"
+  Subgoal: Inhab ?B.  ==> should not be attempted before next subgoal solved (!)
+  Subgoal: @P nat ?B 2 ?y.
+
+
+Example:
+
+  E : forall A, P A -> @f A x = x.
+  Goal : c (f 2)
+  
+  New goal : c 2 
+  Subgoal : P nat.
+   
+
+Example:
+
+  E : forall A (x:A), P A -> @f A x = x.
+  Goal : c (f 2) /\ d (f true).
+
+  ==> rewrite !E
+
+  New goal : c 2 /\ d true
+  Subgoal : P nat
+  Subgoal : P bool
+
+
+Example:
+
+  E : forall A, P A -> @f A x = x.
+  Goal : c (f 2) /\ d (f true).
+
+  ==> rewrite !(@E _)
+
+  New goal : c 2 /\ d (f true)
+  Subgoal : P nat.
+
+  ==> because "E _" creates a single evar ?A, which is not
+      regeneralized.
+
+  ==> to obtain the same behavior as in the previous
+      example, one can do: "rewrite !(constr_generalize:(@E _))
+
+
+
+
+
+============================================================
+Semantics of evar resolution, applied to "have".
+
+- "have: E"    turns the goal G into T -> G, where T is the type of E.
+
+- "have H: E"  adds an hypothesis H of type T, where T is the type of E.
+               it is equivalent to "have:E => H".
+
+
+Examples:
+
+   assuming E : forall x y, P x -> P y.    (Implicit arguments [x])
+   assuming F : P x.
+
+   have H := (E _ F).                        => H: P ?y.
+   have H := (@E _ _ F).                     => H: P ?y.
+   have H := (#E F).                         => H: P ?y.
+
+   have H := (@E x).                         => H: P x -> P ?y.
+   have H := (#E x).                         => H: P x -> P ?y.
+   have H := (@E x _ _).                     => H: P ?y.  With subgoal: P x.
+   have H := (#E x __).                      => H: P ?y.  With subgoal: P x.
+
+   have H := constr_generalize:(@E x).       => H: forall y, P x -> P y.
+   have H := constr_generalize:(@E _ _ F).   => H: forall y, P y.
+   have H := constr_generalize:(#E F).       => H: forall y, P y.
+
+TODO: need to find better symbol for "constr_generalize".
+
+
+
+Example:
+   assume E : forall `{Group G} (x y:G), op G x y = neutral G -> x = inv G y.
+   assume a : A.
+
+   have H := (#E a).   
+     => will produce:
+        H : forall (x:A), op A x a = neutral A -> a = inv A y.
+        suboal: Group A. => will be subject to "auto_discharge".
+
+   have H := (#E __ a).  
+   have H := (@E _ _ _ a).       ---same
+     => will produce: 
+        H : op A ?x a = neutral A -> ?x = inv A a.
+        suboal: Group A. => will be subject to "auto_discharge".
+ 
+   have H := constr_generalize:(#E a).   
+     => will produce:
+        H : Group A -> forall (y:A), op A a y = neutral A -> a = inv A y.
+     => because "Group A" was not solved, it has been requantified.
+     => but maybe we wanted it as a subgoal! how can we get this?
+
+   have H := ltac:(let M := constr:(#E a) in auto_discharge; constr:(M)).   
+     => will produce, assuming "Group A" to be solvable:
+        H : forall (y:A), op A a y = neutral A -> a = inv A y.
+     => way too heavy! TODO
+
+   have H := constr_generalize:(#E __ a).   
+     => will produce:
+        H : Group A -> forall (x:A), op A x a = neutral A -> x = inv A a.
+     => because "Group A" was not solved, it has been requantified.
+     => but maybe we wanted it solved! how can we get this? TODO
+
+
+Example:
+   assume E : forall `{Inhab A} `{Inhab B} (x:A) (y:b), P x y -> Q x y.
+
+   have H := (#E 3).
+   => will produce
+      H : forall (y:?B), P 3 y -> Q 3 y.
+      Subgoal : Inhab nat.  => will be subject to "auto_discharge".
+      Subgoal : Inhab ?B.   => problematic if solved by "auto_discharge"... TODO
+
+   have H := constr_generalize:(#E 3).
+   => will produce
+      H : Inhab nat -> forall `{Inhab B} (y:B), P 3 y -> Q 3 y.
+   => because Inhab nat has not been yet solved.
+   => but maybe we wanted it solved! how can we get this? TODO
+
+
+
+============================================================
+Semantics of "assert"
+
+- "assert H: E"  is equivalent to "assert E; [|=> H]".
+- "assert E" on a goal G produces two subgoals:
+     E  and  E -> G 
+
+
+
+
+============================================================
+Specifying subterms for rewriting and other operations.
      
 
+TODO: update/complete/polish/discuss.
 
-(TODO: i'm trying to guess here)
+(i'm only trying to guess here)
 Target subterms for rewriting: 
 
    rewrite [foo _ _]E
@@ -333,9 +675,9 @@ Target subterms for rewriting:
    => rewrites E inside x inside subterms of the form "foo _ _"
 
 
-TODO: how to do "rewrite E in H" in ssr? 
-Is: "on H rewrite E" doing "protect; move: H; rewrite E; intro; unprotect".
-Could we make it so that the hypothesis goes back to its original place?
+   TODO: how to do "rewrite E in H" in ssr? 
+   Is: "on H rewrite E" doing "protect; move: H; rewrite E; intro; unprotect".
+   Could we make it so that the hypothesis goes back to its original place?
 
 
 
@@ -521,24 +863,9 @@ Remark:
 
 
 
-============================================================
-Multipliers
-
-For "rewrite" and "do" tactics
-
-   n!     exactly n times
-
-   n?     up to n times, possible less
-
-   !      as many times as possible, at least once
-          (think of it as "_!", i.e. with n not specified)
- 
-   ?      as many times as possible, possibly zero
-          (think of it as "_?", i.e. with n not specified)
-
 
 ============================================================
-Tag mechanism on goals
+Tag mechanism on goals -- Postponed to LATER.
 
   - tactics attach tags to goals they produce
 
@@ -550,9 +877,14 @@ Tag mechanism on goals
     the remaining by a regexp-like on the tag (expects no ambiguity).
   
   - e.g.  "^beta" selects the case coming from constructor "red_expr_beta".
-
-
  
+Proposal for being able to name branches in branching intropatterns:
+
+    [S: n | O: ]    same as [|n], but robust to order of branches.
+
+ alternative syntax:  [S=> n | O=>] 
+
+
 
 ============================================================
 General clear mechanism
@@ -655,6 +987,10 @@ Proposed replacement:
 
    Proof using. =>> IB > Equiv Comp WfR Cont. Abort.
 
+Arthur wants:
+   Proof using. =>> Equiv Comp WfR Cont. Abort.
+
+
 Conclusion: it is a bit unfortunate that I need an extra > here.
 One could argue that "Inhab B", if it not dependently used, 
 should appear later in the list of hypothesis. But, morally,
@@ -678,13 +1014,15 @@ implementation of "=> ipat" when "ipat" is ">" is to call
 a tactic "intro_pattern_plus", and that I am able to bind my
 own tactic there, I would do:
  
+
+ARTHUR NETTOIE:
+
    Ltac intro_pattern_plus :=
       match goal with
       | _ -> _ => idtac
-      | Inhab _ -> _ => intro ?; intro_pattern_plus 
+      | ?E -> _ => check_typeclass_instance E; intro ?; intro_pattern_plus 
       | forall _, _ => intro ?; intro_pattern_plus 
       | _ => hnf; (... same process if a forall a is made visible ...)
-
 
    Pseudo Ltac intro_nondeps already_hnf :=
      match goal with
@@ -693,9 +1031,10 @@ own tactic there, I would do:
      |- _             when already_hnf => idtac
      |- _                              => hnf; intro_nondeps true
 
-
    + special case for Arthur:
       | Inhab _ -> _ => intro ?; intro_nondeps true 
+
+
 
 ============================================================
 Need to optimize autorewrite
@@ -734,155 +1073,48 @@ where e.g.:
 
 
 
-============================================================
-Rewrite syntax.
-
-TODO: discuss
-
-  => GUILLAUME: find solution for the order of side conditions
-    to ensure that we can step execute the chain of rewrites.
-
-
-Basic principle is that side conditions should come first,
-otherwise they stack up at the end.
-
-Problem: for debugging/developping scripts, it is useful to
-be able to step-execute series of rewrites.
-  
-        rewrite E F.
-  <->   rewrite E. rewrite F.
-
-However, if rewrite produces side-conditions first, then
-we can no longer easily edit this.
-
-        rewrite E F. solveSideOfE. solveSideOfF.
-  <->   rewrite E. solveSideOfE. rewrite F. solveSideOfF.
-
-
-   Concrete example: rewrite E /(side: /-) F.
-
-One solution would be:
-
-        rewrite E /(side: solveSideOfE) F /(side: solveSideOfF).
-  <->   rewrite E /(side: solveSideOfE). rewrite F /(side: solveSideOfF).
-  <->   rewrite E. solveSideOfE. rewrite F. solveSideOfF.
-
-Another solution is to say that chaining is not such a great
-idea anyway, especially when side-conditions are produced.
-One could write scripts like:
-
-
-      rewrite E. rewrite F.
- or   rew E. rew F.
- or   -> E. -> F.
-
-Consider realistic examples before complaining.
-
-       rewrite subsetI ucn_sub // -commg_subr.
-  vs   rew subsetI //. rew ucn_sub //. rew -commg_subr.
-  vs   ->subsetI //. ->ucn_sub //. <-commg_subr.
-   
-       rewrite leq_divRL // divn_mulAC leq_divLR dvdn_mulr dvdn_lcmr //.
-  vs   -> leq_divRL // divn_mulAC leq_divLR dvdn_mulr dvdn_lcmr //.
-  vs   ->leq_divRL//. ->divn_mulAC. ->leq_divLR//. ->dvdn_mulr. ->dvdn_lcmr//.
-  vs   ->leq_divRL//. ->divn_mulAC. ->leq_divLR//. ->dvdn_mulr. ->dvdn_lcmr//.
-
-Remark: for stepping through the "main" steps of a proof, you could either
-have a shortcut for executing scripts line by line, or for a finer-grained
-mechanism, you could use brackets, and have a shortcut for stepping at once
-through brackets. e.g.:
-
-     { ->subsetI //. ->ucn_sub //. <-commg_subr. }
-
-
-Another comment: many of these tedious chained rewrite operations
-are not needed if you have powerful "normalization" tactics, e.g.
-my tactic "rew_list" which normalizes all kind of list operations
-in a canonical way (with a confluent and terminating rewriting system).
-
-ET: Here we discuss about syntax.  Bad.
-One thing at a time, I would not make decisions on the language thinking
-that the ugly UIs we have today cannot get better.  Eg, we can already have Coq
-print intermediate goals in compound rewrite lines (not in PG, or not yet).
-Another thing is that, if we are brave enough, we could go toward a new
-parsing mode I'm crying for.  In
-
-  rewrite foo !bar [pat]baz
-
-"rewrite" could be a command in itself, activating a parser specific for
-rewrite arguments.  "foo" would be 1 complete sentence for this parser, and Coq
-could internally represent such state and print it.  "!bar" would be the next
-complete sentence... "/something" would be an escape: go back to the standard
-parser and parse "something".  No need to put a trailing ".", the UI could ask
-Coq to chop the document...
-
-OK, back on earth, all that is very ambitious.  The only thing I'd like to avoid
-is that choices made today could seem nonsensical for a system of tomorrow
-where parsing + UI interaction is not done as it was done in the 70'.
-
-Unfortunately I think that this box of text goes in the direction of 1 tactic =
-1 symbol, that is something I don't like (and also already tried in Matita), to
-help with crappy UIs.  Eg, the line above between { ... } is valid Matita:
-
-     ->subsetI // ->ucn_sub // <-commg_subr
-
-You can step trough it item by item.  It sucks, even if it is better than the Coq
-one (no . needed).  I strongly prefer the less Perl-ish:
-
-     rewrite subsetI // ucn_sub // -commg_subr
-
-where the mode is stated once per line.
-It was not coded like that in Matita because of bad reasons: only 1
-un-contextual parser for tactic arguments, lazy/busy coders, too ambiguous for
-a single parser.  Result: sprinkle symbols here and there to make it easy to
-parse.  Shame on us (Matita developers).
-
-
-============================================================
-TODO: problem of interpretation of arguments of tactics, in particular rewrite.
-
-
-  I think we can follow CBV semantics.
-
-  By default, ";" or "." forces the resolution of goals that have
-  a shape matching a registered "auto-resolution" mechanism.
-
-  In Ltac, we can introduce scopes in which the goals are stacked
-  and not resolved before the end of the stack (or explicit resolution).
-  Eg.
-     Ltac foo := resolution_block (foo; bar).
-  would not resolve evars after foo.
-
-  I think this is almost like unshelve, just with good control.
-  
-
-     rewrite (H).
-
-  would mean: consider the term "H ?x ?y ?z" with just as many 
-  undescores to make a setoid symbol appear at the head. Then,
-  rewrite using this term. Then attemps resolution of the evars
-  that have been introduced if they are typeclasses. Then fail
-  if not all evars are resolved.
-
-     rewrite (H _ x).
-  
-  would mean: introduce an evar for the underscore, do not
-  attempt resolution (even if it is a typeclass), lauch rewrite,
-  which should not create further evars, but may instantiate the
-  existing ones.
  
-     rewrite (resolve (#H _ x)).
-  
-  would mean: create the term "H ?e x", try to solve "?e" if it
-  is a typeclass, then attemps rewriting.
+============================================================
+Other use cases of generalize_constr
 
-     rewrite (##H _ x).
-  
-  would mean: create the term "H ?e x", and reabstract arguments,
-  giving "forall y, H y x", and then rewrite using this.
+
+  /view_term
+   => regeneralize (view_term _top_)
 
 
 
+   leq_trans : forall y x, x < y -> (forall z, y < z -> x < z)
+   leq_trans' : forall y x z, x < y -> y < z -> x < z
+
+   =====
+   a < b -> G
+
+   move=> ..  /(leq_trans 4)
+
+   _top_ : a < b
+   ====
+   G
+
+   leq_trans ?x ?y ?z _top_ : b < ?z -> a < ?z
+
+   (b < ?z -> a < ?z) -> G
+
+   (forall z, b < z -> a < z) -> G
+
+   
+Alternative:
+
+   leq_equiv : forall x y z, R x y <-> (R x z /\ R z y)
+
+   "View"
+      forall x y, R x y -> forall z, (R x z /\ R z y)
+      forall x y z, (R x z /\ R z y) -> R x y.
+
+     Ltac "leq_equiv" := 
+     Ltac "-leq_equiv" :=
+
+
+   
 
 
 ============================================================
@@ -1145,3 +1377,5 @@ For advanced users only
 Questions:
 
 ==> how to do TLC's "sets_eq" tactic.
+   move En: (size l) => n.
+==> this does not seem very regular...
