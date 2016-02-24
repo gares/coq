@@ -1,0 +1,44 @@
+
+Example:
+       move => + /invert /[ x y H | + H1 H2 | *- | toto_^- | -^1 ]
+       move => [ ^toto | .. ]
+       =>  [H1|H2]
+       =>  /invert /[H1|H2]    
+       =>  /invert [H1|H2]   
+       =>  /eqP H - H2
+       case: H => x1 x2 - H
+
+  C : forall n (H: P n), Q (S n)
+   
+   toto_n
+   toto_H
+
+  R := { foo : _; bar : _ }
+    toto_foo
+    toto_bar
+
+Alternative to marks:
+
+   general mechanism for tracing the source of hypotheses
+
+   => ARTHUR et ENRICO vont regarder les cas d'utilisation pratique
+
+
+Alternative to +:  => ARTHUR va regarder
+
+   >   enters fast introduction mode: only non-dependent 
+       variables are considered by the following intropatterns
+       (remark: fast mode does not change the semantics of * and *-).
+
+   <   goes back to slow introduction mode: all variables are 
+   
+
+   Note that ">" and "<" and "/" and "[" and "]" act as separators 
+   and need not be separated by spaces. In particular, this allows 
+   to write "move =>> H".
+
+   Note that the "fast/slow" mode does distribute inside the bracket:
+   we go back to slow mode inside the bracket. However, it is not hard 
+   to re-enter fast mode in the brackets on a per-need basis, e.g.:
+       move =>> ~invert ~[x y H | > H1 H2]
+         

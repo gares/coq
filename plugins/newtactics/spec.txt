@@ -1,3 +1,12 @@
+- reparler du clear
+
+- can we access names that were not named explicitly?
+  we could do it on names that already come from a forall
+  and did not clash
+
+- bullets should have a mode to remove focusing.
+
+- trouver un nom
 
 ============================================================
 Introduction patterns
@@ -16,22 +25,26 @@ Introduction patterns
        has a well-established meaning in ocaml patterns,
        so we should stick to it.]
   
-   +   introduce all the dependent variables that are visible;
+   >   introduce all the dependent variables that are visible;
        performs hnf if there are none, and fails if hnf does
        not reveal any. [Alternative: do nothing instead of failing.]
 
    *   introduces all the variables that are visible,
        with fresh names; do nothing if there are none.
 
-   *-  introduces everything until the next mark, including the mark
+   *-  introduces everything until the next mark, including the 
+       mark considered for as items for introduction.
 
    -   expects a mark at the head of the goal, and clears it;
        fails if there is no mark there.
+  
+   --  decoration intropattern. TODO: is this needed.
 
    prefix^-  introduces all variables with generated names build
              using inductive name (as obtained from the constructor
              that is carried by the next mark) and by adding "prefix"
              to the front. See further for examples.
+             TODO: "-" means until the next mark.
  
    ^suffix-  same as above, except adding a suffix.
 
@@ -39,6 +52,11 @@ Introduction patterns
 
        the above patter to distribution introduction over subgoals;
        the number of subgoals must match the one given.
+
+   /[ ipat11 .. ipat1N | iipat21 .. | ... ]
+       
+        the last one can be a triple dot that would repeat the last branches
+        in the same way as the previous ones.
 
    /tac            executes the tactic "tac", when "tac" consists
                    of a single identifier.
@@ -54,9 +72,17 @@ Introduction patterns
 Note that spaces are irrelevant between tokens. 
 
 Examples:
-    move =>+ H
-    move =>+ /invert [x y H | + H1 H2 | *- ]
+    move =>> H
+    move =>> /invert [x y H | > H1 H2 | *- ]
+    move =>> /invert /[ toto_^- | .. ]
+    move =>> /invert /[ -^1 | .. ]
 
+Examples:
+    => [H1|H2]
+    => /invert /[H1|H2]    
+    => /invert [H1|H2]   
+    => /eqP H - H2
+    case: H => x1 x2 - H
 
 
 ============================================================
@@ -65,18 +91,19 @@ Special patterns for tactics  (both for intro and rewrite pattern)
 
 These are convenient notation for common variants of "/tac".
 
-   //               calls the tactic "slash_slash"; by convention,
+   //               calls "/tactic_slash"; by convention,
                     associated with "some form of automation that
                     may kill the goal".
 
-   /=               calls the tactic "slash_equal"; by convention, 
+   /=               calls "/tactic_equal"; by convention, 
                     associated with "some form of normalization".
 
-   /-               calls the tactic "slash_minus"; by convention,
+   /-               calls "/tactic_minus"; by convention,
                     associated with "some form of automation that
-                    must kill the goal".
-    
-   /->              calls "rewrite ->" with the head hypothesis
+                    must kill the goal". 
+                    TODO: equivalent to "/done", same as "solve[//]".
+
+   ->               calls "/(rewrite ->)" with the head hypothesis
                     TODO: ambiguité entre "/->" et "/- >"
                           pas un pb car on peut supposer que l'espace joue 
                           un rôle lorsqu'on enchaîne des tokens spéciaux
@@ -84,34 +111,65 @@ These are convenient notation for common variants of "/tac".
                     TODO: /= serait mieux non? mais du coup,
                           comment réécrire dans l'autre sens?
 
-   /<-              calls "rewrite <-" with the head hypothesis
+   <-               calls "/(rewrite <-)" with the head hypothesis
 
-   /[occswitch]->   variant
+   [occswitch]->    variant
 
-   /[occswitch]<-   variant
+   [occswitch]<-    variant
 
    /:term           generalize "term" by putting it to the head
                     of the goal (i.e. like "move: term").
                
-   /~term           apply view (like "view term");
-                    TODO: would "/=" be better here? if so, can
-                    swap it with "/~".
+   /term            apply view (like "view term");
+
+   /tac:(foo)
+   /term:(foo)
 
    /n:tac           shorthand for "/(n:tac)", which applies
                     tactic to the n-th subgoal.
 
 
+TODO: discuss declaration of lemmas as "Views", with an automatic
+promotion as an Ltac tactic.
+            View Lemma foo := t.
+ equiv to:  Lemma foo := t.   Ltac foo := view_from_lemma foo.
+
+TODO: comment chainer les views si on a l'ambiguité
+   Note: one can chain several views at once using the syntax
+   "/(~ term1 term2)", since the view tactic, written "~", may
+   accept a variable number of arguments.
+
+
+TODO: rediscuss
+   should "[]" do "/invert" always? 
+   problem: how to distinguish invert and invert_nosubst?
+
+
+LATER:
+   how many tactics we want to have in practice on intro-patterns => ARTHUR
+   
+
+TODO: rediscuss
+   => est-ce que c'est un problème d'avoir une ambiguité sur "/" ?
+   enrico aime bien
+   => /pdivP[p p_prime p_dvdv_X].
+   => /invert[H]
+
+Example:
+  elim n => [ // | Hind ].
+  elim: n => [ [] // | Hind].
+
 Note: one can chain a view with an destructive introduction,
 for example if the head hypothesis is "a && b", then one could
 do  "move => /~andb[H1 H2]".
 
-Note: one can chain several views at once using the syntax
-"/(~ term1 term2)", since the view tactic, written "~", may
-accept a variable number of arguments.
 
 Note: one can kill specific subgoals directly in a case analysis,
 for example "move => [ /- | > H1 H2 | x H ]" would kill the first 
 subgoal and introduce hypotheses in the second and third goals.
+
+
+
 
 
 
@@ -164,7 +222,8 @@ Destruction of inductive datatypes
   
 
 
-- TODO: maybe [S=>n|0=>]  as intropattern
+- TODO: rediscuss
+    maybe [S=>n|0=>]  as intropattern with named branches.
 
 
 ============================================================
@@ -187,7 +246,6 @@ Free introduction patterns
 
 
 
-
 ============================================================
 Rewrite-patterns
 
@@ -203,7 +261,9 @@ with the following rewriting patterns supported:
                   case the rule below applies.
       
                   TODO: pb of interpretation of "rewrite E"  
-                  for example when "E : a <-> b = c".
+                  for example when "E : a <-> (b = c)".
+                  "E : a -> (b = c)".  not the same as "E : impl a (b = c)"
+
                   More generally, with setoids...
                   Is it fine to say that the outermost registered
                   setoid symbol should be considered?
@@ -216,12 +276,14 @@ with the following rewriting patterns supported:
                   Remark: there is no ambiguity because "term=term"
                   is a term of type "Prop", so rewriting could not
                   TODO: is the syntax "(_:term=term)" too heavy? I think so.
+                  => A PRIORI ca suffit de faire la syntaxe
+                  => ARTHUR: voir le nombre d'exemple de assert_rewrite.
+                  => ENRICO: comment faire: (_ : f ?x = ?x)
+                     ENRICO: comment faire: (_ : f ?[x] = ?[x])
+                  => GUILLAUME: replace (f ?x) with ?x.
+                   
 
-     -term
-
-                  TODO: ->term  et <-term  auraient du sens par
-                  uniformité avec les intro-patterns, si on utilise
-                  /-> et /<- 
+     -term        rewrite back
 
      &term        unfold term
                   (Note: we cannot use "/" because of conflict
@@ -229,10 +291,17 @@ with the following rewriting patterns supported:
 
      -&term       fold term
 
-     ~term        rewrite with a view; equivalent to "/~term"
-                  TODO: maybe this is not needed if views are equalities?
+     !base        autorewrite with a base of lemmas,
+                   repeat rewrite in a nonspecified order,
+                  naively implemented as a tuple of lemmas
+                  possibly optimized for efficiency reasons
 
-     =base        autorewrite with a base of lemmas
+                  TODO: have an alternative matching mode,
+                  for only matching syntaxically
+
+                     rewrite !base
+
+                  Note: autorewrite does not use ssr rewrite matching.
 
      [tpat]rpat   is for selecting a term pattern in which the rewriting
                   will take place. See below for examples.
@@ -242,8 +311,14 @@ with the following rewriting patterns supported:
 
      /tac         execute tactic
 
+     {2}
+     -[1 + 3]&(2 + 2).
+     (erefl _ : 1 + 3 = 2 + 2)
+     
 
-Target subterms for rewriting: (TODO: i'm trying to guess here)
+
+(TODO: i'm trying to guess here)
+Target subterms for rewriting: 
 
    rewrite [foo _ _]E
    => rewrites E inside subterms of the form "foo _ _"
@@ -261,7 +336,6 @@ Target subterms for rewriting: (TODO: i'm trying to guess here)
 TODO: how to do "rewrite E in H" in ssr? 
 Is: "on H rewrite E" doing "protect; move: H; rewrite E; intro; unprotect".
 Could we make it so that the hypothesis goes back to its original place?
-
 
 
 
@@ -295,6 +369,9 @@ Cycles in inductives
                     variable "x" in the goal, but actually more
                     efficient, since a O(n) DFS is possible.
 
+   H:
+        P n (S n)
+        P (S x) x
 
 
 ============================================================
@@ -302,12 +379,14 @@ Inject
 
 
    inject_once      takes the head hyp "C x1 x2 = C y1 y2"
-                    and replaces it with "x1 = y1" and "x2 = y2".
+   []               and replaces it with "x1 = y1" and "x2 = y2".
                     
                     TODO: if the constructor involves dependent types,
                     then it produces "sigma x1 x2 = sigma y1 y2". or not?
 
-   inject           repeats "inject" recursively.
+   inject           repeats "inject_once" recursively.
+   [H1 [H2 H3]]     "C x1 (D x2 x3) = C y1 (D y2 y3)"
+   /inject[^ prefix_ ].   TODO              
 
    inject: H        shorthand for moving H in the goal first
 
@@ -346,12 +425,13 @@ Invert
 
 General pattern:
 
-  Cstr : forall n1 n2, P f1 f2
+  Cstr : forall n1 n2, P f1 f2            f1 and f2 use n1 and n2
   Goal : forall (H: P e1 e2), G H
-  Res  : forall n1 n2, (sigma f1 f2 = sigma e1 e2) -> (H: P e1 e2) -> G H
+  Res  : forall n1 n2, (sigma f1 f2 = sigma e1 e2) -> forall (H: P e1 e2) -> G H
 
 Simplified case when the hypothesis is not dependently used:
-
+ 
+  P : forall x, R x -> T
   Cstr : forall n1 n2, P f1 f2
   Goal : P e1 e2 -> G
   Res  : forall n1 n2, (sigma f1 f2 = sigma e1 e2) -> G
@@ -359,14 +439,39 @@ Simplified case when the hypothesis is not dependently used:
 Further simplification P is not dependent,
 then sigma is just a tuple operator and injection gives:
 
-  Res  : forall n1 n2, f1 = e1 -> f2 = e2 -> G
+  Res  : forall n1 n2, f1 = e1 -> f2 = e2 -> G     ("truc de base")
+
+  already does more than inversion because it adds equalities
+  
+
+  inversion does more injection than this.
+   S a = S b 
+   a = b
+
+
+=> examples where the default invert does not work well
+   because of loss of sharing
+
+
+Example 0: problematic subsitution of a fresh variable
+
+  Cstr : forall n, A n -> B n -> P n
+  Goal : P x -> G
+  ResN : forall n, n = x -> A n -> B n -> G
+  "obviously good to substitute x instead of fresh n"
+  Res  : A x -> B x -> G
 
 
 Example 1: problematic subsitution of a fresh variable
 
   Cstr : forall n, A n -> B n -> P n
   Goal : P (big x) -> G
+  ResN : forall n, n = big x -> A n -> B n -> G
   Res  : A (big x) -> B (big x) -> G
+  
+
+  Res' : let n := big x in A n -> B n -> G
+
 
 
 Example 2: problematic subsitution of an existing variable
@@ -374,6 +479,8 @@ Example 2: problematic subsitution of an existing variable
   Cstr : forall n, P (big n)
   Goal : P x -> A x -> B x -> G
   Res  : forall n, A (big n) -> B (big n) -> G
+   => could not work if x occurs elsewhere
+   => is it ever desirable to substitute x in existing hypotheses
 
 
 Example 3: combination of 1 and 2
@@ -389,12 +496,28 @@ Example 4: constructors involving explicit equalities
   Goal : P x -> A x -> B x -> G
   Res  : forall n, m = big n -> A m -> B m -> G
 
+  => invert should not remove the equality
+
 
 Example 5: no canonical choice for which equality to substitute
 
   Cstr : forall n, A n -> B n -> P n n
-  Goal : P (big x) (big y) -> G
-  Res  : forall n, A n -> n = big x -> n = big y -> G
+  Goal : P (f x) (g y) -> G
+  Res  : forall n, n = f x -> n = g y -> A n -> B n -> G
+
+    A (f x)
+    A (g y)
+
+
+
+Remark: 
+
+  Cstr : forall n, let m := big n in P m m
+  => lack of control here.
+
+
+
+
 
 
 
@@ -451,11 +574,11 @@ Examples:
 ============================================================
 Discussion on intropatterns.
 
-Can we get away without fast mode, using only "+" to mean
+Can we get away without fast mode, using only ">" to mean
 "intro all dependent variables"? Short answer is: yes.
 
-I would write "=>+" wherever I currently write "introv". 
-In a few cases, I would need an additional "+" in the list 
+I would write "=>>" wherever I currently write "introv". 
+In a few cases, I would need an additional ">" in the list 
 of intropatterns. It turns out that there are only a limited number 
 of places where I need this throughout TLC. 
 I classified these situations that I encountered.
@@ -475,16 +598,16 @@ Current script:
 
 Proposed replacement:
 
-   Proof using. =>+ H L + K. Abort. 
+   Proof using. =>> H L > K. Abort. 
 
-Remark: this assumes that "+" will call "hnf" if there is
+Remark: this assumes that ">" will call "hnf" if there is
 no visible quantifier at all. Otherwise, I'd need to call
 /hnf to unfold the head symbol, and write:
 
-   Proof using. =>+ H L /hnf + K. Abort. 
+   Proof using. =>> H L /hnf > K. Abort. 
 
 Conclusion: the second possibility is a bit heavy, I think
-it is fine to assume that "+" will do an unfolding if there
+it is fine to assume that ">" will do an unfolding if there
 is nothing to introduce.
 
 
@@ -495,13 +618,13 @@ Current script:
    Lemma irrefl_neq : forall R,
      irrefl R -> 
      forall x y, R x y -> x <> y. 
-   Proof using. introv + H P E. Abort.
+   Proof using. introv > H P E. Abort.
 
 Proposed replacement:
 
-   Proof using. =>+ H + P E. Abort. 
+   Proof using. =>> H > P E. Abort. 
 
-Conclusion: fair enough to write the extra "+".
+Conclusion: fair enough to write the extra ">".
 
 
 *) Situation 3: proving induction principles (similar to above).
@@ -512,7 +635,7 @@ Conclusion: fair enough to write the extra "+".
 
 Proposed replacement:
 
-   Proof using. =>+ Px + H. Abort. 
+   Proof using. =>> Px > H. Abort. 
 
 Conclusion: fair enough. 
 
@@ -530,9 +653,9 @@ Conclusion: fair enough.
 
 Proposed replacement:
 
-   Proof using. =>+ IB + Equiv Comp WfR Cont. Abort.
+   Proof using. =>> IB > Equiv Comp WfR Cont. Abort.
 
-Conclusion: it is a bit unfortunate that I need an extra + here.
+Conclusion: it is a bit unfortunate that I need an extra > here.
 One could argue that "Inhab B", if it not dependently used, 
 should appear later in the list of hypothesis. But, morally,
 I want "an inhabited type B", so I like to have "Inhab B"
@@ -540,15 +663,18 @@ to place immediately next to "B".
 (Troll: IMO, types should be inhabited by default, like in HOL ;)
 
 
-I could live with the additional "+", sure, but it does not look nice.
+
+TODO: validate the proposal below.
+
+I could live with the additional ">", sure, but it does not look nice.
 One possibility would be to do a special case to say that hypotheses 
 of the form "Inhab B" are treated as if there were dependently-used
 variables. Maybe this would generalize to other typeclasses?
 In this case, maybe we can have a command for registering 
-patterns of hypotheses that should be considered by "+".
+patterns of hypotheses that should be considered by ">".
 In fact, I would be happy to have just for myself an overloaded
 definition of the "plus" tactic. By this I mean that if the
-implementation of "=> ipat" when "ipat" is "+" is to call
+implementation of "=> ipat" when "ipat" is ">" is to call
 a tactic "intro_pattern_plus", and that I am able to bind my
 own tactic there, I would do:
  
@@ -560,6 +686,16 @@ own tactic there, I would do:
       | _ => hnf; (... same process if a forall a is made visible ...)
 
 
+   Pseudo Ltac intro_nondeps already_hnf :=
+     match goal with
+     |- (_ -> _)                       => idtac
+     |- (forall _,_)                   => intro ?; intro_nondeps true
+     |- _             when already_hnf => idtac
+     |- _                              => hnf; intro_nondeps true
+
+
+   + special case for Arthur:
+      | Inhab _ -> _ => intro ?; intro_nondeps true 
 
 ============================================================
 Need to optimize autorewrite
@@ -601,6 +737,14 @@ where e.g.:
 ============================================================
 Rewrite syntax.
 
+TODO: discuss
+
+  => GUILLAUME: find solution for the order of side conditions
+    to ensure that we can step execute the chain of rewrites.
+
+
+Basic principle is that side conditions should come first,
+otherwise they stack up at the end.
 
 Problem: for debugging/developping scripts, it is useful to
 be able to step-execute series of rewrites.
@@ -613,6 +757,9 @@ we can no longer easily edit this.
 
         rewrite E F. solveSideOfE. solveSideOfF.
   <->   rewrite E. solveSideOfE. rewrite F. solveSideOfF.
+
+
+   Concrete example: rewrite E /(side: /-) F.
 
 One solution would be:
 
@@ -690,8 +837,50 @@ un-contextual parser for tactic arguments, lazy/busy coders, too ambiguous for
 a single parser.  Result: sprinkle symbols here and there to make it easy to
 parse.  Shame on us (Matita developers).
 
+
 ============================================================
-TODO: problem of interpretation of arguments of tactics.
+TODO: problem of interpretation of arguments of tactics, in particular rewrite.
+
+
+  I think we can follow CBV semantics.
+
+  By default, ";" or "." forces the resolution of goals that have
+  a shape matching a registered "auto-resolution" mechanism.
+
+  In Ltac, we can introduce scopes in which the goals are stacked
+  and not resolved before the end of the stack (or explicit resolution).
+  Eg.
+     Ltac foo := resolution_block (foo; bar).
+  would not resolve evars after foo.
+
+  I think this is almost like unshelve, just with good control.
+  
+
+     rewrite (H).
+
+  would mean: consider the term "H ?x ?y ?z" with just as many 
+  undescores to make a setoid symbol appear at the head. Then,
+  rewrite using this term. Then attemps resolution of the evars
+  that have been introduced if they are typeclasses. Then fail
+  if not all evars are resolved.
+
+     rewrite (H _ x).
+  
+  would mean: introduce an evar for the underscore, do not
+  attempt resolution (even if it is a typeclass), lauch rewrite,
+  which should not create further evars, but may instantiate the
+  existing ones.
+ 
+     rewrite (resolve (#H _ x)).
+  
+  would mean: create the term "H ?e x", try to solve "?e" if it
+  is a typeclass, then attemps rewriting.
+
+     rewrite (##H _ x).
+  
+  would mean: create the term "H ?e x", and reabstract arguments,
+  giving "forall y, H y x", and then rewrite using this.
+
 
 
 
@@ -700,3 +889,259 @@ TODO: problem of interpretation of arguments of tactics.
 TODO: other tactics needed in general.
 
 
+
+
+============================================================
+TODO: optimization of invert
+
+
+
+
+
+========================================================================
+TODO: Logic operations on goals
+
+[conj]
+  Applies to a n-ary conjunction, and splits it into subgoals.
+  If the head of the goal is not a conjunction, then hnf is called;
+  if the goal is still not a conjunction, then an error is raised.
+  If n-ary conjunctions are encoded using a single predicate, then it
+  is equivalent to a single call to "constructor".
+  If n-ary conjunctions are encoded using binary conjunction, then the
+  arity depends on the number of conjunction visible in the goal.
+  -- Remark: we could call this tactic "split", but for uniformity with
+  all other tactics in this section, it should be called "conj".
+
+[disj i]
+  Applies to a n-ary disjunction, and enters the i-th branch 
+  (counting from 1).
+  If the head of the goal is not a disjunction, then hnf is called;
+  if the goal is still not a conjunction, then an error is raised.
+  -- Optional: "left"/"right" could be an alias for "disj 1"/"disj 2".
+
+[exists v _ w]
+  Applies to an existential goal, and provides witnesses.
+  If the goal does not exhibit sufficiently many "exists", 
+  hnf is called; if not revealing a existential, an error is raised.
+  Underscore are accepted, they stand for fresh evars.
+  If is fine to provide fewer witnesses than the number of visible
+  existentials.
+
+[iff]
+  Applies to a goal of the form "P <-> Q", it leaves two subgoals
+  "P -> Q" and "Q -> P".
+  If the goal is of the form "forall ..., P <-> Q", then it leaves 
+  two subgoals subgoals:  "forall ..., P -> Q" and "forall ..., Q -> P".
+  If the goal is not of any of these forms, then unfolding is performed
+  until exhibiting a "<->". An error is raised otherwise.
+
+  -- Example usage: "iff => [M1|(M2 M3)]"  on "P <-> (Q /\ R)".
+ 
+  The behavior of [iff] can be extended by libraries/users in order
+  to make it applicable to apply extensionality, e.g.:
+  - "forall ..., P = Q :> Prop"   (assuming predicate extensionality)
+  - "forall ..., b = b' :> bool"  (producing b -> b' and b' -> b)
+  - "forall ..., E = F :> set A"  (producing "forall x, x \in E -> x \in F", and reciprocal)
+
+[true] 
+  Applies to a goal of the form "True", and discharges it.
+  Also applies to a goal of the form "forall ..., True".
+  If the goal cannot be put in this form, the tactic fails.
+  The behavior can be extended by libraries or by the user 
+  to prove other goals that can be proved true without 
+  producing any further subgoals.
+  Remark: we need to introduce a variant of the "hint" mechanism 
+  that binds tactics as "extern hints" for specific tactics.
+
+[false]  -- UPDATE: see specific section about "false" above.
+  Applies to any goal. It replaces the goal with "False".
+  The tactic can be extended by libraries or by the user
+  to prove contradictions. By default, the tactic executes
+     try solve [ assumption | discriminate | congruence ].
+   [false E]
+   Applies to any goal. It replaces the goal with "False",
+   and applies lemma E to the goal.
+
+[absurd]
+  Tactic specific to classical logic ("the goal would be absurd").
+  Applies to any goal "G", and replaces it with "~ G -> False". 
+  Typical usage is "absurd => M."
+
+[absurd E]
+  Tactics applies to any goal, and replaces it with "~ T",
+  where T is the type of expression E.
+  Typical usage: "absurd {H}", where "H" is an hypothesis.
+  It the goal becomes of the form "C ... <> C' ...", where
+  C and C' are distinct constructors, the goal is automatically
+  discharged.
+
+
+
+========================================================================
+Logical cuts -- TODO: polish first before discussion
+
+[prove T]
+[prove I: T]   
+   -- Remark: "prove" is a new name instead of "assert" or "have" whose intent is 
+      less obvious than "clear", imo.
+   "prove T" applies to any goal G. It produces a subgoal T, and a subgoal T->G.
+   "prove I: T" is a shorthand for "prove T; [|=>I]".
+
+   Here, T is provided in open syntax, meaning that parentheses are not needed.
+   E.g.:  prove I: forall (x y : unit), x = y.
+
+
+[suffice T] // optional
+[suffice I: T] 
+   "suffice T"    is a shorthand for "prove T; swap 1 2".
+   "suffice I: T" is a shorthand for "prove I: T; swap 1 2".
+   where "swap 1 2" swaps the two subgoals generated.
+
+
+========================================================================
+Application
+
+[exact H] 
+   equivalent to current [refine]. TODO: specify more precisely.
+
+[apply H] 
+   Applies the hypothesis H to the goal. 
+   
+   --TODO: What is the specification? 
+     is there a better way than saying that it tries to apply
+     "refine (H _ _ _)"  for increasing numbers of underscores?
+     
+   Here, the term "H" can be provided in open syntax, meaning that 
+   parentheses are not needed. In particular,
+   "apply H x y z"  is a shorthand for "apply (H x y z)"
+   "apply $H x y z" is a shorthand for "apply ($H x y z)"
+
+   Remark: "apply {H}" applies hypothesis H then clears it.
+
+[constr] 
+  Applies to a goal "P EX1 .. EN" where P is inductively-defined.
+  Applies the only constructor of this inductive data type for which
+  the invokation of the tactic "apply E" succeeds.
+
+  ---Optional (not recommended imo): specification of [constr] for builtin types:
+  - "constr" on a n-ary conjunction is the same as "conj".
+  - "constr" on an equivalence is the same as "iff".
+  - "constr" on an existential is the same as "exists _".
+
+  ---Technical remark: implemented as "exactly_once econstructor", 
+  that is, like "econstructor", but fails if more than one constructor 
+  could be applied.
+
+
+========================================================================
+Equality and rewriting
+
+[rewrite p]   
+   See specific section.
+      
+[subst x]
+  Substitute away the equality for "x".
+  If there are attemps of recursive substitution, substitute everywhere
+  where possible, and keep the hypothesis involving the equality on x.
+
+[equal]
+  Invokes the congruence tactic, which may solve the goal.
+  Otherwise, if the goal of the form [f a b = f' a' b'],
+  then it calls "fequal", and try "congruence" on every subgoal.
+  This tactic never fails; if it can't make progress it does nothing.
+  --> TODO: I am not sure this is the desired behavior; often, it is
+      much better to have tactic fail when they do not progress;
+      we could give this alternative spec. Opinion?
+
+  -- Suggested implementation: equivalent to "try fequal; congruence"?
+
+  -- Remark: this covers [reflexivity], [fequal] and [congruence].
+
+  ==> TODO: what is the connection with "congr" from ssr?
+
+
+
+
+========================================================================
+Induction
+
+--> Naming: I think "induct" says as much as "induction", and "invert" as much
+    as "inversion". After all, we have a tactic called "apply" and it
+    is not called "application", for a good reason imo...
+
+[induct H]
+  Like Coq induction, but 
+  - saves the arguments that are not variables, by introducing equalities
+  - produces all hypotheses in the goal, including induction principles
+
+[induct_wf: R E]
+  Helper for performing induction on a well-founded relation R.
+  The expression E is the argument in the goal which is to be proved
+  accessible w.r.t. the well-founded relation R.
+  -- Implementation: "set (X:=E); pattern X; apply (well_founded_ind E); clear X".
+
+[induct_wf X IH: R] // only useful to advanced users 
+   Shorthand for "induction_wf: R X => IH X".
+
+
+
+
+========================================================================
+Goal management tactics
+
+[admit]
+  Skips the current goal.
+  -- Implemented by creating an evar that is in a special shelf,
+     the shelf of admitted subgoals.
+
+
+========================================================================
+OTHER:
+** goal reordering
+  --> like in ssr? what about Coq's new features? TODO!
+
+** variable renaming
+  --> do we want to keep the syntax [rename x1 into y1, x2 into y2]
+  --> Note that renaming for hypotheses works with "move: H1 H2 => M1 M2",
+      but this can't be done so easily for variables in a neat way.
+  
+
+========================================================================
+For advanced users only
+
+[tryfalse]
+  useful shorthand for "try solve [false]".
+
+[exists_all]
+  equivalent to [exists _ _ _] with as many existentials as visible in the goal.
+
+[unfold] (without any argument)
+  unfolds the head symbol of the first hypothesis in the goal;
+  or the head symbol of the conclusion if there is no hypothesis,
+  or the head symbol of the first argument if the goal is an equality.
+
+[unfold in H]
+   same as above, but for an hypothesis.
+
+[case_if] / [case_match]
+  performs case analysis on the first if/match in the goal
+
+[flexible p]
+   where p is a pattern: replaces the occurences of "p" with fresh evars.
+   For example on the goal "P (3*x) y", the tactic "flex (_*_)" will give
+   the goal "P ?a y" and subgoal "?a = 3*x".
+
+   If the equality subgoal can be proved by proof irrelevance and the
+   proof irrelevance axiom is available, then this goal is discharged.
+   Equivalent to TLC "equates", and allows to do TLC's "applys_eq",
+   and also TLC's "pi_rewrite".
+
+[equal_rec]
+  shorthand for [repeat (progress equal)], useful to prove in depth
+  equalities, e.g. in a goal  "f (g x y) z = f (g x' y) z".
+
+
+========================================================================
+Questions:
+
+==> how to do TLC's "sets_eq" tactic.
