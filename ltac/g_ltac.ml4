@@ -359,6 +359,9 @@ VERNAC ARGUMENT EXTEND ltac_use_default PRINTED BY pr_ltac_use_default
 | [ "..." ] -> [ true ]
 END
 
+let is_anonymous_abstract = function TacAbstract (_,None) -> true | _ -> false
+let rm_abstract = function TacAbstract (t,_) -> t | x -> x
+
 VERNAC tactic_mode EXTEND VernacSolve
 | [ - ltac_selector_opt(g) ltac_info_opt(n) tactic(t) ltac_use_default(def) ] =>
     [ classify_as_proofstep ] -> [
@@ -366,10 +369,14 @@ VERNAC tactic_mode EXTEND VernacSolve
     vernac_solve g n t def
   ]
 | [ - "par" ":" ltac_info_opt(n) tactic(t) ltac_use_default(def) ] =>
-    [ VtProofStep{ parallel = true; proof_block_detection = Some "par" },
-      VtLater ] -> [
-    vernac_solve SelectAll n t def
-  ]
+    [
+      let parallel = if is_anonymous_abstract t then `YesAbstract else `Yes in
+      VtProofStep{ parallel = parallel; proof_block_detection = Some "par" },
+      VtLater
+    ] -> [
+      let t = rm_abstract t in
+      vernac_solve SelectAll n t def
+    ]
 END
 
 let pr_ltac_tactic_level n = str "(at level " ++ int n ++ str ")"

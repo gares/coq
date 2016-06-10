@@ -178,7 +178,7 @@ type cmd_t = {
   cids : Id.t list;
   cblock : proof_block_name option;
   cqueue : [ `MainQueue
-           | `TacQueue of cancel_switch
+           | `TacQueue of bool (* abstract result *) * cancel_switch
            | `QueryQueue of cancel_switch
            | `SkipQueue ] }
 type fork_t = aast * Vcs_.Branch.t * Vernacexpr.opacity_guarantee * Id.t list
@@ -660,7 +660,7 @@ end = struct (* {{{ *)
     Stateid.Set.iter (fun id ->
         match (Vcs_aux.visit old_vcs id).step with
         | `Qed ({ fproof = Some (_, cancel_switch) }, _)
-        | `Cmd { cqueue = `TacQueue cancel_switch }
+        | `Cmd { cqueue = `TacQueue (_,cancel_switch) }
         | `Cmd { cqueue = `QueryQueue cancel_switch } ->
              cancel_switch := true
         | _ -> ())
@@ -1724,13 +1724,14 @@ end (* }}} *)
 and Partac : sig
 
   val vernac_interp :
-    cancel_switch -> int -> Stateid.t -> Stateid.t -> aast -> unit
+    abstract:bool -> cancel_switch -> int -> Stateid.t -> Stateid.t -> aast ->
+      unit
 
 end = struct (* {{{ *)
     
   module TaskQueue = AsyncTaskQueue.MakeQueue(TacTask)
 
-  let vernac_interp cancel nworkers safe_id id
+  let vernac_interp ~abstract cancel nworkers safe_id id
     { indentation; verbose; loc; expr = e; strlen }
   =
     let e, time, fail =
@@ -1755,28 +1756,29 @@ end = struct (* {{{ *)
           ({ t_state = safe_id; t_state_fb = id;
             t_assign = assign; t_ast; t_goal = g; t_name;
             t_kill = (fun () -> TaskQueue.cancel_all queue) }, cancel);
-        Goal.uid g,f)
+        g,f)
         1 goals in
       TaskQueue.join queue;
       let assign_tac : unit Proofview.tactic =
-        Proofview.V82.tactic (fun gl ->
-          let open Tacmach in
-          let sigma, g = project gl, sig_it gl in
-          let gid = Goal.uid g in
-          let f =
-            try List.assoc gid res
-            with Not_found -> Errors.anomaly(str"Partac: wrong focus") in
-          if Future.is_over f then
-            let pt, uc = Future.join f in
-            prerr_endline (fun () -> string_of_ppcmds(hov 0 (
-              str"g=" ++ str gid ++ spc () ++
-              str"t=" ++ (Printer.pr_constr pt) ++ spc () ++
-              str"uc=" ++ Evd.pr_evar_universe_context uc)));
-            let sigma = Goal.V82.partial_solution sigma g pt in
-            let sigma = Evd.merge_universe_context sigma uc in
-            re_sig [] sigma
-          else (* One has failed and cancelled the others, but not this one *)
-            re_sig [g] sigma) in
+        Proofview.(Goal.nf_enter { Goal.enter = fun g ->
+        let gid = Goal.goal g in
+        let f =
+          try List.assoc gid res
+          with Not_found -> Errors.anomaly(str"Partac: wrong focus") in
+        if not (Future.is_over f) then
+          (* One has failed and cancelled the others, but not this one *)
+          tclUNIT ()
+        else
+          let open Notations in
+          let pt, uc = Future.join f in
+          prerr_endline (fun () -> string_of_ppcmds(hov 0 (
+            str"g=" ++ int (Evar.repr gid) ++ spc () ++
+            str"t=" ++ (Printer.pr_constr pt) ++ spc () ++
+            str"uc=" ++ Evd.pr_evar_universe_context uc)));
+          (if abstract then Tactics.tclABSTRACT None else (fun x -> x))
+            (V82.tactic (Refiner.tclPUSHEVARUNIVCONTEXT uc) <*>
+            Tactics.exact_no_check pt)})
+        in
       Proof.run_tactic (Global.env()) assign_tac p)))) ())
   
 end (* }}} *)
@@ -2088,11 +2090,12 @@ let known_state ?(redefine_qed=false) ~cache id =
           ), cache, true
       | `Cmd { cast = x; cqueue = `SkipQueue } -> (fun () ->
             reach view.next), cache, true
-      | `Cmd { cast = x; cqueue = `TacQueue cancel; cblock } -> (fun () ->
+      | `Cmd { cast = x; cqueue = `TacQueue (abstract,cancel); cblock } ->
+          (fun () ->
             resilient_tactic id cblock (fun () ->
               reach ~cache:`Shallow view.next;
               Hooks.(call tactic_being_run true); 
-              Partac.vernac_interp
+              Partac.vernac_interp ~abstract
                 cancel !Flags.async_proofs_n_tacworkers view.next id x;
               Hooks.(call tactic_being_run false))
           ), cache, true
@@ -2507,7 +2510,11 @@ let process_transaction ?(newtip=Stateid.fresh ()) ~tty
           `Ok
       | VtProofStep { parallel; proof_block_detection = cblock }, w ->
           let id = VCS.new_node ~id:newtip () in
-          let queue = if parallel then `TacQueue (ref false) else `MainQueue in
+          let queue =
+            match parallel with
+            | `Yes -> `TacQueue (false, ref false)
+            | `YesAbstract -> `TacQueue (true, ref false)
+            | `No -> `MainQueue in
           VCS.commit id (mkTransTac x cblock queue);
           (* Static proof block detection delayed until an error really occurs.
              If/when and UI will make something useful with this piece of info,
