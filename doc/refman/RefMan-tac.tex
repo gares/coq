@@ -49,10 +49,17 @@ selector (see Section \ref{default-selector}) is used.
 
 \newcommand{\selector}{\nterm{selector}}
 \begin{tabular}{lcl}
-{\selector} & := & {\tt all} | {\num}\\
+{\selector} & := & {\tt all} | {\num} | {\tt par}\\
 {\commandtac} & ::= & {\selector} {\tt :} {\tac} {\tt .}\\
  & $|$ & {\tac} {\tt .}
 \end{tabular}
+
+The {\tt par:} goal selector is equivalent to {\tt all:} but dispatches the
+goals to a pool of Coq worker processes.  The number of worker processes can be
+controlled via the {\tt -async-proofs-tac-j} command line flag.  The default
+value is {\texttt 2}.  Only ground goals, i.e. not containing existential
+variables, can be handled by the {\texttt par} goal selector.
+
 \subsection[\tt Set Default Goal Selector ``\selector''.]
            {\tt Set Default Goal Selector ``\selector''.
             \optindex{Default Goal Selector}
