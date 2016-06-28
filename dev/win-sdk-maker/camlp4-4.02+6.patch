@@ -1,0 +1,20 @@
+diff -c -r camlp4-4.02+6/myocamlbuild.ml camlp4-4.02+6-patched/myocamlbuild.ml
+*** camlp4-4.02+6/myocamlbuild.ml	2015-06-17 13:37:36.000000000 +0200
+--- camlp4-4.02+6-patched/myocamlbuild.ml	2015-10-26 16:45:12.613618300 +0100
+***************
+*** 86,92 ****
+          let dep = "camlp4"/"boot"/exe in
+          let cmd =
+            let ( / ) = Filename.concat in
+!           "camlp4"/"boot"/exe
+          in
+          (Some dep, cmd)
+      in
+--- 86,92 ----
+          let dep = "camlp4"/"boot"/exe in
+          let cmd =
+            let ( / ) = Filename.concat in
+!           String.escaped (String.escaped ("camlp4"/"boot"/exe))
+          in
+          (Some dep, cmd)
+      in

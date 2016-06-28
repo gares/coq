@@ -246,7 +246,7 @@ $(COQIDEAPP):$(COQIDEAPP)/Contents/Resources
 
 %.o: %.rc
 	$(SHOW)'WINDRES    $<'
-	$(HIDE)i686-w64-mingw32-windres -i $< -o $@
+	$(HIDE)$(WINDRES) -i $< -o $@
 
 
 # For emacs:

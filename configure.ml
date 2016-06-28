@@ -799,12 +799,26 @@ let strip =
     let _, all = run camlexec.find ["ocamlc";"-config"] in
     let strip = String.concat "" (List.map (fun l ->
         match string_split ' ' l with
-        | "ranlib:" :: cc :: _ -> (* on windows, we greb the right strip *)
+        | "ranlib:" :: cc :: _ -> (* on windows, we grab the right strip *)
              Str.replace_first (Str.regexp "ranlib") "strip" cc
         | _ -> ""
       ) all) in
     if strip = "" then "strip" else strip
     end
+
+(** * windres command *)
+
+let windres =
+  if arch <> "win32" then "true"
+  else
+    let _, all = run camlexec.find ["ocamlc";"-config"] in
+    let strip = String.concat "" (List.map (fun l ->
+        match string_split ' ' l with
+        | "ranlib:" :: cc :: _ -> (* on windows, we grab the right windres *)
+             Str.replace_first (Str.regexp "ranlib") "windres" cc
+        | _ -> ""
+      ) all) in
+    if strip = "" then "windres" else strip
 
 (** * md5sum command *)
 
@@ -1147,6 +1161,7 @@ let write_makefile f =
   pr "# Unix systems and profiling: true\n";
   pr "# Unix systems and no profiling: strip\n";
   pr "STRIP=%s\n\n" strip;
+  pr "WINDRES=%s\n\n" windres;
   pr "#the command md5sum\n";
   pr "MD5SUM=%s\n\n" md5sum;
   pr "# LablGTK\n";
