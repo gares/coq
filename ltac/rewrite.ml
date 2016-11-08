@@ -500,7 +500,7 @@ let rec decompose_app_rel env evd t =
 let decompose_app_rel env evd t =
   let (rel, t1, t2) = decompose_app_rel env evd t in
   let ty = Retyping.get_type_of env evd rel in
-  let () = if not (Reduction.is_arity env ty) then error_no_relation () in
+  let () = if not (CClosure.is_arity env ty) then error_no_relation () in
   (rel, t1, t2)
 
 let decompose_applied_relation env sigma (c,l) =
@@ -956,7 +956,7 @@ let fold_match ?(force=false) env sigma c =
       else raise Not_found
   in
   let app =
-    let ind, args = Inductive.find_rectype env cty in
+    let ind, args = Preinductive.find_rectype env cty in
     let pars, args = List.chop ci.ci_npar args in
     let meths = List.map (fun br -> br) (Array.to_list brs) in
       applist (mkConst sk, pars @ [pred] @ meths @ args @ [c])
@@ -2126,7 +2126,7 @@ let setoid_proof ty fn fallback =
         try
           let rel, _, _ = decompose_app_rel env sigma concl in
           let (sigma, t) = Typing.type_of env sigma rel in
-          let car = RelDecl.get_type (List.hd (fst (Reduction.dest_prod env t))) in
+          let car = RelDecl.get_type (List.hd (fst (CClosure.dest_prod env t))) in
 	    (try init_relation_classes () with _ -> raise Not_found);
             fn env sigma car rel
         with e -> Proofview.tclZERO e

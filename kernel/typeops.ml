@@ -16,6 +16,7 @@ open Declarations
 open Environ
 open CClosure
 open Reduction
+open Preinductive
 open Inductive
 open Type_errors
 
@@ -262,7 +263,7 @@ let check_cast env c ct k expected_type =
 let type_of_inductive_knowing_parameters env (ind,u as indu) args =
   let (mib,mip) as spec = lookup_mind_specif env ind in
   check_hyps_inclusion env mkIndU indu mib.mind_hyps;
-  let t,cst = Inductive.constrained_type_of_inductive_knowing_parameters 
+  let t,cst = Preinductive.constrained_type_of_inductive_knowing_parameters
     env (spec,u) args
   in
   check_constraints cst env;
@@ -271,7 +272,7 @@ let type_of_inductive_knowing_parameters env (ind,u as indu) args =
 let type_of_inductive env (ind,u as indu) =
   let (mib,mip) = lookup_mind_specif env ind in
   check_hyps_inclusion env mkIndU indu mib.mind_hyps;
-  let t,cst = Inductive.constrained_type_of_inductive env ((mib,mip),u) in
+  let t,cst = Preinductive.constrained_type_of_inductive env ((mib,mip),u) in
   check_constraints cst env;
   t
 
@@ -585,7 +586,7 @@ let make_polymorphic_if_constant_for_ind env {uj_val = c; uj_type = t} =
      let ind, l = decompose_app (whd_all env c) in
      if isInd ind && List.is_empty l then
        let mis = lookup_mind_specif env (fst (destInd ind)) in
-       let nparams = Inductive.inductive_params mis in
+       let nparams = Preinductive.inductive_params mis in
        let paramsl = CList.lastn nparams params in
        let param_ccls = extract_context_levels env paramsl in
        let s = { template_param_levels = param_ccls; template_level = u} in

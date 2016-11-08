@@ -145,7 +145,7 @@ let typecheck_params_and_fields def id pl t ps nots fs =
   let arity = nf t' in
   let arity, evars = 
     let _, univ = compute_constructor_level evars env_ar newfs in
-    let ctx, aritysort = Reduction.dest_arity env0 arity in
+    let ctx, aritysort = CClosure.dest_arity env0 arity in
       assert(List.is_empty ctx); (* Ensured by above analysis *)
       if not def && (Sorts.is_prop aritysort || 
 	(Sorts.is_set aritysort && is_impredicative_set env0)) then
@@ -265,7 +265,7 @@ let declare_projections indsp ?(kind=StructureComponent) binder_name coers field
   let env = Global.env() in
   let (mib,mip) = Global.lookup_inductive indsp in
   let u = Declareops.inductive_instance mib in
-  let paramdecls = Inductive.inductive_paramdecls (mib, u) in
+  let paramdecls = Preinductive.inductive_paramdecls (mib, u) in
   let poly = mib.mind_polymorphic in
   let ctx = Univ.instantiate_univ_context mib.mind_universes in
   let indu = indsp, u in
@@ -519,7 +519,7 @@ let add_inductive_class ind =
   let k =
     let ctx = oneind.mind_arity_ctxt in
     let inst = Univ.UContext.instance mind.mind_universes in
-    let ty = Inductive.type_of_inductive
+    let ty = Preinductive.type_of_inductive
       (push_rel_context ctx (Global.env ()))
       ((mind,oneind),inst)
     in

@@ -449,10 +449,10 @@ let raw_inversion inv_kind id status names =
     let sigma = !evdref in
     let (cut_concl,case_tac) =
       if status != NoDep && (dependent c concl) then
-        Reduction.beta_appvect elim_predicate (Array.of_list (realargs@[c])),
+        CClosure.beta_appvect elim_predicate (Array.of_list (realargs@[c])),
         case_then_using
       else
-        Reduction.beta_appvect elim_predicate (Array.of_list realargs),
+        CClosure.beta_appvect elim_predicate (Array.of_list realargs),
         case_nodep_then_using
     in
     let refined id =

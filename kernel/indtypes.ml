@@ -14,6 +14,7 @@ open Term
 open Vars
 open Declarations
 open Declareops
+open Preinductive
 open Inductive
 open Environ
 open CClosure

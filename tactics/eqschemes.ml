@@ -54,6 +54,7 @@ open Environ
 open Inductive
 open Termops
 open Namegen
+open Preinductive
 open Inductiveops
 open Ind_tables
 open Indrec

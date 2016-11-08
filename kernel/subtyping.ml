@@ -18,7 +18,9 @@ open Univ
 open Term
 open Declarations
 open Declareops
+open CClosure
 open Reduction
+open Preinductive
 open Inductive
 open Modops
 open Mod_subst

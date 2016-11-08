@@ -15,6 +15,7 @@ open Reduction
 open Univ
 open Declarations
 open Names
+open Preinductive
 open Inductive
 open Util
 open Nativecode
@@ -286,7 +287,7 @@ and nf_atom_type env atom =
   | Acase(ans,accu,p,bs) ->
       let a,ta = nf_accu_type env accu in
       let ((mind,_),u as ind),allargs = find_rectype_a env ta in
-      let (mib,mip) = Inductive.lookup_mind_specif env (fst ind) in
+      let (mib,mip) = Preinductive.lookup_mind_specif env (fst ind) in
       let nparams = mib.mind_nparams in
       let params,realargs = Array.chop nparams allargs in
       let pT = 

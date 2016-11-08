@@ -112,8 +112,8 @@ let named_context_val () = named_context_val (env())
 
 let lookup_named id = lookup_named id (env())
 let lookup_constant kn = lookup_constant kn (env())
-let lookup_inductive ind = Inductive.lookup_mind_specif (env()) ind
-let lookup_pinductive (ind,_) = Inductive.lookup_mind_specif (env()) ind
+let lookup_inductive ind = Preinductive.lookup_mind_specif (env()) ind
+let lookup_pinductive (ind,_) = Preinductive.lookup_mind_specif (env()) ind
 let lookup_mind kn = lookup_mind kn (env())
 
 let lookup_module mp = lookup_module mp (env())
@@ -175,17 +175,17 @@ let type_of_global_unsafe r =
      let ty = Typeops.type_of_constant_type env cb.Declarations.const_type in
        Vars.subst_instance_constr (Univ.UContext.instance univs) ty
   | IndRef ind ->
-     let (mib, oib as specif) = Inductive.lookup_mind_specif env ind in
+     let (mib, oib as specif) = Preinductive.lookup_mind_specif env ind in
      let inst = 
        if mib.Declarations.mind_polymorphic then 
 	 Univ.UContext.instance mib.Declarations.mind_universes
        else Univ.Instance.empty
      in
-       Inductive.type_of_inductive env (specif, inst)
+       Preinductive.type_of_inductive env (specif, inst)
   | ConstructRef cstr ->
-     let (mib,oib as specif) = Inductive.lookup_mind_specif env (inductive_of_constructor cstr) in
+     let (mib,oib as specif) = Preinductive.lookup_mind_specif env (inductive_of_constructor cstr) in
      let inst = Univ.UContext.instance mib.Declarations.mind_universes in
-       Inductive.type_of_constructor (cstr,inst) specif
+       Preinductive.type_of_constructor (cstr,inst) specif
 
 let type_of_global_in_context env r = 
   let open Declarations in
@@ -198,19 +198,19 @@ let type_of_global_in_context env r =
          (Environ.opaque_tables env) cb in
        Typeops.type_of_constant_type env cb.Declarations.const_type, univs
   | IndRef ind ->
-     let (mib, oib as specif) = Inductive.lookup_mind_specif env ind in
+     let (mib, oib as specif) = Preinductive.lookup_mind_specif env ind in
      let univs = 
        if mib.mind_polymorphic then Univ.instantiate_univ_context mib.mind_universes 
        else Univ.UContext.empty
-     in Inductive.type_of_inductive env (specif, Univ.UContext.instance univs), univs
+     in Preinductive.type_of_inductive env (specif, Univ.UContext.instance univs), univs
   | ConstructRef cstr ->
-     let (mib,oib as specif) = Inductive.lookup_mind_specif env (inductive_of_constructor cstr) in
+     let (mib,oib as specif) = Preinductive.lookup_mind_specif env (inductive_of_constructor cstr) in
      let univs = 
        if mib.mind_polymorphic then Univ.instantiate_univ_context mib.mind_universes 
        else Univ.UContext.empty
      in
      let inst = Univ.UContext.instance univs in
-       Inductive.type_of_constructor (cstr,inst) specif, univs
+       Preinductive.type_of_constructor (cstr,inst) specif, univs
 
 let universes_of_global env r = 
   let open Declarations in
@@ -221,10 +221,10 @@ let universes_of_global env r =
 	Declareops.universes_of_polymorphic_constant
           (Environ.opaque_tables env) cb
     | IndRef ind ->
-      let (mib, oib) = Inductive.lookup_mind_specif env ind in
+      let (mib, oib) = Preinductive.lookup_mind_specif env ind in
 	Univ.instantiate_univ_context mib.mind_universes 
     | ConstructRef cstr ->
-      let (mib,oib) = Inductive.lookup_mind_specif env (inductive_of_constructor cstr) in
+      let (mib,oib) = Preinductive.lookup_mind_specif env (inductive_of_constructor cstr) in
 	Univ.instantiate_univ_context mib.mind_universes 
 
 let universes_of_global gr = 

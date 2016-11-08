@@ -22,6 +22,7 @@ open Vars
 open Namegen
 open Declarations
 open Declareops
+open Preinductive
 open Inductive
 open Inductiveops
 open Environ
@@ -165,7 +166,7 @@ let type_rec_branch is_rec dep env sigma (vargs,depPvect,decP) tyi cs recargs =
 	    let realargs = List.skipn nparams largs in
 	    let base = applist (lift i pk,realargs) in
             if depK then
-	      Reduction.beta_appvect
+	      CClosure.beta_appvect
                 base [|applist (mkRel (i+1), Context.Rel.to_extended_list 0 sign)|]
             else
 	      base
@@ -215,7 +216,7 @@ let type_rec_branch is_rec dep env sigma (vargs,depPvect,decP) tyi cs recargs =
 	let realargs = List.rev_map (fun k -> mkRel (i-k)) li in
         let params = List.map (lift i) vargs in
         let co = applist (mkConstructU cs.cs_cstr,params@realargs) in
-	Reduction.beta_appvect c [|co|]
+	CClosure.beta_appvect c [|co|]
       else c
   in
   let nhyps = List.length cs.cs_args in

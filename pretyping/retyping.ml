@@ -11,6 +11,7 @@ open CErrors
 open Util
 open Term
 open Vars
+open Preinductive
 open Inductive
 open Inductiveops
 open Names
@@ -183,12 +184,12 @@ let retype ?(polyprop=true) sigma =
     match kind_of_term c with
     | Ind ind ->
       let mip = lookup_mind_specif env (fst ind) in
-	(try Inductive.type_of_inductive_knowing_parameters
+	(try Preinductive.type_of_inductive_knowing_parameters
 	       ~polyprop env (mip,snd ind) argtyps
-	 with Reduction.NotArity -> retype_error NotAnArity)
+	 with CClosure.NotArity -> retype_error NotAnArity)
     | Const cst ->
 	(try Typeops.type_of_constant_knowing_parameters_in env cst argtyps
-	 with Reduction.NotArity -> retype_error NotAnArity)
+	 with CClosure.NotArity -> retype_error NotAnArity)
     | Var id -> type_of_var env id
     | Construct cstr -> type_of_constructor env cstr
     | _ -> assert false
@@ -207,7 +208,7 @@ let type_of_global_reference_knowing_conclusion env sigma c conclty =
   let conclty = nf_evar sigma conclty in
   match kind_of_term c with
     | Ind (ind,u) ->
-        let spec = Inductive.lookup_mind_specif env ind in
+        let spec = Preinductive.lookup_mind_specif env ind in
           type_of_inductive_knowing_conclusion env sigma (spec,u) conclty
     | Const cst ->
         let t = constant_type_in env cst in

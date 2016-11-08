@@ -27,7 +27,7 @@ type mind_specif = mutual_inductive_body * one_inductive_body
 let lookup_mind_specif env (kn,tyi) =
   let mib = lookup_mind kn env in
   if tyi >= Array.length mib.mind_packets then
-    error "Inductive.lookup_mind_specif: invalid inductive index";
+    error "Preinductive.lookup_mind_specif: invalid inductive index";
   (mib, mib.mind_packets.(tyi))
 
 let find_rectype env c =

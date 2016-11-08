@@ -80,18 +80,18 @@ let print_constructors envpar sigma names types =
   hv 0 (str "  " ++ pc)
 
 let build_ind_type env mip =
-  Inductive.type_of_inductive env mip
+  Preinductive.type_of_inductive env mip
 
 let print_one_inductive env sigma mib ((_,i) as ind) =
   let u = if mib.mind_polymorphic then 
       Univ.UContext.instance mib.mind_universes 
     else Univ.Instance.empty in
   let mip = mib.mind_packets.(i) in
-  let params = Inductive.inductive_paramdecls (mib,u) in
+  let params = Preinductive.inductive_paramdecls (mib,u) in
   let args = Context.Rel.to_extended_list 0 params in
-  let arity = hnf_prod_applist env (build_ind_type env ((mib,mip),u)) args in
-  let cstrtypes = Inductive.type_of_constructors (ind,u) (mib,mip) in
-  let cstrtypes = Array.map (fun c -> hnf_prod_applist env c args) cstrtypes in
+  let arity = CClosure.hnf_prod_applist env (build_ind_type env ((mib,mip),u)) args in
+  let cstrtypes = Preinductive.type_of_constructors (ind,u) (mib,mip) in
+  let cstrtypes = Array.map (fun c -> CClosure.hnf_prod_applist env c args) cstrtypes in
   let envpar = push_rel_context params env in
   let inst =
     if mib.mind_polymorphic then
@@ -141,11 +141,11 @@ let print_record env mind mib =
     else Univ.Instance.empty 
   in
   let mip = mib.mind_packets.(0) in
-  let params = Inductive.inductive_paramdecls (mib,u) in
+  let params = Preinductive.inductive_paramdecls (mib,u) in
   let args = Context.Rel.to_extended_list 0 params in
-  let arity = hnf_prod_applist env (build_ind_type env ((mib,mip),u)) args in
-  let cstrtypes = Inductive.type_of_constructors ((mind,0),u) (mib,mip) in
-  let cstrtype = hnf_prod_applist env cstrtypes.(0) args in
+  let arity = CClosure.hnf_prod_applist env (build_ind_type env ((mib,mip),u)) args in
+  let cstrtypes = Preinductive.type_of_constructors ((mind,0),u) (mib,mip) in
+  let cstrtype = CClosure.hnf_prod_applist env cstrtypes.(0) args in
   let fields = get_fields cstrtype in
   let envpar = push_rel_context params env in
   let bl = Universes.universe_binders_of_global (IndRef (mind,0)) in

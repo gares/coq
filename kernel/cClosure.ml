@@ -28,6 +28,9 @@ open Vars
 open Environ
 open Esubst
 
+module RelDecl = Context.Rel.Declaration
+module NamedDecl = Context.Named.Declaration
+
 let stats = ref false
 let share = ref true
 
@@ -268,10 +271,8 @@ and 'a infos = {
 let info_flags info = info.i_flags
 let info_env info = info.i_cache.i_env
 
-open Context.Named.Declaration
-
 let assoc_defined id env = match Environ.lookup_named id env with
-| LocalDef (_, c, _) -> c
+| NamedDecl.LocalDef (_, c, _) -> c
 | _ -> raise Not_found
 
 let ref_value_cache ({i_cache = cache} as infos)  ref =
@@ -1095,3 +1096,98 @@ let whd_allnolet env t =
     | (Sort _|Meta _|Evar _|Ind _|Construct _|
        Prod _|Lambda _|Fix _|CoFix _|LetIn _) -> t
     | _ -> whd_val (create_clos_infos allnolet env) (inject t)
+
+(* Application with on-the-fly reduction *)
+
+let beta_applist c l =
+  let rec app subst c l =
+    match kind_of_term c, l with
+    | Lambda(_,_,c), arg::l -> app (arg::subst) c l
+    | _ -> applist (substl subst c, l) in
+  app [] c l
+
+let beta_appvect c v = beta_applist c (Array.to_list v)
+
+let beta_app c a = beta_applist c [a]
+
+(* Compatibility *)
+let betazeta_appvect = lambda_appvect_assum
+
+(********************************************************************)
+(*             Special-Purpose Reduction                            *)
+(********************************************************************)
+
+(* pseudo-reduction rule:
+ * [hnf_prod_app env (Prod(_,B)) N --> B[N]
+ * with an HNF on the first argument to produce a product.
+ * if this does not work, then we use the string S as part of our
+ * error message. *)
+
+let hnf_prod_app env t n =
+  match kind_of_term (whd_all env t) with
+    | Prod (_,_,b) -> subst1 n b
+    | _ -> anomaly ~label:"hnf_prod_app" (Pp.str "Need a product")
+
+let hnf_prod_applist env t nl =
+  List.fold_left (hnf_prod_app env) t nl
+
+(* Dealing with arities *)
+
+let dest_prod env =
+  let rec decrec env m c =
+    let t = whd_all env c in
+    match kind_of_term t with
+      | Prod (n,a,c0) ->
+	  let d = RelDecl.LocalAssum (n,a) in
+	  decrec (push_rel d env) (Context.Rel.add d m) c0
+      | _ -> m,t
+  in
+  decrec env Context.Rel.empty
+
+(* The same but preserving lets in the context, not internal ones. *)
+let dest_prod_assum env =
+  let rec prodec_rec env l ty =
+    let rty = whd_allnolet env ty in
+    match kind_of_term rty with
+    | Prod (x,t,c)  ->
+        let d = RelDecl.LocalAssum (x,t) in
+	prodec_rec (push_rel d env) (Context.Rel.add d l) c
+    | LetIn (x,b,t,c) ->
+        let d = RelDecl.LocalDef (x,b,t) in
+	prodec_rec (push_rel d env) (Context.Rel.add d l) c
+    | Cast (c,_,_)    -> prodec_rec env l c
+    | _               ->
+      let rty' = whd_all env rty in
+	if Term.eq_constr rty' rty then l, rty
+	else prodec_rec env l rty'
+  in
+  prodec_rec env Context.Rel.empty
+
+let dest_lam_assum env =
+  let rec lamec_rec env l ty =
+    let rty = whd_allnolet env ty in
+    match kind_of_term rty with
+    | Lambda (x,t,c)  ->
+        let d = RelDecl.LocalAssum (x,t) in
+	lamec_rec (push_rel d env) (Context.Rel.add d l) c
+    | LetIn (x,b,t,c) ->
+        let d = RelDecl.LocalDef (x,b,t) in
+	lamec_rec (push_rel d env) (Context.Rel.add d l) c
+    | Cast (c,_,_)    -> lamec_rec env l c
+    | _               -> l,rty
+  in
+  lamec_rec env Context.Rel.empty
+
+exception NotArity
+
+let dest_arity env c =
+  let l, c = dest_prod_assum env c in
+  match kind_of_term c with
+    | Sort s -> l,s
+    | _ -> raise NotArity
+
+let is_arity env c =
+  try
+    let _ = dest_arity env c in
+    true
+  with NotArity -> false

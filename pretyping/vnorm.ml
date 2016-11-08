@@ -12,6 +12,7 @@ open Declarations
 open Term
 open Vars
 open Environ
+open Preinductive
 open Inductive
 open CClosure
 open Reduction
@@ -98,7 +99,7 @@ let construct_of_constr_const env tag typ =
 let construct_of_constr_block = construct_of_constr false
 
 let type_of_ind env (ind, u) =
-  type_of_inductive env (Inductive.lookup_mind_specif env ind, u)
+  type_of_inductive env (Preinductive.lookup_mind_specif env ind, u)
 
 let build_branches_type env (mind,_ as _ind) mib mip u params dep p =
   let rtbl = mip.mind_reloc_tbl in
@@ -236,7 +237,7 @@ and nf_stk ?from:(from=0) env c t stk  =
   | Zswitch sw :: stk ->
       assert (from = 0) ;
       let ((mind,_ as ind), u), allargs = find_rectype_a env t in
-      let (mib,mip) = Inductive.lookup_mind_specif env ind in
+      let (mib,mip) = Preinductive.lookup_mind_specif env ind in
       let nparams = mib.mind_nparams in
       let params,realargs = Util.Array.chop nparams allargs in
       let pT =

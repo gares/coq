@@ -235,6 +235,35 @@ val whd_allnolet : env -> constr -> constr
 val whd_betaiota     : env -> constr -> constr
 val nf_betaiota      : env -> constr -> constr
 
+(************************************************************************)
+
+(** Builds an application node, reducing beta redexes it may produce. *)
+val beta_applist : constr -> constr list -> constr
+
+(** Builds an application node, reducing beta redexes it may produce. *)
+val beta_appvect : constr -> constr array -> constr
+
+(** Builds an application node, reducing beta redexe it may produce. *)
+val beta_app : constr -> constr -> constr
+
+(** Pseudo-reduction rule  Prod(x,A,B) a --> B[x\a] *)
+val hnf_prod_applist : env -> types -> constr list -> types
+
+(** Compatibility alias for Term.lambda_appvect_assum *)
+val betazeta_appvect : int -> constr -> constr array -> constr
+
+(***********************************************************************
+  s Recognizing products and arities modulo reduction *)
+
+val dest_prod       : env -> types -> Context.Rel.t * types
+val dest_prod_assum : env -> types -> Context.Rel.t * types
+val dest_lam_assum  : env -> types -> Context.Rel.t * types
+
+exception NotArity
+
+val dest_arity : env -> types -> arity (* raises NotArity if not an arity *)
+val is_arity   : env -> types -> bool
+
 (***********************************************************************
   i This is for lazy debug *)
 

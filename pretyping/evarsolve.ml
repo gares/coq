@@ -1228,10 +1228,10 @@ let solve_evar_evar ?(force=false) f g env evd pbty (evk1,args1 as ev1) (evk2,ar
       (* ?X : Π Δ. Type i = ?Y : Π Δ'. Type j.
 	 The body of ?X and ?Y just has to be of type Π Δ. Type k for some k <= i, j. *)
       let evienv = Evd.evar_env evi in
-      let ctx1, i = Reduction.dest_arity evienv evi.evar_concl in
+      let ctx1, i = CClosure.dest_arity evienv evi.evar_concl in
       let evi2 = Evd.find evd evk2 in
       let evi2env = Evd.evar_env evi2 in
-      let ctx2, j = Reduction.dest_arity evi2env evi2.evar_concl in
+      let ctx2, j = CClosure.dest_arity evi2env evi2.evar_concl in
       let ui, uj = univ_of_sort i, univ_of_sort j in
 	if i == j || Evd.check_eq evd ui uj
 	then (* Shortcut, i = j *) 
@@ -1248,7 +1248,7 @@ let solve_evar_evar ?(force=false) f g env evd pbty (evk1,args1 as ev1) (evk2,ar
           let t2 = it_mkProd_or_LetIn (mkSort k) ctx2 in
 	  let evd = Evd.set_leq_sort env (Evd.set_leq_sort env evd k i) k j in
           downcast evk2 t2 (downcast evk1 t1 evd)
-    with Reduction.NotArity -> 
+    with CClosure.NotArity -> 
       evd in
   solve_evar_evar_aux force f g env evd pbty ev1 ev2
 

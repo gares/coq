@@ -136,7 +136,7 @@ let prNamedRLDecl s lc =
 let showind (id:Id.t) =
   let cstrid = Constrintern.global_reference id in
   let ind1,cstrlist = Inductiveops.find_inductive (Global.env()) Evd.empty cstrid in
-  let mib1,ib1 = Inductive.lookup_mind_specif (Global.env()) (fst ind1) in
+  let mib1,ib1 = Preinductive.lookup_mind_specif (Global.env()) (fst ind1) in
   List.iter (fun decl ->
     print_string (string_of_name (Context.Rel.Declaration.get_name decl) ^ ":");
     prconstr (RelDecl.get_type decl); print_string "\n")
@@ -870,8 +870,8 @@ let mkProd_reldecl (rdecl:Context.Rel.Declaration.t) (t2:glob_constr) =
 let merge_inductive (ind1: inductive) (ind2: inductive)
     (lnk1: linked_var array) (lnk2: linked_var array) id =
   let env = Global.env() in
-  let mib1,_ = Inductive.lookup_mind_specif env ind1 in
-  let mib2,_ = Inductive.lookup_mind_specif env ind2 in
+  let mib1,_ = Preinductive.lookup_mind_specif env ind1 in
+  let mib2,_ = Preinductive.lookup_mind_specif env ind2 in
   let _ = verify_inds mib1 mib2 in (* raises an exception if something wrong *)
   (* compute params that become ordinary args (because linked to ord. args) *)
   let shift_prm = shift_linked_params mib1 mib2 lnk1 lnk2 id in

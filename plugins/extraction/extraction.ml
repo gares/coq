@@ -16,6 +16,7 @@ open Declareops
 open Environ
 open Reduction
 open Reductionops
+open Preinductive
 open Inductive
 open Termops
 open Inductiveops
@@ -372,7 +373,7 @@ and extract_really_ind env kn mib =
       Array.mapi
 	(fun i mip ->
 	   let (_,u),_ = Universes.fresh_inductive_instance env (kn,i) in
-	   let ar = Inductive.type_of_inductive env ((mib,mip),u) in
+	   let ar = Preinductive.type_of_inductive env ((mib,mip),u) in
 	   let info = (fst (flag_of_type env ar) = Info) in
 	   let s,v = if info then type_sign_vl env ar else [],[] in
 	   let t = Array.make (Array.length mip.mind_nf_lc) [] in
@@ -398,7 +399,7 @@ and extract_really_ind env kn mib =
 	let types = arities_of_constructors env ((kn,i),u) in
 	for j = 0 to Array.length types - 1 do
 	  let t = snd (decompose_prod_n npar types.(j)) in
-	  let prods,head = dest_prod epar t in
+	  let prods,head = CClosure.dest_prod epar t in
 	  let nprods = List.length prods in
           let args = match kind_of_term head with
             | App (f,args) -> args (* [kind_of_term f = Ind ip] *)
@@ -460,7 +461,7 @@ and extract_really_ind env kn mib =
 	(* If so, we use this information. *)
 	begin try
 	  let n = nb_default_params env
-            (Inductive.type_of_inductive env ((mib,mip0),u))
+            (Preinductive.type_of_inductive env ((mib,mip0),u))
 	  in
 	  let check_proj kn = if Cset.mem kn !projs then add_projection n kn ip
           in

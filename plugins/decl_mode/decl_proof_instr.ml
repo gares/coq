@@ -95,7 +95,7 @@ let special_nf gl=
     (fun t -> CClosure.norm_val infos (CClosure.inject t))
 
 let is_good_inductive env ind =
-  let mib,oib = Inductive.lookup_mind_specif env ind in
+  let mib,oib = Preinductive.lookup_mind_specif env ind in
     Int.equal oib.mind_nrealargs 0 && not (Inductiveops.mis_is_recursive (ind,mib,oib))
 
 let check_not_per pts =
@@ -345,15 +345,15 @@ let enstack_subsubgoals env se stack gls=
     match kind_of_term hd with
 	Ind (ind,u as indu) when is_good_inductive env ind -> (* MS: FIXME *)
 	  let mib,oib=
-	    Inductive.lookup_mind_specif env ind in
+	    Preinductive.lookup_mind_specif env ind in
           let gentypes=
-            Inductive.arities_of_constructors indu (mib,oib) in
+            Preinductive.arities_of_constructors indu (mib,oib) in
 	  let process i gentyp =
 	    let constructor = mkConstructU ((ind,succ i),u)
 	      (* constructors numbering*) in
 	    let appterm = applist (constructor,params) in
 	    let apptype = prod_applist gentyp params in
-	    let rc,_ = Reduction.dest_prod env apptype in
+	    let rc,_ = CClosure.dest_prod env apptype in
 	    let rec meta_aux last lenv = function
 		[] -> (last,lenv,[])
 	      | decl::q ->
@@ -716,12 +716,12 @@ let conjunction_arity id gls =
     match kind_of_term hd with
 	Ind (ind,u as indu) when is_good_inductive env ind ->
 	  let mib,oib=
-	    Inductive.lookup_mind_specif env ind in
+	    Preinductive.lookup_mind_specif env ind in
           let gentypes=
-            Inductive.arities_of_constructors indu (mib,oib) in
+            Preinductive.arities_of_constructors indu (mib,oib) in
 	  let _ = if not (Int.equal (Array.length gentypes) 1) then raise Not_found in
 	  let apptype = prod_applist gentypes.(0) params in
-	  let rc,_ = Reduction.dest_prod env apptype in
+	  let rc,_ = CClosure.dest_prod env apptype in
 	    List.length rc
       | _ -> raise Not_found
 
@@ -1267,7 +1267,7 @@ let rec execute_cases fix_name per_info tacnext args objs nhrec tree gls =
 	let elim_pred = List.fold_right abstract_obj
 	  real_args (lambda_create env (ctyp,subst_term casee concl)) in
 	let case_info = Inductiveops.make_case_info env ind RegularStyle in
-	let gen_arities = Inductive.arities_of_constructors (ind,u) spec in
+	let gen_arities = Preinductive.arities_of_constructors (ind,u) spec in
 	let f_ids typ =
 	  let sign =
 	    (prod_assum (prod_applist typ params)) in

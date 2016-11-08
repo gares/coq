@@ -881,7 +881,7 @@ let extract_constant_inline inline r ids s =
 	let env = Global.env () in
 	let typ = Global.type_of_global_unsafe (ConstRef kn) in
 	let typ = CClosure.whd_all env typ in
-	if Reduction.is_arity env typ
+	if CClosure.is_arity env typ
 	  then begin
 	    let nargs = Hook.get use_type_scheme_nb_args env typ in
 	    if not (Int.equal (List.length ids) nargs) then error_axiom_scheme g nargs

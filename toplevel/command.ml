@@ -442,7 +442,7 @@ let interp_ind_arity env evdref ind =
   let imps = Implicit_quantifiers.implicits_of_glob_constr ~with_products:true c in
   let t, impls = understand_tcc_evars env evdref ~expected_type:IsType c, imps in
   let pseudo_poly = check_anonymous_type c in
-  let () = if not (Reduction.is_arity env t) then
+  let () = if not (CClosure.is_arity env t) then
     user_err ~loc:(constr_loc ind.ind_arity) (str "Not an arity")
   in
     t, pseudo_poly, impls
@@ -472,7 +472,7 @@ let sup_list min = List.fold_left Univ.sup min
 
 let extract_level env evd min tys = 
   let sorts = List.map (fun ty -> 
-    let ctx, concl = Reduction.dest_prod_assum env ty in
+    let ctx, concl = CClosure.dest_prod_assum env ty in
       sign_level env evd (LocalAssum (Anonymous, concl) :: ctx)) tys
   in sup_list min sorts
 
@@ -482,7 +482,7 @@ let is_flexible_sort evd u =
   | None -> false
 
 let inductive_levels env evdref poly arities inds =
-  let destarities = List.map (fun x -> x, Reduction.dest_arity env x) arities in
+  let destarities = List.map (fun x -> x, CClosure.dest_arity env x) arities in
   let levels = List.map (fun (x,(ctx,a)) -> 
     if a = Prop Null then None
     else Some (univ_of_sort a)) destarities

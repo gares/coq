@@ -18,46 +18,10 @@ open Environ
 open CClosure
 open Reduction
 open Type_errors
+open Preinductive
 open Context.Rel.Declaration
 
 type mind_specif = mutual_inductive_body * one_inductive_body
-
-(* raise Not_found if not an inductive type *)
-let lookup_mind_specif env (kn,tyi) =
-  let mib = Environ.lookup_mind kn env in
-  if tyi >= Array.length mib.mind_packets then
-    error "Inductive.lookup_mind_specif: invalid inductive index";
-  (mib, mib.mind_packets.(tyi))
-
-let find_rectype env c =
-  let (t, l) = decompose_app (whd_all env c) in
-  match kind_of_term t with
-  | Ind ind -> (ind, l)
-  | _ -> raise Not_found
-
-let find_inductive env c =
-  let (t, l) = decompose_app (whd_all env c) in
-  match kind_of_term t with
-    | Ind ind
-        when (fst (lookup_mind_specif env (out_punivs ind))).mind_finite <> Decl_kinds.CoFinite -> (ind, l)
-    | _ -> raise Not_found
-
-let find_coinductive env c =
-  let (t, l) = decompose_app (whd_all env c) in
-  match kind_of_term t with
-    | Ind ind
-        when (fst (lookup_mind_specif env (out_punivs ind))).mind_finite == Decl_kinds.CoFinite -> (ind, l)
-    | _ -> raise Not_found
-
-let inductive_params (mib,_) = mib.mind_nparams
-
-let inductive_paramdecls (mib,u) = 
-  Vars.subst_instance_context u mib.mind_params_ctxt
-
-let instantiate_inductive_constraints mib u =
-  if mib.mind_polymorphic then
-    Univ.subst_instance_constraints u (Univ.UContext.constraints mib.mind_universes)
-  else Univ.Constraint.empty
 
 
 (************************************************************************)
@@ -100,135 +64,6 @@ let full_inductive_instantiate mib u params sign =
 let full_constructor_instantiate ((mind,_),u,(mib,_),params) t =
   let inst_ind = constructor_instantiate mind u mib t in
    instantiate_params true inst_ind u params mib.mind_params_ctxt
-		      
-(************************************************************************)
-(************************************************************************)
-
-(* Functions to build standard types related to inductive *)
-
-(*
-Computing the actual sort of an applied or partially applied inductive type:
-
-I_i: forall uniformparams:utyps, forall otherparams:otyps, Type(a)
-uniformargs : utyps
-otherargs : otyps
-I_1:forall ...,s_1;...I_n:forall ...,s_n |- sort(C_kj(uniformargs)) = s_kj
-s'_k = max(..s_kj..)
-merge(..s'_k..) = ..s''_k..
---------------------------------------------------------------------
-Gamma |- I_i uniformargs otherargs : phi(s''_i)
-
-where
-
-- if p=0, phi() = Prop
-- if p=1, phi(s) = s
-- if p<>1, phi(s) = sup(Set,s)
-
-Remark: Set (predicative) is encoded as Type(0)
-*)
-
-let sort_as_univ = function
-| Type u -> u
-| Prop Null -> Universe.type0m
-| Prop Pos -> Universe.type0
-
-(* Template polymorphism *)
-
-(* cons_subst add the mapping [u |-> su] in subst if [u] is not *)
-(* in the domain or add [u |-> sup x su] if [u] is already mapped *)
-(* to [x]. *)
-let cons_subst u su subst =
-  try
-    Univ.LMap.add u (Univ.sup (Univ.LMap.find u subst) su) subst
-  with Not_found -> Univ.LMap.add u su subst
-
-(* remember_subst updates the mapping [u |-> x] by [u |-> sup x u] *)
-(* if it is presents and returns the substitution unchanged if not.*)
-let remember_subst u subst =
-  try
-    let su = Universe.make u in
-    Univ.LMap.add u (Univ.sup (Univ.LMap.find u subst) su) subst
-  with Not_found -> subst
-
-(* Bind expected levels of parameters to actual levels *)
-(* Propagate the new levels in the signature *)
-let make_subst env =
-  let rec make subst = function
-    | LocalDef _ :: sign, exp, args ->
-        make subst (sign, exp, args)
-    | d::sign, None::exp, args ->
-        let args = match args with _::args -> args | [] -> [] in
-        make subst (sign, exp, args)
-    | d::sign, Some u::exp, a::args ->
-        (* We recover the level of the argument, but we don't change the *)
-        (* level in the corresponding type in the arity; this level in the *)
-        (* arity is a global level which, at typing time, will be enforce *)
-        (* to be greater than the level of the argument; this is probably *)
-        (* a useless extra constraint *)
-        let s = sort_as_univ (snd (dest_arity env (Lazy.force a))) in
-          make (cons_subst u s subst) (sign, exp, args)
-    | LocalAssum (na,t) :: sign, Some u::exp, [] ->
-        (* No more argument here: we add the remaining universes to the *)
-        (* substitution (when [u] is distinct from all other universes in the *)
-        (* template, it is identity substitution  otherwise (ie. when u is *)
-        (* already in the domain of the substitution) [remember_subst] will *)
-        (* update its image [x] by [sup x u] in order not to forget the *)
-        (* dependency in [u] that remains to be fullfilled. *)
-        make (remember_subst u subst) (sign, exp, [])
-    | sign, [], _ ->
-        (* Uniform parameters are exhausted *)
-        subst
-    | [], _, _ ->
-        assert false
-  in
-  make Univ.LMap.empty
-
-exception SingletonInductiveBecomesProp of Id.t
-
-let instantiate_universes env ctx ar argsorts =
-  let args = Array.to_list argsorts in
-  let subst = make_subst env (ctx,ar.template_param_levels,args) in
-  let level = Univ.subst_univs_universe (Univ.make_subst subst) ar.template_level in
-  let ty =
-    (* Singleton type not containing types are interpretable in Prop *)
-    if is_type0m_univ level then prop_sort
-    (* Non singleton type not containing types are interpretable in Set *)
-    else if is_type0_univ level then set_sort
-    (* This is a Type with constraints *)
-    else Type level
-  in
-    (ctx, ty)
-
-(* Type of an inductive type *)
-
-let type_of_inductive_gen ?(polyprop=true) env ((mib,mip),u) paramtyps =
-  match mip.mind_arity with
-  | RegularArity a -> subst_instance_constr u a.mind_user_arity
-  | TemplateArity ar ->
-    let ctx = List.rev mip.mind_arity_ctxt in
-    let ctx,s = instantiate_universes env ctx ar paramtyps in
-      (* The Ocaml extraction cannot handle (yet?) "Prop-polymorphism", i.e.
-         the situation where a non-Prop singleton inductive becomes Prop
-         when applied to Prop params *)
-      if not polyprop && not (is_type0m_univ ar.template_level) && is_prop_sort s
-      then raise (SingletonInductiveBecomesProp mip.mind_typename);
-      mkArity (List.rev ctx,s)
-
-let type_of_inductive env pind = 
-  type_of_inductive_gen env pind [||]
-
-let constrained_type_of_inductive env ((mib,mip),u as pind) =
-  let ty = type_of_inductive env pind in
-  let cst = instantiate_inductive_constraints mib u in
-    (ty, cst)
-
-let constrained_type_of_inductive_knowing_parameters env ((mib,mip),u as pind) args =
-  let ty = type_of_inductive_gen env pind args in
-  let cst = instantiate_inductive_constraints mib u in
-    (ty, cst)
-
-let type_of_inductive_knowing_parameters env ?(polyprop=true) mip args =
-  type_of_inductive_gen ~polyprop env mip args
 
 (* The max of an array of universes *)
 
@@ -239,33 +74,6 @@ let cumulate_constructor_univ u = function
 
 let max_inductive_sort =
   Array.fold_left cumulate_constructor_univ Universe.type0m
-
-(************************************************************************)
-(* Type of a constructor *)
-
-let type_of_constructor (cstr, u) (mib,mip) =
-  let ind = inductive_of_constructor cstr in
-  let specif = mip.mind_user_lc in
-  let i = index_of_constructor cstr in
-  let nconstr = Array.length mip.mind_consnames in
-  if i > nconstr then error "Not enough constructors in the type.";
-  constructor_instantiate (fst ind) u mib specif.(i-1)
-
-let constrained_type_of_constructor (cstr,u as cstru) (mib,mip as ind) =
-  let ty = type_of_constructor cstru ind in
-  let cst = instantiate_inductive_constraints mib u in
-    (ty, cst)
-
-let arities_of_specif (kn,u) (mib,mip) =
-  let specif = mip.mind_nf_lc in
-    Array.map (constructor_instantiate kn u mib) specif
-
-let arities_of_constructors ind specif =
-  arities_of_specif (fst (fst ind), snd ind) specif
-
-let type_of_constructors (ind,u) (mib,mip) =
-  let specif = mip.mind_user_lc in
-    Array.map (constructor_instantiate (fst ind) u mib) specif
 
 (************************************************************************)
 

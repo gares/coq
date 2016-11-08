@@ -74,33 +74,4 @@ val vm_conv : conv_pb -> types kernel_conversion_function
 val default_conv     : conv_pb -> ?l2r:bool -> types kernel_conversion_function
 val default_conv_leq : ?l2r:bool -> types kernel_conversion_function
 
-(************************************************************************)
-
-(** Builds an application node, reducing beta redexes it may produce. *)
-val beta_applist : constr -> constr list -> constr
-
-(** Builds an application node, reducing beta redexes it may produce. *)
-val beta_appvect : constr -> constr array -> constr
-
-(** Builds an application node, reducing beta redexe it may produce. *)
-val beta_app : constr -> constr -> constr
-
-(** Pseudo-reduction rule  Prod(x,A,B) a --> B[x\a] *)
-val hnf_prod_applist : env -> types -> constr list -> types
-
-(** Compatibility alias for Term.lambda_appvect_assum *)
-val betazeta_appvect : int -> constr -> constr array -> constr
-
-(***********************************************************************
-  s Recognizing products and arities modulo reduction *)
-
-val dest_prod       : env -> types -> Context.Rel.t * types
-val dest_prod_assum : env -> types -> Context.Rel.t * types
-val dest_lam_assum  : env -> types -> Context.Rel.t * types
-
-exception NotArity
-
-val dest_arity : env -> types -> arity (* raises NotArity if not an arity *)
-val is_arity   : env -> types -> bool
-
 val warn_bytecode_compiler_failed : ?loc:Loc.t -> unit -> unit

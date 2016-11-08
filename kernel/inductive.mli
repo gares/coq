@@ -12,62 +12,15 @@ open Univ
 open Declarations
 open Environ
 
-(** {6 Extracting an inductive type from a construction } *)
-
-(** [find_m*type env sigma c] coerce [c] to an recursive type (I args).
-   [find_rectype], [find_inductive] and [find_coinductive]
-   respectively accepts any recursive type, only an inductive type and
-   only a coinductive type.
-   They raise [Not_found] if not convertible to a recursive type. *)
-
-val find_rectype     : env -> types -> pinductive * constr list
-val find_inductive   : env -> types -> pinductive * constr list
-val find_coinductive : env -> types -> pinductive * constr list
-
 type mind_specif = mutual_inductive_body * one_inductive_body
-
-(** {6 ... } *)
-(** Fetching information in the environment about an inductive type.
-    Raises [Not_found] if the inductive type is not found. *)
-val lookup_mind_specif : env -> inductive -> mind_specif
 
 (** {6 Functions to build standard types related to inductive } *)
 val ind_subst : mutual_inductive -> mutual_inductive_body -> universe_instance -> constr list
-
-val inductive_paramdecls : mutual_inductive_body puniverses -> Context.Rel.t
-
-val instantiate_inductive_constraints : 
-  mutual_inductive_body -> universe_instance -> constraints
-
-val constrained_type_of_inductive : env -> mind_specif puniverses -> types constrained
-val constrained_type_of_inductive_knowing_parameters : 
-  env -> mind_specif puniverses -> types Lazy.t array -> types constrained
-
-val type_of_inductive : env -> mind_specif puniverses -> types
-
-val type_of_inductive_knowing_parameters : 
-  env -> ?polyprop:bool -> mind_specif puniverses -> types Lazy.t array -> types
 
 val elim_sorts : mind_specif -> sorts_family list
 
 val is_private : mind_specif -> bool
 val is_primitive_record : mind_specif -> bool
-
-(** Return type as quoted by the user *)
-
-val constrained_type_of_constructor : pconstructor -> mind_specif -> types constrained
-val type_of_constructor : pconstructor -> mind_specif -> types
-
-(** Return constructor types in normal form *)
-val arities_of_constructors : pinductive -> mind_specif -> types array
-
-(** Return constructor types in user form *)
-val type_of_constructors : pinductive -> mind_specif -> types array
-
-(** Transforms inductive specification into types (in nf) *)
-val arities_of_specif : mutual_inductive puniverses -> mind_specif -> types array
-
-val inductive_params : mind_specif -> int
 
 (** [type_case_branches env (I,args) (p:A) c] computes useful types
    about the following Cases expression:
@@ -109,12 +62,7 @@ val check_cofix : env -> cofixpoint -> unit
     parameter instantiation. This is used by the Ocaml extraction,
     which cannot handle (yet?) Prop-polymorphism. *)
 
-exception SingletonInductiveBecomesProp of Id.t
-
 val max_inductive_sort : sorts array -> universe
-
-val instantiate_universes : env -> Context.Rel.t ->
-  template_arity -> constr Lazy.t array -> Context.Rel.t * sorts
 
 (** {6 Debug} *)
 

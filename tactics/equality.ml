@@ -15,6 +15,7 @@ open Term
 open Vars
 open Termops
 open Namegen
+open Preinductive
 open Inductive
 open Inductiveops
 open Environ

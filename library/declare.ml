@@ -368,7 +368,7 @@ let inInductive : inductive_obj -> obj =
     discharge_function = discharge_inductive }
 
 let declare_projections mind =
-  let spec,_ = Inductive.lookup_mind_specif (Global.env ()) (mind,0) in
+  let spec,_ = Preinductive.lookup_mind_specif (Global.env ()) (mind,0) in
     match spec.mind_record with
     | Some (Some (_, kns, pjs)) ->
       Array.iteri (fun i kn ->

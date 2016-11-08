@@ -174,7 +174,7 @@ and coerce loc env evdref (x : Term.constr) (y : Term.constr)
 		with UnableToUnify _ -> raise NoSubtacCoercion
 	      in
 		(* Disallow equalities on arities *)
-		if Reduction.is_arity env eqT then raise NoSubtacCoercion;
+		if CClosure.is_arity env eqT then raise NoSubtacCoercion;
 		let restargs = lift_args 1
 		  (List.rev (Array.to_list (Array.sub l (succ i) (len - (succ i)))))
 		in

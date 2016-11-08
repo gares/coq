@@ -132,7 +132,7 @@ exception Impossible
 
 let check_arity env cb =
   let t = Typeops.type_of_constant_type env cb.const_type in
-  if Reduction.is_arity env t then raise Impossible
+  if CClosure.is_arity env t then raise Impossible
 
 let check_fix env cb i =
   match cb.const_body with

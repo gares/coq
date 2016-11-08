@@ -109,7 +109,7 @@ let type_of_global_ref gr =
     | Globnames.VarRef v ->
 	"var" ^ type_of_logical_kind (Decls.variable_kind v)
     | Globnames.IndRef ind ->
-	let (mib,oib) = Inductive.lookup_mind_specif (Global.env ()) ind in
+	let (mib,oib) = Preinductive.lookup_mind_specif (Global.env ()) ind in
 	  if mib.Declarations.mind_record <> None then
             let open Decl_kinds in
             begin match mib.Declarations.mind_finite with

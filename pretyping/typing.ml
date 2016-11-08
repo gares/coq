@@ -14,6 +14,7 @@ open Vars
 open Environ
 open Reductionops
 open Type_errors
+open Preinductive
 open Inductive
 open Inductiveops
 open Typeops
@@ -33,7 +34,7 @@ let constant_type_knowing_parameters env cst jl =
 let inductive_type_knowing_parameters env (ind,u) jl =
   let mspec = lookup_mind_specif env ind in
   let paramstyp = Array.map (fun j -> lazy j.uj_type) jl in
-  Inductive.type_of_inductive_knowing_parameters env (mspec,u) paramstyp
+  Preinductive.type_of_inductive_knowing_parameters env (mspec,u) paramstyp
 
 let e_type_judgment env evdref j =
   match kind_of_term (whd_all env !evdref j.uj_type) with

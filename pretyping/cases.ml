@@ -1154,7 +1154,7 @@ let rec irrefutable env = function
   | PatVar (_,name) -> true
   | PatCstr (_,cstr,args,_) ->
       let ind = inductive_of_constructor cstr in
-      let (_,mip) = Inductive.lookup_mind_specif env ind in
+      let (_,mip) = Preinductive.lookup_mind_specif env ind in
       let one_constr = Int.equal (Array.length mip.mind_user_lc) 1 in
       one_constr && List.for_all (irrefutable env) args
 

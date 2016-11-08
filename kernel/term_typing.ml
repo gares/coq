@@ -234,7 +234,7 @@ let infer_declaration ~trust env kn dcl =
         univs, c.const_entry_inline_code, c.const_entry_secctx
 
   | ProjectionEntry {proj_entry_ind = ind; proj_entry_arg = i} ->
-    let mib, _ = Inductive.lookup_mind_specif env (ind,0) in
+    let mib, _ = Preinductive.lookup_mind_specif env (ind,0) in
     let kn, pb = 
       match mib.mind_record with
       | Some (Some (id, kns, pbs)) -> 

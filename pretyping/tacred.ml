@@ -1153,13 +1153,13 @@ let pattern_occs loccs_trm = { e_redfun = begin fun env sigma c ->
 (* Used in several tactics. *)
 
 let check_privacy env ind =
-  let spec = Inductive.lookup_mind_specif env (fst ind) in
+  let spec = Preinductive.lookup_mind_specif env (fst ind) in
   if Inductive.is_private spec then
     user_err  (str "case analysis on a private type.")
   else ind
 
 let check_not_primitive_record env ind =
-  let spec = Inductive.lookup_mind_specif env (fst ind) in
+  let spec = Preinductive.lookup_mind_specif env (fst ind) in
     if Inductive.is_primitive_record spec then
       user_err  (str "case analysis on a primitive record type: " ++
 		       str "use projections or let instead.")

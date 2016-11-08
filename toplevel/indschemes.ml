@@ -21,6 +21,7 @@ open Names
 open Declarations
 open Entries
 open Term
+open Preinductive
 open Inductive
 open Decl_kinds
 open Indrec
@@ -465,7 +466,7 @@ let build_combined_scheme env schemes =
       match kind_of_term last with
 	| App (ind, args) ->
 	    let ind = destInd ind in
-	    let (_,spec) = Inductive.lookup_mind_specif env (fst ind) in
+	    let (_,spec) = Preinductive.lookup_mind_specif env (fst ind) in
 	      ctx, ind, spec.mind_nrealargs
 	| _ -> ctx, destInd last, 0
   in
