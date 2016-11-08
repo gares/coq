@@ -14,6 +14,7 @@ open Term
 open Vars
 open Declarations
 open Environ
+open CClosure
 open Reduction
 open Inductive
 open Type_errors

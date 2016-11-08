@@ -16,6 +16,7 @@ open Declarations
 open Declareops
 open Inductive
 open Environ
+open CClosure
 open Reduction
 open Typeops
 open Entries

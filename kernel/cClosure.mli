@@ -224,6 +224,18 @@ val unfold_reference : clos_infos -> table_key -> fconstr option
 val eq_table_key : table_key -> table_key -> bool
 
 (***********************************************************************
+  s Reduction functions *)
+
+(* None of these functions do eta reduction *)
+
+val whd_betaiotazeta        : env -> constr -> constr
+val whd_all                 : env -> constr -> constr
+val whd_allnolet : env -> constr -> constr
+
+val whd_betaiota     : env -> constr -> constr
+val nf_betaiota      : env -> constr -> constr
+
+(***********************************************************************
   i This is for lazy debug *)
 
 val lift_fconstr      : int -> fconstr -> fconstr

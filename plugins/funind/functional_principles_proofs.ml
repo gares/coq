@@ -209,7 +209,7 @@ let prove_trivial_eq h_id context (constructor,type_of_term,term) =
 
 
 let find_rectype env c =
-  let (t, l) = decompose_app (Reduction.whd_betaiotazeta env c) in
+  let (t, l) = decompose_app (CClosure.whd_betaiotazeta env c) in
   match kind_of_term t with
   | Ind ind -> (t, l)
   | Construct _ -> (t,l)
@@ -283,7 +283,7 @@ let change_eq env sigma hyp_id (context:Context.Rel.t) x t end_of_type  =
 	  List.fold_left2 compute_substitution sub args1 args2
 	end
       else
-	if (eq_constr t1 t2) then sub else nochange ~t':(make_refl_eq constructor (Reduction.whd_all env t1) t2)  "cannot solve (diff)"
+	if (eq_constr t1 t2) then sub else nochange ~t':(make_refl_eq constructor (CClosure.whd_all env t1) t2)  "cannot solve (diff)"
     in
     let sub = compute_substitution Int.Map.empty (snd t1) (snd t2) in
     let sub = compute_substitution sub (fst t1) (fst t2) in

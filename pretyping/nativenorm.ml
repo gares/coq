@@ -10,6 +10,7 @@ open CErrors
 open Term
 open Vars
 open Environ
+open CClosure
 open Reduction
 open Univ
 open Declarations

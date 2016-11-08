@@ -17,6 +17,7 @@ open Util
 open Names
 open Term
 open Termops
+open CClosure
 open Reduction
 open Proof_type
 open Tacticals

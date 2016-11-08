@@ -12,6 +12,7 @@ open Names
 open Globnames
 open Nameops
 open Term
+open CClosure
 open Reduction
 open Declarations
 open Environ

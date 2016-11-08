@@ -14,6 +14,7 @@ open Nameops
 open Namegen
 open Term
 open Vars
+open CClosure
 open Reduction
 open Tacticals.New
 open Tacmach
@@ -324,7 +325,7 @@ end) = struct
     let rec aux evars env prod n = 
       if Int.equal n 0 then start evars env prod
       else
-	match kind_of_term (Reduction.whd_all env prod) with
+	match kind_of_term (CClosure.whd_all env prod) with
 	| Prod (na, ty, b) ->
 	  if noccurn 1 b then
 	    let b' = lift (-1) b in

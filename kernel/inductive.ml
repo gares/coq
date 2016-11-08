@@ -15,6 +15,7 @@ open Vars
 open Declarations
 open Declareops
 open Environ
+open CClosure
 open Reduction
 open Type_errors
 open Context.Rel.Declaration

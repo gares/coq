@@ -461,7 +461,7 @@ let sign_level env evd sign =
       match d with
       | LocalDef _ -> lev, push_rel d env
       | LocalAssum _ ->
-	let s = destSort (Reduction.whd_all env 
+	let s = destSort (CClosure.whd_all env
 			    (nf_evar evd (Retyping.get_type_of env evd (RelDecl.get_type d))))
 	in
 	let u = univ_of_sort s in

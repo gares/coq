@@ -1067,3 +1067,31 @@ let unfold_reference info key =
       ref_value_cache info key
     else None
   | _ -> ref_value_cache info key
+
+(****************************************************************************)
+(*                   Reduction Functions                                    *)
+(****************************************************************************)
+
+let whd_betaiota env t =
+  whd_val (create_clos_infos betaiota env) (inject t)
+
+let nf_betaiota env t =
+  norm_val (create_clos_infos betaiota env) (inject t)
+
+let whd_betaiotazeta env x =
+  match kind_of_term x with
+    | (Sort _|Var _|Meta _|Evar _|Const _|Ind _|Construct _|
+       Prod _|Lambda _|Fix _|CoFix _) -> x
+    | _ -> whd_val (create_clos_infos betaiotazeta env) (inject x)
+
+let whd_all env t =
+  match kind_of_term t with
+    | (Sort _|Meta _|Evar _|Ind _|Construct _|
+       Prod _|Lambda _|Fix _|CoFix _) -> t
+    | _ -> whd_val (create_clos_infos all env) (inject t)
+
+let whd_allnolet env t =
+  match kind_of_term t with
+    | (Sort _|Meta _|Evar _|Ind _|Construct _|
+       Prod _|Lambda _|Fix _|CoFix _|LetIn _) -> t
+    | _ -> whd_val (create_clos_infos allnolet env) (inject t)

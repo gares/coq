@@ -13,6 +13,7 @@ open Term
 open Vars
 open Environ
 open Inductive
+open CClosure
 open Reduction
 open Vm
 open Context.Rel.Declaration

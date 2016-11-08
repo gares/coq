@@ -10,18 +10,6 @@ open Term
 open Environ
 
 (***********************************************************************
-  s Reduction functions *)
-
-(* None of these functions do eta reduction *)
-
-val whd_betaiotazeta        : env -> constr -> constr
-val whd_all                 : env -> constr -> constr
-val whd_allnolet : env -> constr -> constr
-
-val whd_betaiota     : env -> constr -> constr
-val nf_betaiota      : env -> constr -> constr
-
-(***********************************************************************
   s conversion functions *)
 
 exception NotConvertible
