@@ -28,6 +28,7 @@ Environ
 CClosure
 Type_errors
 Preinductive
+Retypeops
 Reduction
 Nativeconv
 Modops
