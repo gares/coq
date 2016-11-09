@@ -360,16 +360,18 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
            we throw them away *)
         if not (is_empty_stack v1 && is_empty_stack v2) then
 	  anomaly (Pp.str "conversion was given ill-typed terms (FLambda)");
-        let (_,ty1,bd1) = destFLambda mk_clos hd1 in
+        let (x1,ty1,bd1) = destFLambda mk_clos hd1 in
         let (_,ty2,bd2) = destFLambda mk_clos hd2 in
         let cuniv = ccnv CONV l2r infos el1 el2 ty1 ty2 cuniv in
+        let infos = info_push_rel (LocalAssum (x1, term_of_fconstr_lift el1 ty1)) infos in
         ccnv CONV l2r infos (el_lift el1) (el_lift el2) bd1 bd2 cuniv
 
-    | (FProd (_,c1,c2), FProd (_,c'1,c'2)) ->
+    | (FProd (x1,c1,c2), FProd (_,c'1,c'2)) ->
         if not (is_empty_stack v1 && is_empty_stack v2) then
 	  anomaly (Pp.str "conversion was given ill-typed terms (FProd)");
 	(* Luo's system *)
         let cuniv = ccnv CONV l2r infos el1 el2 c1 c'1 cuniv in
+        let infos = info_push_rel (LocalAssum (x1, term_of_fconstr_lift el1 c1)) infos in
         ccnv cv_pb l2r infos (el_lift el1) (el_lift el2) c2 c'2 cuniv
 
     (* Eta-expansion on the fly *)
@@ -379,7 +381,8 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
         | _ ->
           anomaly (Pp.str "conversion was given unreduced term (FLambda)")
         in
-        let (_,_ty1,bd1) = destFLambda mk_clos hd1 in
+        let (x1,ty1,bd1) = destFLambda mk_clos hd1 in
+        let infos = info_push_rel (LocalAssum (x1, term_of_fconstr_lift lft1 ty1)) infos in
 	eqappr CONV l2r infos
 	  (el_lift lft1, (bd1, [])) (el_lift lft2, (hd2, eta_expand_stack v2)) cuniv
     | (_, FLambda _) ->
@@ -388,7 +391,8 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
         | _ ->
 	  anomaly (Pp.str "conversion was given unreduced term (FLambda)")
 	in
-        let (_,_ty2,bd2) = destFLambda mk_clos hd2 in
+        let (x2,ty2,bd2) = destFLambda mk_clos hd2 in
+        let infos = info_push_rel (LocalAssum (x2, term_of_fconstr_lift lft2 ty2)) infos in
 	eqappr CONV l2r infos
 	  (el_lift lft1, (hd1, eta_expand_stack v1)) (el_lift lft2, (bd2, [])) cuniv
 	
@@ -451,7 +455,7 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
     	 in convert_stacks l2r infos lft1 lft2 v1 v2 cuniv
        with Not_found -> raise NotConvertible)
 
-    | (FFix (((op1, i1),(_,tys1,cl1)),e1), FFix(((op2, i2),(_,tys2,cl2)),e2)) ->
+    | (FFix (((op1, i1),(xs1,tys1,cl1)),e1), FFix(((op2, i2),(_,tys2,cl2)),e2)) ->
 	if Int.equal i1 i2 && Array.equal Int.equal op1 op2
 	then
 	  let n = Array.length cl1 in
@@ -461,12 +465,18 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
           let fcl2 = Array.map (mk_clos (subs_liftn n e2)) cl2 in
 	  let cuniv = convert_vect l2r infos el1 el2 fty1 fty2 cuniv in
           let cuniv =
+            let infos = Array.fold_left2_i (fun i infos x fty ->
+                            let ty = term_of_fconstr_lift (el_liftn i el1) fty in
+                            info_push_rel (LocalAssum (x,ty)) infos)
+                                           infos xs1 fty1
+            in
             convert_vect l2r infos
-	      (el_liftn n el1) (el_liftn n el2) fcl1 fcl2 cuniv in
+	                 (el_liftn n el1) (el_liftn n el2) fcl1 fcl2 cuniv
+          in
           convert_stacks l2r infos lft1 lft2 v1 v2 cuniv
         else raise NotConvertible
 
-    | (FCoFix ((op1,(_,tys1,cl1)),e1), FCoFix((op2,(_,tys2,cl2)),e2)) ->
+    | (FCoFix ((op1,(xs1,tys1,cl1)),e1), FCoFix((op2,(_,tys2,cl2)),e2)) ->
         if Int.equal op1 op2
         then
 	  let n = Array.length cl1 in
@@ -476,8 +486,14 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
           let fcl2 = Array.map (mk_clos (subs_liftn n e2)) cl2 in
           let cuniv = convert_vect l2r infos el1 el2 fty1 fty2 cuniv in
           let cuniv =
+            let infos = Array.fold_left2_i (fun i infos x fty ->
+                            let ty = term_of_fconstr_lift (el_liftn i el1) fty in
+                            info_push_rel (LocalAssum (x,ty)) infos)
+                                           infos xs1 fty1
+            in
 	    convert_vect l2r infos
-	      (el_liftn n el1) (el_liftn n el2) fcl1 fcl2 cuniv in
+	                 (el_liftn n el1) (el_liftn n el2) fcl1 fcl2 cuniv
+          in
           convert_stacks l2r infos lft1 lft2 v1 v2 cuniv
         else raise NotConvertible
 
