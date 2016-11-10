@@ -260,7 +260,7 @@ let eq_table_key = IdKeyHash.equal
 type 'a infos_cache = {
   i_repr : 'a infos -> constr -> 'a;
   i_env : env;
-  i_sigma : existential -> constr option;
+  i_sigma : evar_closures;
   i_rels : constr option array;
   i_tab : 'a KeyTable.t }
 
@@ -270,6 +270,7 @@ and 'a infos = {
 
 let info_flags info = info.i_flags
 let info_env info = info.i_cache.i_env
+let info_evar_closures info = info.i_cache.i_sigma
 
 let info_push_rel d info =
   let env = push_rel d (info_env info) in
@@ -306,7 +307,7 @@ let ref_value_cache ({i_cache = cache} as infos)  ref =
       -> None
 
 let evar_value cache ev =
-  cache.i_sigma ev
+  cache.i_sigma.evar_val ev
 
 let defined_rels flags env =
 (*  if red_local_const (snd flags) then*)
@@ -1052,7 +1053,7 @@ let whd_stack infos m stk =
 (* cache of constants: the body is computed only when needed. *)
 type clos_infos = fconstr infos
 
-let create_clos_infos ?(evars=fun _ -> None) flgs env =
+let create_clos_infos ?(evars=no_evars) flgs env =
   create (fun _ -> inject) flgs env evars
 let oracle_of_infos infos = Environ.oracle infos.i_cache.i_env
 

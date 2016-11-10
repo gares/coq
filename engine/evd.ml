@@ -583,6 +583,142 @@ let add_constraints d c =
 let add_universe_constraints d c = 
   { d with universes = add_universe_constraints_context d.universes c }
 
+(**********************************************************)
+(* Accessing metas *)
+
+(** We use this function to overcome OCaml compiler limitations and to prevent
+    the use of costly in-place modifications. *)
+let set_metas evd metas = {
+  defn_evars = evd.defn_evars;
+  undf_evars = evd.undf_evars;
+  universes  = evd.universes;
+  conv_pbs = evd.conv_pbs;
+  last_mods = evd.last_mods;
+  metas;
+  effects = evd.effects;
+  evar_names = evd.evar_names;
+  future_goals = evd.future_goals;
+  principal_future_goal = evd.principal_future_goal;
+  extras = evd.extras;
+}
+
+let meta_list evd = metamap_to_list evd.metas
+
+let undefined_metas evd =
+  let filter = function
+    | (n,Clval(_,_,typ)) -> None
+    | (n,Cltyp (_,typ))  -> Some n
+  in
+  let m = List.map_filter filter (meta_list evd) in
+  List.sort Int.compare m
+
+let map_metas_fvalue f evd =
+  let map = function
+  | Clval(id,(c,s),typ) -> Clval(id,(mk_freelisted (f c.rebus),s),typ)
+  | x -> x
+  in
+  set_metas evd (Metamap.smartmap map evd.metas)
+
+let map_metas f evd =
+  let map cl = map_clb f cl in
+  set_metas evd (Metamap.smartmap map evd.metas)
+
+let meta_opt_fvalue evd mv =
+  match Metamap.find mv evd.metas with
+    | Clval(_,b,_) -> Some b
+    | Cltyp _ -> None
+
+let meta_defined evd mv =
+  match Metamap.find mv evd.metas with
+    | Clval _ -> true
+    | Cltyp _ -> false
+
+let try_meta_fvalue evd mv =
+  match Metamap.find mv evd.metas with
+    | Clval(_,b,_) -> b
+    | Cltyp _ -> raise Not_found
+
+let meta_fvalue evd mv =
+  try try_meta_fvalue evd mv
+  with Not_found -> anomaly ~label:"meta_fvalue" (Pp.str "meta has no value")
+
+let meta_value evd mv =
+  (fst (try_meta_fvalue evd mv)).rebus
+
+let meta_opt_value evd mv =
+  Option.map (fun v -> (fst v).rebus) (meta_opt_fvalue evd mv)
+
+let meta_ftype evd mv =
+  match Metamap.find mv evd.metas with
+    | Cltyp (_,b) -> b
+    | Clval(_,_,b) -> b
+
+let meta_type evd mv = (meta_ftype evd mv).rebus
+
+let evar_closures evd = {
+    meta_type = meta_type evd;
+    meta_val = meta_opt_value evd;
+    evar_type = existential_type evd;
+    evar_val = existential_opt_value evd }
+
+let meta_declare mv v ?(name=Anonymous) evd =
+  let metas = Metamap.add mv (Cltyp(name,mk_freelisted v)) evd.metas in
+  set_metas evd metas
+
+let meta_assign mv (v, pb) evd =
+  let modify _ = function
+  | Cltyp (na, ty) -> Clval (na, (mk_freelisted v, pb), ty)
+  | _ -> anomaly ~label:"meta_assign" (Pp.str "already defined")
+  in
+  let metas = Metamap.modify mv modify evd.metas in
+  set_metas evd metas
+
+let meta_reassign mv (v, pb) evd =
+  let modify _ = function
+  | Clval(na, _, ty) -> Clval (na, (mk_freelisted v, pb), ty)
+  | _ -> anomaly ~label:"meta_reassign" (Pp.str "not yet defined")
+  in
+  let metas = Metamap.modify mv modify evd.metas in
+  set_metas evd metas
+
+(* If the meta is defined then forget its name *)
+let meta_name evd mv =
+  try fst (clb_name (Metamap.find mv evd.metas)) with Not_found -> Anonymous
+
+let clear_metas evd = {evd with metas = Metamap.empty}
+
+let meta_merge ?(with_univs = true) evd1 evd2 =
+  let metas = Metamap.fold Metamap.add evd1.metas evd2.metas in
+  let universes =
+    if with_univs then union_evar_universe_context evd2.universes evd1.universes
+    else evd2.universes
+  in
+  {evd2 with universes; metas; }
+
+type metabinding = metavariable * constr * instance_status
+
+let retract_coercible_metas evd =
+  let mc = ref [] in
+  let map n v = match v with
+  | Clval (na, (b, (Conv, CoerceToType as s)), typ) ->
+    let () = mc := (n, b.rebus, s) :: !mc in
+    Cltyp (na, typ)
+  | v -> v
+  in
+  let metas = Metamap.smartmapi map evd.metas in
+  !mc, set_metas evd metas
+
+let evar_source_of_meta mv evd =
+  match meta_name evd mv with
+  | Anonymous -> (Loc.ghost,Evar_kinds.GoalEvar)
+  | Name id -> (Loc.ghost,Evar_kinds.VarInstance id)
+
+let dependent_evar_ident ev evd =
+  let evi = find evd ev in
+  match evi.evar_source with
+  | (_,Evar_kinds.VarInstance id) -> id
+  | _ -> anomaly (str "Not an evar resulting of a dependent binding")
+
 (*** /Lifting... ***)
 
 (* evar_map are considered empty disregarding histories *)
@@ -961,10 +1097,10 @@ let test_conversion_gen env evd pb t u =
   match pb with 
   | Reduction.CONV -> 
     Reduction.conv env
-      ~evars:((existential_opt_value evd), (UState.ugraph evd.universes))
+      ~evars:((evar_closures evd), (UState.ugraph evd.universes))
       t u
   | Reduction.CUMUL -> Reduction.conv_leq env
-      ~evars:((existential_opt_value evd), (UState.ugraph evd.universes))
+      ~evars:((evar_closures evd), (UState.ugraph evd.universes))
       t u
 
 let test_conversion env d pb t u =
@@ -1018,142 +1154,6 @@ let reset_future_goals evd =
 
 let restore_future_goals evd gls pgl =
   { evd with future_goals = gls ; principal_future_goal = pgl }
-
-(**********************************************************)
-(* Accessing metas *)
-
-(** We use this function to overcome OCaml compiler limitations and to prevent
-    the use of costly in-place modifications. *)
-let set_metas evd metas = {
-  defn_evars = evd.defn_evars;
-  undf_evars = evd.undf_evars;
-  universes  = evd.universes;
-  conv_pbs = evd.conv_pbs;
-  last_mods = evd.last_mods;
-  metas;
-  effects = evd.effects;
-  evar_names = evd.evar_names;
-  future_goals = evd.future_goals;
-  principal_future_goal = evd.principal_future_goal;
-  extras = evd.extras;
-}
-
-let meta_list evd = metamap_to_list evd.metas
-
-let undefined_metas evd =
-  let filter = function
-    | (n,Clval(_,_,typ)) -> None
-    | (n,Cltyp (_,typ))  -> Some n
-  in
-  let m = List.map_filter filter (meta_list evd) in
-  List.sort Int.compare m
-
-let map_metas_fvalue f evd =
-  let map = function
-  | Clval(id,(c,s),typ) -> Clval(id,(mk_freelisted (f c.rebus),s),typ)
-  | x -> x
-  in
-  set_metas evd (Metamap.smartmap map evd.metas)
-
-let map_metas f evd =
-  let map cl = map_clb f cl in
-  set_metas evd (Metamap.smartmap map evd.metas)
-
-let meta_opt_fvalue evd mv =
-  match Metamap.find mv evd.metas with
-    | Clval(_,b,_) -> Some b
-    | Cltyp _ -> None
-
-let meta_defined evd mv =
-  match Metamap.find mv evd.metas with
-    | Clval _ -> true
-    | Cltyp _ -> false
-
-let try_meta_fvalue evd mv =
-  match Metamap.find mv evd.metas with
-    | Clval(_,b,_) -> b
-    | Cltyp _ -> raise Not_found
-
-let meta_fvalue evd mv =
-  try try_meta_fvalue evd mv
-  with Not_found -> anomaly ~label:"meta_fvalue" (Pp.str "meta has no value")
-
-let meta_value evd mv =
-  (fst (try_meta_fvalue evd mv)).rebus
-
-let meta_opt_value evd mv =
-  Option.map (fun v -> (fst v).rebus) (meta_opt_fvalue evd mv)
-
-let meta_ftype evd mv =
-  match Metamap.find mv evd.metas with
-    | Cltyp (_,b) -> b
-    | Clval(_,_,b) -> b
-
-let meta_type evd mv = (meta_ftype evd mv).rebus
-
-let evar_closures evd = {
-    meta_type = meta_type evd;
-    meta_val = meta_opt_value evd;
-    evar_type = existential_type evd;
-    evar_val = existential_opt_value evd }
-
-let meta_declare mv v ?(name=Anonymous) evd =
-  let metas = Metamap.add mv (Cltyp(name,mk_freelisted v)) evd.metas in
-  set_metas evd metas
-
-let meta_assign mv (v, pb) evd =
-  let modify _ = function
-  | Cltyp (na, ty) -> Clval (na, (mk_freelisted v, pb), ty)
-  | _ -> anomaly ~label:"meta_assign" (Pp.str "already defined")
-  in
-  let metas = Metamap.modify mv modify evd.metas in
-  set_metas evd metas
-
-let meta_reassign mv (v, pb) evd =
-  let modify _ = function
-  | Clval(na, _, ty) -> Clval (na, (mk_freelisted v, pb), ty)
-  | _ -> anomaly ~label:"meta_reassign" (Pp.str "not yet defined")
-  in
-  let metas = Metamap.modify mv modify evd.metas in
-  set_metas evd metas
-
-(* If the meta is defined then forget its name *)
-let meta_name evd mv =
-  try fst (clb_name (Metamap.find mv evd.metas)) with Not_found -> Anonymous
-
-let clear_metas evd = {evd with metas = Metamap.empty}
-
-let meta_merge ?(with_univs = true) evd1 evd2 =
-  let metas = Metamap.fold Metamap.add evd1.metas evd2.metas in
-  let universes =
-    if with_univs then union_evar_universe_context evd2.universes evd1.universes
-    else evd2.universes
-  in
-  {evd2 with universes; metas; }
-
-type metabinding = metavariable * constr * instance_status
-
-let retract_coercible_metas evd =
-  let mc = ref [] in
-  let map n v = match v with
-  | Clval (na, (b, (Conv, CoerceToType as s)), typ) ->
-    let () = mc := (n, b.rebus, s) :: !mc in
-    Cltyp (na, typ)
-  | v -> v
-  in
-  let metas = Metamap.smartmapi map evd.metas in
-  !mc, set_metas evd metas
-
-let evar_source_of_meta mv evd =
-  match meta_name evd mv with
-  | Anonymous -> (Loc.ghost,Evar_kinds.GoalEvar)
-  | Name id -> (Loc.ghost,Evar_kinds.VarInstance id)
-
-let dependent_evar_ident ev evd =
-  let evi = find evd ev in
-  match evi.evar_source with
-  | (_,Evar_kinds.VarInstance id) -> id
-  | _ -> anomaly (str "Not an evar resulting of a dependent binding")
 
 (**********************************************************)
 (* Extra data *)

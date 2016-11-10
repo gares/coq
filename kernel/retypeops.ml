@@ -204,7 +204,8 @@ let judge_of_projection env p c ct =
     (* ATTENTION : faudra faire le typage du contexte des Const,
     Ind et Constructsi un jour cela devient des constructions
     arbitraires et non plus des variables *)
-let rec execute env cstr =
+let execute env sigma cstr =
+  let rec execute env cstr =
   let open Context.Rel.Declaration in
   match kind_of_term cstr with
     (* Atomic terms *)
@@ -286,27 +287,30 @@ let rec execute env cstr =
     | Evar _ ->
 	anomaly (Pp.str "the kernel does not support existential variables")
 
-and execute_is_type env constr =
-  let t = execute env constr in
+  and execute_is_type env constr =
+    let t = execute env constr in
     check_type env constr t
 
-let execute_type env constr =
-  let t = execute env constr in
+  in
+  execute env cstr
+
+let execute_type env sigma constr =
+  let t = execute env sigma constr in
     type_judgment env constr t
 
 (* Derived functions *)
-let infer env constr =
-  let t = execute env constr in
+let infer env sigma constr =
+  let t = execute env sigma constr in
     make_judge constr t
 
 let infer = 
   if Flags.profile then
     let infer_key = Profile.declare_profile "Fast_infer" in
-      Profile.profile2 infer_key (fun b c -> infer b c)
-  else (fun b c -> infer b c)
+      Profile.profile3 infer_key (fun a b c -> infer a b c)
+  else (fun a b c -> infer a b c)
 
-let infer_type env constr =
-  execute_type env constr
+let infer_type env sigma constr =
+  execute_type env sigma constr
 
-let infer_v env cv =
-  make_judgev cv (Array.map (execute env) cv)
+let infer_v env sigma cv =
+  make_judgev cv (Array.map (execute env sigma) cv)

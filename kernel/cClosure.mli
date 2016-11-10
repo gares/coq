@@ -101,10 +101,11 @@ type 'a infos = {
 
 val ref_value_cache: 'a infos -> table_key -> 'a option
 val create: ('a infos -> constr -> 'a) -> reds -> env ->
-  (existential -> constr option) -> 'a infos
+  evar_closures -> 'a infos
 val evar_value : 'a infos_cache -> existential -> constr option
 
 val info_env : 'a infos -> env
+val info_evar_closures : 'a infos -> evar_closures
 val info_flags: 'a infos -> reds
 
 val info_push_rel : Context.Rel.Declaration.t -> 'a infos -> 'a infos
@@ -187,7 +188,7 @@ val destFLambda :
 (** Global and local constant cache *)
 type clos_infos = fconstr infos
 val create_clos_infos :
-  ?evars:(existential->constr option) -> reds -> env -> clos_infos
+  ?evars:evar_closures -> reds -> env -> clos_infos
 val oracle_of_infos : clos_infos -> Conv_oracle.oracle
 
 val env_of_infos : clos_infos -> env

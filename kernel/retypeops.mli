@@ -19,6 +19,6 @@ open Declarations
  *)
 
 
-val infer      : env -> constr       -> unsafe_judgment
-val infer_v    : env -> constr array -> unsafe_judgment array
-val infer_type : env -> types        -> unsafe_type_judgment
+val infer      : env -> evar_closures -> constr       -> unsafe_judgment
+val infer_v    : env -> evar_closures -> constr array -> unsafe_judgment array
+val infer_type : env -> evar_closures -> types        -> unsafe_type_judgment
