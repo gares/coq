@@ -484,6 +484,14 @@ type unsafe_type_judgment = {
   utj_val : constr;
   utj_type : sorts }
 
+(*s Evar environment. *)
+
+type evar_closures = {
+    meta_type : metavariable -> types;
+    meta_val : metavariable -> constr option;
+    evar_type : existential -> types;
+    evar_val : existential -> constr option }
+
 (*s Compilation of global declaration *)
 
 let compile_constant_body = Cbytegen.compile_constant_body false
