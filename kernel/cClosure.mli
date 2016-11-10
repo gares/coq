@@ -105,7 +105,7 @@ val create: ('a infos -> constr -> 'a) -> reds -> env ->
 val evar_value : 'a infos_cache -> existential -> constr option
 
 val info_env : 'a infos -> env
-val info_evar_closures : 'a infos -> evar_closures
+val info_evars : 'a infos -> evar_closures
 val info_flags: 'a infos -> reds
 
 val info_push_rel : Context.Rel.Declaration.t -> 'a infos -> 'a infos

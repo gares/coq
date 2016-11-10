@@ -238,7 +238,21 @@ let unfold_projection infos p c =
 
 (* Conversion between  [lft1]term1 and [lft2]term2 *)
 let rec ccnv cv_pb l2r infos lft1 lft2 term1 term2 cuniv =
-  eqappr cv_pb l2r infos (lft1, (term1,[])) (lft2, (term2,[])) cuniv
+  try
+    let open Retypeops in
+    let env = info_env infos in
+    let evars = info_evars infos in
+    let c2 = term_of_fconstr_lift lft2 term2 in
+    let ty2 = (infer env evars c2).uj_type in
+    let s = (infer_type env evars ty2).utj_type in
+    if not (Sorts.is_prop s) then raise NotConvertible;
+    let c1 = term_of_fconstr_lift lft1 term1 in
+    let ty1 = (infer env evars c1).uj_type in
+    (* CONV or CUMUL or cv_pb? l2r? *)
+    eqappr CONV l2r infos (el_id, (inject ty1,[])) (el_id, (inject ty2,[])) cuniv
+  with
+  (* Should we really catch everything? Maybe print a warning or smthg. *)
+  | _ -> eqappr cv_pb l2r infos (lft1, (term1,[])) (lft2, (term2,[])) cuniv
 
 (* Conversion between [lft1](hd1 v1) and [lft2](hd2 v2) *)
 and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =

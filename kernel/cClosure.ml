@@ -270,7 +270,7 @@ and 'a infos = {
 
 let info_flags info = info.i_flags
 let info_env info = info.i_cache.i_env
-let info_evar_closures info = info.i_cache.i_sigma
+let info_evars info = info.i_cache.i_sigma
 
 let info_push_rel d info =
   let env = push_rel d (info_env info) in
