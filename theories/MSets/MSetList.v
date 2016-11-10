@@ -884,8 +884,6 @@ Module MakeWithLeibniz (X: OrderedTypeWithLeibniz) <: SWithLeibniz with Module E
     apply eq_leibniz_list in H.
     subst ys.
     f_equal.
-    apply Eqdep_dec.eq_proofs_unicity.
-    intros x y; destruct (bool_dec x y); tauto.
   Qed.
 
 End MakeWithLeibniz.

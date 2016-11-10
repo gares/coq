@@ -61,7 +61,6 @@ Proof.
   intros (q,hq) (q',hq') H. simpl in *.
   assert (H' := Qred_complete _ _ H).
   rewrite hq, hq' in H'. subst q'. f_equal.
-  apply eq_proofs_unicity. intros.  repeat decide equality.
 Qed.
 Hint Resolve Qc_is_canon.
 

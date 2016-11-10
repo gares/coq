@@ -199,8 +199,6 @@ Section Fix_rects.
     rewrite <- (equiv_lowers (fun y: {y: A | R y x0} =>
       Fix_F_sub A R P f (proj1_sig y) (Rwf (proj1_sig y)))
     (fun y: {y: A | R y x0} => Fix_F_sub A R P f (proj1_sig y) (Acc_inv a (proj2_sig y))))...
-    intros.
-    apply eq_Fix_F_sub.
   Qed.
 
 End Fix_rects.
