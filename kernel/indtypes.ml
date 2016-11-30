@@ -121,11 +121,14 @@ let mind_check_names mie =
 
 (* An inductive definition is a "unit" if it has only one constructor
    and that all arguments expected by this constructor are
-   logical, this is the case for equality, conjunction of logical properties
+   logical, this is the case for equality, conjunction of logical properties.
+
+   This function only checks the syntactic part, i.e. at most 1 constructor.
+   (further requirements will be added later, i.e. to forbid eq)
 *)
-let is_unit constrsinfos =
+let is_unit_shape constrsinfos =
   match constrsinfos with  (* One info = One constructor *)
-   | [level] -> is_type0m_univ level
+   | [level] -> (* is_type0m_univ level *) true
    | [] -> (* type without constructors *) true
    | _ -> false
 
@@ -173,10 +176,10 @@ let infer_constructor_packet env_ar_par params lc =
   let lc'' = Array.map (fun j -> it_mkProd_or_LetIn j.utj_val params) jlc in
   (* compute the max of the sorts of the products of the constructors types *)
   let levels = List.map (infos_and_sort env_ar_par) lc in
-  let isunit = is_unit levels in
-  let min = if Array.length jlc > 1 then Universe.type0 else Universe.type0m in
+  let isunit = is_unit_shape levels in
+  let min = if isunit then Universe.type0m else Universe.type0 in
   let level = List.fold_left (fun max l -> Universe.sup max l) min levels in
-  (lc'', (isunit, level))
+  (lc'', level)
 
 (* If indices matter *)
 let cumulate_arity_large_levels env sign =
@@ -294,7 +297,7 @@ let typecheck_inductive env mie =
   (* Compute/check the sorts of the inductive types *)
 
   let inds =
-    Array.map (fun ((id,full_arity,sign,expltype,def_level,inf_level),cn,lc,(is_unit,clev))  ->
+    Array.map (fun ((id,full_arity,sign,expltype,def_level,inf_level),cn,lc,clev)  ->
       let infu = 
 	(** Inferred level, with parameters and constructors. *)
 	match inf_level with
