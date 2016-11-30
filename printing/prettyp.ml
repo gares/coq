@@ -239,6 +239,18 @@ let print_primitive ref =
       print_primitive_record mib.mind_finite mib.mind_packets mib.mind_record
   | _ -> []
 
+let print_kelim ref =
+  match ref with
+  | IndRef ind ->
+     let (_,one_ind) = Global.lookup_inductive ind in
+     let sorts = one_ind.mind_kelim in
+     if sorts = InType
+     then []
+     else
+       [ pr_global ref ++ str " is squashed and may only be eliminated on " ++
+           (quote (pr_sort_family sorts)) ]
+  | _ -> []
+
 let print_name_infos ref =
   let impls = implicits_of_global ref in
   let scopes = Notation.find_arguments_scope ref in
@@ -253,6 +265,7 @@ let print_name_infos ref =
       [] in
   print_polymorphism ref @
   print_type_in_type ref @
+  print_kelim ref @
   print_primitive ref @
   type_info_for_implicit @
   print_renames_list (mt()) renames @
