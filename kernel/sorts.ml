@@ -66,7 +66,17 @@ let family = function
   | Type u when is_type0_univ u -> InSet
   | Type _ -> InType
 
+let family_mem s = function
+  | InProp -> is_prop s
+  | InSet -> is_small s
+  | InType -> true
+
 let family_equal = (==)
+
+let family_leq l r =
+  match l, r with
+  | InProp, _ | InSet, InSet | _, InType -> true
+  | _, _ -> false
 
 open Hashset.Combine
 

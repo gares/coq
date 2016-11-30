@@ -677,25 +677,14 @@ let check_positivity ~chkpos kn env_ar_par paramsctxt finite inds =
 
 (* Allowed eliminations *)
 
-let all_sorts = [InProp;InSet;InType]
-let small_sorts = [InProp;InSet]
-let logical_sorts = [InProp]
-
 let allowed_sorts is_smashed s =
   if not is_smashed 
   then (** Naturally in the defined sort.
 	   If [s] is Prop, it must be small and unitary.
 	   Unsmashed, predicative Type and Set: all elimination allowed
 	   as well. *)
-      all_sorts
-  else 
-    match family_of_sort s with
-    (* Type: all elimination allowed: above and below *)
-    | InType -> all_sorts
-    (* Smashed Set is necessarily impredicative: forbids large elimination *)
-    | InSet -> small_sorts
-    (* Smashed to Prop, no informative eliminations allowed *)
-    | InProp -> logical_sorts
+      InType
+  else family_of_sort s
     
 (* Previous comment: *)
 (* Unitary/empty Prop: elimination to all sorts are realizable *)
@@ -848,7 +837,7 @@ let build_inductive env p prv ctx env_ar paramsctxt kn isrecord isfinite inds nm
       match ar_kind with
       | TemplateArity (paramlevs, lev) -> 
 	let ar = {template_param_levels = paramlevs; template_level = lev} in
-	  TemplateArity ar, all_sorts
+          TemplateArity ar, InType
       | RegularArity (info,ar,defs) ->
 	let s = sort_of_univ defs in
 	let kelim = allowed_sorts info s in
@@ -891,7 +880,7 @@ let build_inductive env p prv ctx env_ar paramsctxt kn isrecord isfinite inds nm
   let pkt = packets.(0) in
   let isrecord = 
     match isrecord with
-    | Some (Some rid) when pkt.mind_kelim == all_sorts
+    | Some (Some rid) when pkt.mind_kelim == InType
 			   && Array.length pkt.mind_consnames == 1
 			   && pkt.mind_consnrealargs.(0) > 0 ->
       (** The elimination criterion ensures that all projections can be defined. *)

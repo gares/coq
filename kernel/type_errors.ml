@@ -43,7 +43,7 @@ type type_error =
   | NotAType of unsafe_judgment
   | BadAssumption of unsafe_judgment
   | ReferenceVariables of identifier * constr
-  | ElimArity of pinductive * sorts_family list * constr * unsafe_judgment
+  | ElimArity of pinductive * sorts_family * constr * unsafe_judgment
       * (sorts_family * sorts_family * arity_error) option
   | CaseNotInductive of unsafe_judgment
   | WrongCaseInfo of pinductive * case_info

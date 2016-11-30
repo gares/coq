@@ -183,12 +183,6 @@ let explain_reference_variables id c =
   pc ++ strbrk " depends on the variable " ++ pr_id id ++
   strbrk " which is not declared in the context."
 
-let rec pr_disjunction pr = function
-  | [a] -> pr  a
-  | [a;b] -> pr a ++ str " or" ++ spc () ++ pr b
-  | a::l -> pr a ++ str "," ++ spc () ++ pr_disjunction pr l
-  | [] -> assert false
-
 let pr_puniverses f env (c,u) = 
   f env c ++ 
   (if Flags.is_universe_polymorphism () && not (Univ.Instance.is_empty u) then
@@ -210,7 +204,7 @@ let explain_elim_arity env sigma ind sorts c pj okinds =
           "strong elimination on non-small inductive types leads to paradoxes"
 	| WrongArity ->
 	  "wrong arity" in
-      let ppar = pr_disjunction (fun s -> quote (pr_sort_family s)) sorts in
+      let ppar = quote (pr_sort_family sorts) in
       let ppt = pr_lconstr_env env sigma ((strip_prod_assum pj.uj_type)) in
       hov 0
 	(str "the return type has sort" ++ spc () ++ ppt ++ spc () ++

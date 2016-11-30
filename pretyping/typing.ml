@@ -79,10 +79,6 @@ let e_check_branch_types env evdref (ind,u) cj (lfj,explft) =
       error_ill_formed_branch env cj.uj_val ((ind,i+1),u) lfj.(i).uj_type explft.(i)
   done
 
-let max_sort l =
-  if Sorts.List.mem InType l then InType else
-  if Sorts.List.mem InSet l then InSet else InProp
-
 let e_is_correct_arity env evdref c pj ind specif params =
   let arsign = make_arity_signature env true (make_ind_family (ind,params)) in
   let allowed_sorts = elim_sorts specif in
@@ -94,10 +90,10 @@ let e_is_correct_arity env evdref c pj ind specif params =
         if not (Evarconv.e_cumul env evdref a1 a1') then error ();
         srec (push_rel (LocalAssum (na1,a1)) env) t ar'
     | Sort s, [] ->
-        if not (Sorts.List.mem (Sorts.family s) allowed_sorts)
+        if not (Sorts.family_mem s allowed_sorts)
         then error ()
     | Evar (ev,_), [] ->
-        let evd, s = Evd.fresh_sort_in_family env !evdref (max_sort allowed_sorts) in
+        let evd, s = Evd.fresh_sort_in_family env !evdref allowed_sorts in
         evdref := Evd.define ev (mkSort s) evd
     | _, (LocalDef _ as d)::ar' ->
         srec (push_rel d env) (lift 1 pt') ar'
@@ -140,10 +136,11 @@ let check_type_fixpoint loc env evdref lna lar vdefj =
 (* FIXME: might depend on the level of actual parameters!*)
 let check_allowed_sort env sigma ind c p =
   let pj = Retyping.get_judgment_of env sigma p in
-  let ksort = family_of_sort (sort_of_arity env sigma pj.uj_type) in
+  let sort = sort_of_arity env sigma pj.uj_type in
+  let ksort = Sorts.family sort in
   let specif = Global.lookup_inductive (fst ind) in
   let sorts = elim_sorts specif in
-  if not (List.exists ((==) ksort) sorts) then
+  if not (Sorts.family_mem sort sorts) then
     let s = inductive_sort_family (snd specif) in
     error_elim_arity env ind sorts c pj
       (Some(ksort,s,error_elim_explain ksort s))

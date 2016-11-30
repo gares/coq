@@ -17,7 +17,7 @@ type mind_specif = mutual_inductive_body * one_inductive_body
 (** {6 Functions to build standard types related to inductive } *)
 val ind_subst : mutual_inductive -> mutual_inductive_body -> universe_instance -> constr list
 
-val elim_sorts : mind_specif -> sorts_family list
+val elim_sorts : mind_specif -> sorts_family
 
 val is_private : mind_specif -> bool
 val is_primitive_record : mind_specif -> bool

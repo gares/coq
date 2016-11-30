@@ -28,10 +28,13 @@ val is_set : t -> bool
 val is_prop : t -> bool
 val is_small : t -> bool
 val family : t -> family
+val family_mem : t -> family -> bool
 
 val hcons : t -> t
 
 val family_equal : family -> family -> bool
+
+val family_leq : family -> family -> bool
 
 module List : sig
   val mem : family -> family list -> bool

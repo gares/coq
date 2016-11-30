@@ -44,7 +44,7 @@ type type_error =
   | NotAType of unsafe_judgment
   | BadAssumption of unsafe_judgment
   | ReferenceVariables of identifier * constr
-  | ElimArity of pinductive * sorts_family list * constr * unsafe_judgment
+  | ElimArity of pinductive * sorts_family * constr * unsafe_judgment
       * (sorts_family * sorts_family * arity_error) option
   | CaseNotInductive of unsafe_judgment
   | WrongCaseInfo of pinductive * case_info
@@ -73,7 +73,7 @@ val error_assumption : env -> unsafe_judgment -> 'a
 val error_reference_variables : env -> identifier -> constr -> 'a
 
 val error_elim_arity :
-  env -> pinductive -> sorts_family list -> constr -> unsafe_judgment ->
+  env -> pinductive -> sorts_family -> constr -> unsafe_judgment ->
       (sorts_family * sorts_family * arity_error) option -> 'a
 
 val error_case_not_inductive : env -> unsafe_judgment -> 'a

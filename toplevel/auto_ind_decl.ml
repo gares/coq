@@ -307,7 +307,7 @@ let build_beq_scheme mode kn =
     done;
       (Array.init nb_ind (fun i ->
       let kelim = Inductive.elim_sorts (mib,mib.mind_packets.(i)) in
-	if not (Sorts.List.mem InSet kelim) then
+        if not (Sorts.family_leq InSet kelim) then
 	  raise (NonSingletonProp (kn,i));
         let fix = mkFix (((Array.make nb_ind 0),i),(names,types,cores)) in
         create_input fix),
