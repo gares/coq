@@ -56,9 +56,6 @@ let weaker_noccur_between env x nvars t =
    if noccur_between x nvars t' then Some t'
    else None
 
-let is_constructor_head t =
-  isRel(fst(decompose_app t))
-
 (************************************************************************)
 (* Various well-formedness check for inductive declarations            *)
 
@@ -122,15 +119,46 @@ let mind_check_names mie =
 (* An inductive definition is a "unit" if it has only one constructor
    and that all arguments expected by this constructor are
    logical, this is the case for equality, conjunction of logical properties.
+   (^ enforced in infer_constructor_packet)
 
-   This function only checks the syntactic part, i.e. at most 1 constructor.
-   (further requirements will be added later, i.e. to forbid eq)
+   Also, if the output of the unique constructor is [ind_name args],
+   then the [args] must be built only from constructors and variables (both [Var] and [Rel]),
+   with each variable occuring only once across the [args] as an argument to a constructor.
+   (Intuition: Otherwise, multiple occurences correspond to implicit identities
+    which are not trivial in strict_mode, and non-constructor non-variable
+    values can hide multiple occurences, and variables applied to things are like functions.)
+
+   TODO there may be a more relaxed/cleaner condition.
 *)
-let is_unit_shape constrsinfos =
-  match constrsinfos with  (* One info = One constructor *)
-   | [level] -> (* is_type0m_univ level *) true
-   | [] -> (* type without constructors *) true
-   | _ -> false
+
+exception NotUnitShape
+
+let check_strict_unit env args =
+  let rec check_constr sets c =
+    (* TODO strip_outer_cast, whd_all, ?? *)
+    match kind_of_term c with
+    | Rel n ->
+       let (relset, varset) = sets in
+       if Int.Set.mem n relset
+       then raise NotUnitShape
+       else (Int.Set.add n relset, varset)
+    | Var x ->
+       let (relset, varset) = sets in
+       if Id.Set.mem x varset
+       then raise NotUnitShape
+       else (relset, Id.Set.add x varset)
+    | _ ->
+       let hd, args = decompose_app c in
+       if isConstruct hd
+       then
+         List.fold_left check_constr sets args
+       else raise NotUnitShape
+  in
+  try
+    let _ = List.fold_left check_constr (Int.Set.empty, Id.Set.empty) args in
+    true
+  with NotUnitShape -> false
+
 
 let infos_and_sort env t =
   let rec aux env t max =
@@ -141,9 +169,15 @@ let infos_and_sort env t =
 	let env1 = Environ.push_rel (LocalAssum (name,varj.utj_val)) env in
 	let max = Universe.sup max (univ_of_sort varj.utj_type) in
 	  aux env1 c2 max
-    | _ when is_constructor_head t -> max
-    | _ -> (* don't fail if not positive, it is tested later *) max
-  in aux env t Universe.type0m
+      | _ ->
+         (* We check that we can be in Prop even if max is not Prop,
+            because of (template) polymorphism *)
+         let _hd, args = decompose_app t in
+         (* Don't check isRelN _ hd, that's in positivity. *)
+         if not (check_strict_unit env args)
+         then Universe.sup max Universe.type0
+         else max
+    in aux env t Universe.type0m
 
 (* Computing the levels of polymorphic inductive types
 
@@ -176,8 +210,7 @@ let infer_constructor_packet env_ar_par params lc =
   let lc'' = Array.map (fun j -> it_mkProd_or_LetIn j.utj_val params) jlc in
   (* compute the max of the sorts of the products of the constructors types *)
   let levels = List.map (infos_and_sort env_ar_par) lc in
-  let isunit = is_unit_shape levels in
-  let min = if isunit then Universe.type0m else Universe.type0 in
+  let min = if Array.length jlc <= 1 then Universe.type0m else Universe.type0 in
   let level = List.fold_left (fun max l -> Universe.sup max l) min levels in
   (lc'', level)
 
