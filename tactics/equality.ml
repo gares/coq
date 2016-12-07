@@ -729,7 +729,7 @@ let find_positions env sigma t1 t2 =
       | Construct (sp1,_), Construct (sp2,_)
           when Int.equal (List.length args1) (constructor_nallargs_env env sp1)
             ->
-          let allowed = allowed_sorts env (fst sp1) in
+          let allowed = elim_sorts_abstract (lookup_mind_specif env (fst sp1)) in
           let sorts' = CList.filter (fun x -> Sorts.family_leq x allowed) sorts in
           (* both sides are fully applied constructors, so either we descend,
              or we can discriminate here. *)

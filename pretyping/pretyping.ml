@@ -897,9 +897,9 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : ExtraEnv.t) evdre
 	    let fty = hnf_lam_applist env.ExtraEnv.env !evdref lp inst in
 	    let fj = pretype (mk_tycon fty) env_f evdref lvar d in
 	    let v =
-	      let ind,_ = dest_ind_family indf in
-		Typing.check_allowed_sort env.ExtraEnv.env !evdref ind cj.uj_val p;
-		obj ind p cj.uj_val fj.uj_val
+              Typing.check_allowed_sort env.ExtraEnv.env !evdref indf cj.uj_val p;
+              let ind,_ = dest_ind_family indf in
+              obj ind p cj.uj_val fj.uj_val
 	    in
 	      { uj_val = v; uj_type = substl (realargs@[cj.uj_val]) ccl }
 
@@ -916,9 +916,9 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : ExtraEnv.t) evdre
 		 (* let ccl = refresh_universes ccl in *)
 	    let p = it_mkLambda_or_LetIn (lift (nar+1) ccl) psign in
 	    let v =
-	      let ind,_ = dest_ind_family indf in
-		Typing.check_allowed_sort env.ExtraEnv.env !evdref ind cj.uj_val p;
-		obj ind p cj.uj_val fj.uj_val
+              Typing.check_allowed_sort env.ExtraEnv.env !evdref indf cj.uj_val p;
+              let ind,_ = dest_ind_family indf in
+              obj ind p cj.uj_val fj.uj_val
 	    in { uj_val = v; uj_type = ccl })
 
   | GIf (loc,c,(na,po),b1,b2) ->
@@ -981,7 +981,7 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : ExtraEnv.t) evdre
 	let ind,_ = dest_ind_family indf in
 	let ci = make_case_info env.ExtraEnv.env (fst ind) IfStyle in
 	let pred = nf_evar !evdref pred in
-	  Typing.check_allowed_sort env.ExtraEnv.env !evdref ind cj.uj_val pred;
+          Typing.check_allowed_sort env.ExtraEnv.env !evdref indf cj.uj_val pred;
 	  mkCase (ci, pred, cj.uj_val, [|b1;b2|])
       in
       let cj = { uj_val = v; uj_type = p } in

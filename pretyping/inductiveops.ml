@@ -259,11 +259,7 @@ let inductive_has_local_defs ind =
   let l2 = mib.mind_nparams + mip.mind_nrealargs in
   not (Int.equal l1 l2)
 
-let allowed_sorts env (kn,i as ind) =
-  let (mib,mip) = Preinductive.lookup_mind_specif env ind in
-  mip.mind_kelim
-
-let projection_nparams_env env p = 
+let projection_nparams_env env p =
   let pb = lookup_projection p env in
     pb.proj_npars
 

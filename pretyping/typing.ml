@@ -81,7 +81,7 @@ let e_check_branch_types env evdref (ind,u) cj (lfj,explft) =
 
 let e_is_correct_arity env evdref c pj ind specif params =
   let arsign = make_arity_signature env true (make_ind_family (ind,params)) in
-  let allowed_sorts = elim_sorts specif in
+  let allowed_sorts = elim_sorts env specif params in
   let error () = error_elim_arity env ind allowed_sorts c pj None in
   let rec srec env pt ar =
     let pt' = whd_all env !evdref pt in
@@ -134,12 +134,13 @@ let check_type_fixpoint loc env evdref lna lar vdefj =
       done
 
 (* FIXME: might depend on the level of actual parameters!*)
-let check_allowed_sort env sigma ind c p =
+let check_allowed_sort env sigma indf c p =
+  let ind,params = dest_ind_family indf in
   let pj = Retyping.get_judgment_of env sigma p in
   let sort = sort_of_arity env sigma pj.uj_type in
   let ksort = Sorts.family sort in
   let specif = Global.lookup_inductive (fst ind) in
-  let sorts = elim_sorts specif in
+  let sorts = elim_sorts env specif params in
   if not (Sorts.family_mem sort sorts) then
     let s = inductive_sort_family (snd specif) in
     error_elim_arity env ind sorts c pj

@@ -306,7 +306,7 @@ let build_beq_scheme mode kn =
         eff := Safe_typing.concat_private eff' !eff
     done;
       (Array.init nb_ind (fun i ->
-      let kelim = Inductive.elim_sorts (mib,mib.mind_packets.(i)) in
+      let kelim = Inductive.elim_sorts_abstract (mib,mib.mind_packets.(i)) in
         if not (Sorts.family_leq InSet kelim) then
 	  raise (NonSingletonProp (kn,i));
         let fix = mkFix (((Array.make nb_ind 0),i),(names,types,cores)) in

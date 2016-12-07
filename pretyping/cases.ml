@@ -1352,7 +1352,7 @@ and match_current pb (initial,tomatch) =
 	check_all_variables pb.env !(pb.evdref) typ pb.mat;
 	compile_all_variables initial tomatch pb
     | IsInd (_,(IndType(indf,realargs) as indt),names) ->
-	let mind,_ = dest_ind_family indf in
+        let mind,params = dest_ind_family indf in
         let mind = Tacred.check_privacy pb.env mind in
 	let cstrs = get_constructors pb.env indf in
 	let arsign, _ = get_arity pb.env indf in
@@ -1381,7 +1381,7 @@ and match_current pb (initial,tomatch) =
 	  let case =
 	    make_case_or_project pb.env indf ci pred current brvals
 	  in
-	  Typing.check_allowed_sort pb.env !(pb.evdref) mind current pred;
+          Typing.check_allowed_sort pb.env !(pb.evdref) indf current pred;
 	  { uj_val = applist (case, inst);
 	    uj_type = prod_applist typ inst }
 

@@ -223,7 +223,7 @@ let declare_one_case_analysis_scheme ind =
     else if not (Inductiveops.has_dependent_elim mib) then
       case_scheme_kind_from_type
     else case_dep_scheme_kind_from_type in
-  let kelim = elim_sorts (mib,mip) in
+  let kelim = elim_sorts_abstract (mib,mip) in
     (* in case the inductive has a type elimination, generates only one
        induction scheme, the other ones share the same code with the
        apropriate type *)
@@ -252,7 +252,7 @@ let declare_one_induction_scheme ind =
   let kind = inductive_sort_family mip in
   let from_prop = kind == InProp in
   let depelim = Inductiveops.has_dependent_elim mib in
-  let kelim = elim_sorts (mib,mip) in
+  let kelim = elim_sorts_abstract (mib,mip) in
   let elims =
     List.map_filter (fun (sort,kind) ->
       if Sorts.family_leq sort kelim then Some kind else None)

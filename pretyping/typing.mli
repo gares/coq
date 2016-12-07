@@ -37,7 +37,7 @@ val e_solve_evars : env -> evar_map ref -> constr -> constr
 
 (** Raise an error message if incorrect elimination for this inductive *)
 (** (first constr is term to match, second is return predicate) *)
-val check_allowed_sort : env -> evar_map -> pinductive -> constr -> constr ->
+val check_allowed_sort : env -> evar_map -> Inductiveops.inductive_family -> constr -> constr ->
   unit
 
 (** Raise an error message if bodies have types not unifiable with the

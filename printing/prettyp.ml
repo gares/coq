@@ -243,12 +243,12 @@ let print_kelim ref =
   match ref with
   | IndRef ind ->
      let (_,one_ind) = Global.lookup_inductive ind in
-     let sorts = one_ind.mind_kelim in
-     if sorts = InType
-     then []
-     else
-       [ pr_global ref ++ str " is squashed and may only be eliminated on " ++
-           (quote (pr_sort_family sorts)) ]
+     begin match one_ind.mind_kelim with
+     | NoSquash -> []
+     | PropSquash | SetSquash -> [str " is squashed"]
+     | ConditionalSquash tys ->
+        [str " is conditionally squashed"]
+     end
   | _ -> []
 
 let print_name_infos ref =

@@ -125,6 +125,9 @@ type regular_inductive_arity = {
 
 type inductive_arity = (regular_inductive_arity, template_arity) declaration_arity
 
+type squash_kinds =
+  NoSquash | PropSquash | SetSquash | ConditionalSquash of types list
+
 type one_inductive_body = {
 (** {8 Primitive datas } *)
 
@@ -147,7 +150,7 @@ type one_inductive_body = {
 
     mind_nrealdecls : int; (** Length of realargs context (with let, no params) *)
 
-    mind_kelim : sorts_family; (** List of allowed elimination sorts *)
+    mind_kelim : squash_kinds; (** List of allowed elimination sorts *)
 
     mind_nf_lc : types array; (** Head normalized constructor types so that their conclusion exposes the inductive type *)
 

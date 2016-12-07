@@ -131,22 +131,31 @@ let mind_check_names mie =
    TODO there may be a more relaxed/cleaner condition.
 *)
 
+type unit_conditions = AlwaysUnit | NeverUnit | CondUnit of types list
+
+let combine_conditions c1 c2 =
+  match c1, c2 with
+  | AlwaysUnit, c | c, AlwaysUnit -> c
+  | NeverUnit, _ | _, NeverUnit -> NeverUnit
+  | CondUnit l1, CondUnit l2 -> CondUnit (List.append l1 l2)
+
 exception NotUnitShape
 
-let check_strict_unit env args =
+(* [liftn] is the number of types being defined *)
+let constructor_unit_conditions env args =
   let rec check_constr sets c =
     (* TODO strip_outer_cast, whd_all, ?? *)
     match kind_of_term c with
     | Rel n ->
-       let (relset, varset) = sets in
+       let (relset, relrepeat, varset, varrepeat) = sets in
        if Int.Set.mem n relset
-       then raise NotUnitShape
-       else (Int.Set.add n relset, varset)
+       then (relset, Int.Set.add n relrepeat, varset, varrepeat)
+       else (Int.Set.add n relset, relrepeat, varset, varrepeat)
     | Var x ->
-       let (relset, varset) = sets in
+       let (relset, relrepeat, varset, varrepeat) = sets in
        if Id.Set.mem x varset
-       then raise NotUnitShape
-       else (relset, Id.Set.add x varset)
+       then (relset, relrepeat, varset, Id.Set.add x varrepeat)
+       else (relset, relrepeat, Id.Set.add x varset, varrepeat)
     | _ ->
        let hd, args = decompose_app c in
        if isConstruct hd
@@ -155,9 +164,22 @@ let check_strict_unit env args =
        else raise NotUnitShape
   in
   try
-    let _ = List.fold_left check_constr (Int.Set.empty, Id.Set.empty) args in
-    true
-  with NotUnitShape -> false
+    let (_, relset, _, varset) =
+      List.fold_left check_constr
+                     (Int.Set.empty, Int.Set.empty, Id.Set.empty, Id.Set.empty)
+                     args
+    in
+    let tys =
+      []
+      |> Int.Set.fold
+           (fun n tys -> (env |> lookup_rel n |> Context.Rel.Declaration.get_type |> lift n) :: tys)
+           relset
+      |> Id.Set.fold (fun x tys -> (named_type x env) :: tys) varset
+    in
+    if tys = []
+    then AlwaysUnit
+    else CondUnit tys
+  with NotUnitShape -> NeverUnit
 
 
 let infos_and_sort env t =
@@ -174,9 +196,7 @@ let infos_and_sort env t =
             because of (template) polymorphism *)
          let _hd, args = decompose_app t in
          (* Don't check isRelN _ hd, that's in positivity. *)
-         if not (check_strict_unit env args)
-         then Universe.sup max Universe.type0
-         else max
+         max, constructor_unit_conditions env args
     in aux env t Universe.type0m
 
 (* Computing the levels of polymorphic inductive types
@@ -209,10 +229,11 @@ let infer_constructor_packet env_ar_par params lc =
   (* generalize the constructor over the parameters *)
   let lc'' = Array.map (fun j -> it_mkProd_or_LetIn j.utj_val params) jlc in
   (* compute the max of the sorts of the products of the constructors types *)
-  let levels = List.map (infos_and_sort env_ar_par) lc in
-  let min = if Array.length jlc <= 1 then Universe.type0m else Universe.type0 in
-  let level = List.fold_left (fun max l -> Universe.sup max l) min levels in
-  (lc'', level)
+  let levels, conds = List.split (List.map (infos_and_sort env_ar_par) lc) in
+  let cond = if Array.length jlc <= 1 then AlwaysUnit else NeverUnit in
+  let cond = List.fold_left combine_conditions cond conds in
+  let level = List.fold_left (fun level l -> Universe.sup level l) Universe.type0m levels in
+  (lc'', level, cond)
 
 (* If indices matter *)
 let cumulate_arity_large_levels env sign =
@@ -244,6 +265,16 @@ let param_ccls paramsctxt =
     | LocalDef _ -> acc
   in
   List.fold_left fold [] paramsctxt
+
+let squash_from_level target =
+  if Univ.is_type0m_univ target
+  then PropSquash
+  else SetSquash
+
+let squash_from_cond = function
+  | AlwaysUnit -> NoSquash
+  | NeverUnit -> PropSquash
+  | CondUnit tys -> ConditionalSquash tys
 
 (* Type-check an inductive definition. Does not check positivity
    conditions. *)
@@ -316,10 +347,10 @@ let typecheck_inductive env mie =
   let inds =
     List.fold_right2
       (fun ind arity_data inds ->
-	 let (lc',cstrs_univ) =
-	   infer_constructor_packet env_ar_par paramsctxt ind.mind_entry_lc in
+         let (lc',cstrs_univ,cond) =
+           infer_constructor_packet env_ar_par paramsctxt ind.mind_entry_lc in
 	 let consnames = ind.mind_entry_consnames in
-	 let ind' = (arity_data,consnames,lc',cstrs_univ) in
+         let ind' = (arity_data,consnames,lc',cstrs_univ,cond) in
 	   ind'::inds)
       mie.mind_entry_inds
       arity_list
@@ -330,7 +361,7 @@ let typecheck_inductive env mie =
   (* Compute/check the sorts of the inductive types *)
 
   let inds =
-    Array.map (fun ((id,full_arity,sign,expltype,def_level,inf_level),cn,lc,clev)  ->
+    Array.map (fun ((id,full_arity,sign,expltype,def_level,inf_level),cn,lc,clev,cond)  ->
       let infu = 
 	(** Inferred level, with parameters and constructors. *)
 	match inf_level with
@@ -338,22 +369,27 @@ let typecheck_inductive env mie =
 	| None -> clev
       in
       let full_polymorphic () = 
-	let defu = Term.univ_of_sort def_level in
-	let is_natural =
-	  type_in_type env || (UGraph.check_leq (universes env') infu defu)
-	in
-	let _ =
+        let defu = Term.univ_of_sort def_level in
+        let is_natural =
+          if type_in_type env || UGraph.check_leq (universes env') infu defu
+          then if not (Univ.is_type0m_univ defu)
+               then NoSquash
+               else (* Prop has additional conditions on constructor shapes*)
+                 squash_from_cond cond
+          else squash_from_level defu
+        in
+        let _ =
 	  (** Impredicative sort, always allow *)
 	  if is_impredicative env defu then ()
 	  else (** Predicative case: the inferred level must be lower or equal to the
 		   declared level. *)
-	    if not is_natural then
+            if is_natural <> NoSquash then
 	      anomaly ~label:"check_inductive" 
 		(Pp.str"Incorrect universe " ++
 		   Universe.pr defu ++ Pp.str " declared for inductive type, inferred level is "
 		 ++ Universe.pr infu)
 	in
-	  RegularArity (not is_natural,full_arity,defu)
+          RegularArity (is_natural,full_arity,defu)
       in
       let template_polymorphic () =
 	let sign, s =
@@ -366,6 +402,11 @@ let typecheck_inductive env mie =
 	    (* conclusions of the parameters *)
             (* We enforce [u >= lev] in case [lev] has a strict upper *)
             (* constraints over [u] *)
+            (* Template polymorphic: do not squash to Prop if constructors have bad shape *)
+            let infu = match cond with
+              | NeverUnit | CondUnit _ -> Universe.sup Universe.type0 infu
+              | AlwaysUnit -> infu
+            in
 	    let b = type_in_type env || UGraph.check_leq (universes env') infu u in
 	      if not b then
 		anomaly ~label:"check_inductive" 
@@ -873,14 +914,12 @@ let build_inductive env p prv ctx env_ar paramsctxt kn isrecord isfinite inds nm
       match ar_kind with
       | TemplateArity (paramlevs, lev) -> 
 	let ar = {template_param_levels = paramlevs; template_level = lev} in
-          TemplateArity ar, InType
-      | RegularArity (info,ar,defs) ->
-	let s = sort_of_univ defs in
-	let kelim = allowed_sorts info s in
-	let ar = RegularArity 
+          TemplateArity ar, NoSquash
+      | RegularArity (squash,ar,defs) ->
+        let ar = RegularArity
 	  { mind_user_arity = Vars.subst_univs_level_constr subst ar; 
 	    mind_sort = sort_of_univ (Univ.subst_univs_level_universe subst defs); } in
-	  ar, kelim in
+          ar, squash in
     (* Assigning VM tags to constructors *)
     let nconst, nblock = ref 0, ref 0 in
     let transf num =
@@ -916,7 +955,7 @@ let build_inductive env p prv ctx env_ar paramsctxt kn isrecord isfinite inds nm
   let pkt = packets.(0) in
   let isrecord = 
     match isrecord with
-    | Some (Some rid) when pkt.mind_kelim == InType
+    | Some (Some rid) when pkt.mind_kelim == NoSquash
 			   && Array.length pkt.mind_consnames == 1
 			   && pkt.mind_consnrealargs.(0) > 0 ->
       (** The elimination criterion ensures that all projections can be defined. *)

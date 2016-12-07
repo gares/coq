@@ -93,7 +93,26 @@ let get_instantiated_arity (ind,u) (mib,mip) params =
   let sign, s = mind_arity mip in
   full_inductive_instantiate mib u params sign, s
 
-let elim_sorts (_,mip) = mip.mind_kelim
+let elim_sorts_abstract (_,mip) =
+  match mip.mind_kelim with
+  | NoSquash -> InType
+  | PropSquash | ConditionalSquash _ -> InProp
+  | SetSquash -> InSet
+
+let is_hset_type env revparams t =
+  let t = substl revparams t in (* Order?? *)
+  let s = (Retypeops.infer_type env no_evars t).utj_type in
+  Sorts.is_small s
+
+let elim_sorts env (_,mip) params =
+  match mip.mind_kelim with
+  | NoSquash -> InType
+  | PropSquash -> InProp
+  | SetSquash -> InSet
+  | ConditionalSquash tys ->
+     if List.for_all (is_hset_type env (List.rev params)) tys
+     then InType
+     else InProp
 
 let is_private (mib,_) = mib.mind_private = Some true
 let is_primitive_record (mib,_) = 
@@ -103,16 +122,18 @@ let is_primitive_record (mib,_) =
 
 let build_dependent_inductive ind (_,mip) params =
   let realargs,_ = List.chop mip.mind_nrealdecls mip.mind_arity_ctxt in
+  let params = List.map (lift mip.mind_nrealdecls) params in
   applist
     (mkIndU ind,
-       List.map (lift mip.mind_nrealdecls) params
+       params
        @ Context.Rel.to_extended_list 0 realargs)
+  , params
 
 (* This exception is local *)
 exception LocalArity of (sorts_family * sorts_family * arity_error) option
 
-let check_allowed_sort ksort specif =
-  if not (Sorts.family_leq ksort (elim_sorts specif)) then
+let check_allowed_sort env ksort specif params =
+  if not (Sorts.family_leq ksort (elim_sorts env specif params)) then
     let s = inductive_sort_family (snd specif) in
     raise (LocalArity (Some(ksort,s,error_elim_explain ksort s)))
 
@@ -132,11 +153,11 @@ let is_correct_arity env c pj ind specif params =
 	 let ksort = match kind_of_term (whd_all env' a2) with
 	 | Sort s -> family_of_sort s
 	 | _ -> raise (LocalArity None) in
-	 let dep_ind = build_dependent_inductive ind specif params in
+         let dep_ind, params = build_dependent_inductive ind specif params in
 	 let _ =
            try conv env a1 dep_ind
            with NotConvertible -> raise (LocalArity None) in
-	   check_allowed_sort ksort specif
+           check_allowed_sort env ksort specif params
       | _, (LocalDef _ as d)::ar' ->
 	  srec (push_rel d env) (lift 1 pt') ar'
       | _ ->
@@ -144,7 +165,7 @@ let is_correct_arity env c pj ind specif params =
   in
   try srec env pj.uj_type (List.rev arsign) 
   with LocalArity kinds ->
-    error_elim_arity env ind (elim_sorts specif) c pj kinds
+    error_elim_arity env ind (elim_sorts env specif params) c pj kinds
 
 
 (************************************************************************)
