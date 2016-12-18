@@ -24,11 +24,13 @@ open Ppvernac
 open Vernac_classifier
 open Feedback
 
+let execution_error state_id loc msg =
+    feedback ~id:(State state_id)
+      (Message (Error, Some loc, pp_to_richpp msg))
+
 module Hooks = struct
 
 let process_error, process_error_hook = Hook.make ()
-let interp, interp_hook = Hook.make ()
-let with_fail, with_fail_hook = Hook.make ()
 
 let state_computed, state_computed_hook = Hook.make
  ~default:(fun state_id ~in_cache ->
@@ -47,10 +49,6 @@ let forward_feedback, forward_feedback_hook =
 let parse_error, parse_error_hook = Hook.make
  ~default:(fun id loc msg ->
         feedback ~id (Message(Error, Some loc, pp_to_richpp msg))) ()
-
-let execution_error, execution_error_hook = Hook.make
- ~default:(fun state_id loc msg ->
-    feedback ~id:(State state_id) (Message(Error, Some loc, pp_to_richpp msg))) ()
 
 let unreachable_state, unreachable_state_hook = Hook.make
  ~default:(fun _ _ -> ()) ()
@@ -119,7 +117,7 @@ let vernac_interp ?proof id ?route { verbose; loc; expr } =
     set_id_for_feedback ?route (State id);
     Aux_file.record_in_aux_set_at loc;
     prerr_endline (fun () -> "interpreting " ^ Pp.string_of_ppcmds(pr_vernac expr));
-    try Hooks.(call interp ?verbosely:(Some verbose) ?proof (loc, expr))
+    try Vernacentries.interp ?verbosely:(Some verbose) ?proof (loc, expr)
     with e ->
       let e = CErrors.push e in
       iraise Hooks.(call_process_error_once e)
@@ -860,7 +858,7 @@ end = struct (* {{{ *)
     | None ->
         let loc = Option.default Loc.ghost (Loc.get_loc info) in
         let (e, info) = Hooks.(call_process_error_once (e, info)) in
-        Hooks.(call execution_error id loc (iprint (e, info)));
+        execution_error id loc (iprint (e, info));
         (e, Stateid.add info ~valid id)
 
   let same_env { system = s1 } { system = s2 } =
@@ -1287,7 +1285,7 @@ end = struct (* {{{ *)
         let info = Stateid.add ~valid:start Exninfo.null start in
         let e = (RemoteException (strbrk s), info) in
         t_assign (`Exn e);
-        Hooks.(call execution_error start Loc.ghost (strbrk s));
+        execution_error start Loc.ghost (strbrk s);
         feedback (InProgress ~-1)
 
   let build_proof_here ~drop_pt (id,valid) loc eop =
@@ -1750,7 +1748,7 @@ end = struct (* {{{ *)
         | VernacTime (_,e) | VernacRedirect (_,(_,e)) -> find true fail e
         | VernacFail e -> find time true e
         | _ -> e, time, fail in find false false e in
-    Hooks.call Hooks.with_fail fail (fun () ->
+    Vernacentries.with_fail fail (fun () ->
     (if time then System.with_time false else (fun x -> x)) (fun () ->
     ignore(TaskQueue.with_n_workers nworkers (fun queue ->
     Proof_global.with_current_proof (fun _ p ->
@@ -2946,12 +2944,8 @@ let show_script ?proof () =
 let state_computed_hook = Hooks.state_computed_hook
 let state_ready_hook = Hooks.state_ready_hook
 let parse_error_hook = Hooks.parse_error_hook
-let execution_error_hook = Hooks.execution_error_hook
 let forward_feedback_hook = Hooks.forward_feedback_hook
 let process_error_hook = Hooks.process_error_hook
-let interp_hook = Hooks.interp_hook
-let with_fail_hook = Hooks.with_fail_hook
 let unreachable_state_hook = Hooks.unreachable_state_hook
-let get_fix_exn () = !State.fix_exn_ref
 let tactic_being_run_hook = Hooks.tactic_being_run_hook
 (* vim:set foldmethod=marker: *)
