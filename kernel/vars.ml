@@ -232,14 +232,14 @@ let subst_univs_fn_puniverses fn =
 
 let subst_univs_fn_constr f c =
   let changed = ref false in
-  let fu = Univ.subst_univs_universe f in
+  let fs = Sorts.subst_univs_sort f in
   let fi = Univ.Instance.subst_fn (Univ.level_subst_of f) in
   let rec aux t = 
     match kind t with
-    | Sort (Sorts.Type u) -> 
-      let u' = fu u in
-	if u' == u then t else 
-	  (changed := true; mkSort (Sorts.sort_of_univ u'))
+    | Sort s ->
+       let s' = fs s in
+        if s' == s then t else
+          (changed := true; mkSort s')
     | Const (c, u) -> 
       let u' = fi u in 
 	if u' == u then t
@@ -294,10 +294,10 @@ let subst_univs_level_constr subst c =
           let u' = f u in 
 	    if u' == u then t
 	    else (changed := true; mkConstructU (c, u'))
-      | Sort (Sorts.Type u) -> 
-         let u' = Univ.subst_univs_level_universe subst u in
-	   if u' == u then t else 
-	     (changed := true; mkSort (Sorts.sort_of_univ u'))
+      | Sort s ->
+         let s' = Sorts.subst_univs_level_sort subst s in
+         if s' == s then t else
+           (changed := true; mkSort s')
       | _ -> Constr.map aux t
     in
     let c' = aux c in
@@ -331,10 +331,10 @@ let subst_instance_constr subst c =
           let u' = f u in 
 	    if u' == u then t
 	    else (changed := true; mkConstructU (c, u'))
-      | Sort (Sorts.Type u) -> 
-         let u' = Univ.subst_instance_universe subst u in
-	   if u' == u then t else 
-	     (changed := true; mkSort (Sorts.sort_of_univ u'))
+      | Sort s ->
+         let s' = Sorts.subst_instance_sort subst s in
+         if s' == s then t else
+           (changed := true; mkSort s')
       | _ -> Constr.map aux t
     in
     let c' = aux c in

@@ -128,11 +128,9 @@ type cinfo=
      ci_arity: int;     (* # args *)
      ci_nhyps: int}     (* # projectable args *)
 
-let family_eq f1 f2 = match f1, f2 with
-  | Prop Pos, Prop Pos
-  | Prop Null, Prop Null
-  | Type _, Type _ -> true
-  | _ -> false
+let family_eq f1 f2 =
+  let open Sorts in
+  family_equal (family_of_sort f1) (family_of_sort f2)
 
 type term=
     Symb of constr

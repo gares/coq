@@ -75,7 +75,7 @@ let refresh_polymorphic_type_of_inductive (_,mip) =
   | RegularArity s -> s.mind_user_arity, false
   | TemplateArity ar ->
     let ctx = List.rev mip.mind_arity_ctxt in
-      mkArity (List.rev ctx, Type ar.template_level), true
+      mkArity (List.rev ctx, ar.template_level), true
 
 let process_inductive (sechyps,abs_ctx) modlist mib =
   let nparams = mib.mind_nparams in

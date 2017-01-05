@@ -137,7 +137,7 @@ type vswitch = {
 type atom =
   | Aid of Vars.id_key
   | Aind of inductive
-  | Atype of Univ.universe
+  | Atype of sorts
 
 (* Zippers *)
 
@@ -249,9 +249,9 @@ let rec whd_accu a stk =
      | [Zapp args] ->
 	let u = ref (Obj.obj (Obj.field at 0)) in
 	for i = 0 to nargs args - 1 do
-	  u := Univ.Universe.sup !u (Univ.Universe.make (uni_lvl_val (arg args i)))
+          u := Sorts.sup !u (Sorts.of_level (uni_lvl_val (arg args i)))
 	done;
-	Vsort (Type !u)
+        Vsort !u
      | _ -> assert false
      end
   | i when i <= max_atom_tag ->

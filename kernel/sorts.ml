@@ -8,63 +8,30 @@
 
 open Univ
 
-type contents = Pos | Null
-
 type family = InProp | InSet | InType
 
-type t =
-  | Prop of contents                      (* proposition types *)
-  | Type of universe
+type t = universe
 
-let prop = Prop Null
-let set = Prop Pos
-let type1 = Type type1_univ
+let prop = Universe.type0m
+let set = Universe.type0
+let type1 = type1_univ
 
-let univ_of_sort = function
-  | Type u -> u
-  | Prop Pos -> Universe.type0
-  | Prop Null -> Universe.type0m
+let univ_of_sort s = s
 
-let sort_of_univ u =
-  if is_type0m_univ u then prop
-  else if is_type0_univ u then set
-  else Type u
+let compare = Universe.compare
 
-let compare s1 s2 =
-  if s1 == s2 then 0 else
-  match s1, s2 with
-  | Prop c1, Prop c2 ->
-    begin match c1, c2 with
-    | Pos, Pos | Null, Null -> 0
-    | Pos, Null -> -1
-    | Null, Pos -> 1
-    end
-  | Type u1, Type u2 -> Universe.compare u1 u2
-  | Prop _, Type _ -> -1
-  | Type _, Prop _ -> 1
+let equal = Universe.equal
 
-let equal s1 s2 = Int.equal (compare s1 s2) 0
+let is_prop = is_type0m_univ
 
-let is_prop = function
-  | Prop Null -> true
-  | Type u when Universe.equal Universe.type0m u -> true
-  | _ -> false
+let is_set = is_type0_univ
 
-let is_set = function
-  | Prop Pos -> true
-  | Type u when Universe.equal Universe.type0 u -> true
-  | _ -> false
+let is_small = is_small_univ
 
-let is_small = function
-  | Prop _ -> true
-  | Type u -> is_small_univ u
-
-let family = function
-  | Prop Null -> InProp
-  | Prop Pos -> InSet
-  | Type u when is_type0m_univ u -> InProp
-  | Type u when is_type0_univ u -> InSet
-  | Type _ -> InType
+let family s =
+  if is_prop s then InProp
+  else if is_set s then InSet
+  else InType
 
 let family_mem s = function
   | InProp -> is_prop s
@@ -78,42 +45,48 @@ let family_leq l r =
   | InProp, _ | InSet, InSet | _, InType -> true
   | _, _ -> false
 
-open Hashset.Combine
+let family_of_sort s =
+  if is_prop s then InProp
+  else if is_set s then InSet
+  else InType
 
-let hash = function
-| Prop p ->
-  let h = match p with
-  | Pos -> 0
-  | Null -> 1
-  in
-  combinesmall 1 h
-| Type u ->
- let h = Univ.Universe.hash u in
-  combinesmall 2 h
+let is_impredicative ~is_impredicative_set s =
+  if is_impredicative_set then is_small s
+  else is_prop s
+
+let sort_of_product ~is_impredicative_set domsort rangsort =
+  if is_impredicative ~is_impredicative_set rangsort then rangsort
+  else Universe.sup domsort rangsort
+
+let sup = Universe.sup
+
+let super = Universe.super
 
 module List = struct
   let mem = List.memq
   let intersect l l' = CList.intersect family_equal l l'
 end
 
-module Hsorts =
-  Hashcons.Make(
-    struct
-      type _t = t
-      type t = _t
-      type u = universe -> universe
+let hcons = hcons_univ
+let hash = Universe.hash
 
-      let hashcons huniv = function
-        | Type u as c -> 
-	  let u' = huniv u in 
-	    if u' == u then c else Type u'
-        | s -> s
-      let eq s1 s2 = match (s1,s2) with
-        | (Prop c1, Prop c2) -> c1 == c2
-        | (Type u1, Type u2) -> u1 == u2
-        |_ -> false
+let check_eq = UGraph.check_eq
+let check_leq = UGraph.check_leq
 
-      let hash = hash
-    end)
+let enforce_eq = Univ.enforce_eq
+let enforce_leq = Univ.enforce_leq
 
-let hcons = Hashcons.simple_hcons Hsorts.generate Hsorts.hcons hcons_univ
+let subst_univs_sort = subst_univs_universe
+let subst_univs_level_sort = subst_univs_level_universe
+let subst_instance_sort = subst_instance_universe
+
+let of_level = Universe.make
+let is_level = Universe.is_level
+let level = Universe.level
+let levels = Universe.levels
+let level_mem = univ_level_mem
+
+let is_variable = is_univ_variable
+
+let pr = Universe.pr
+let pr_with = Universe.pr_with

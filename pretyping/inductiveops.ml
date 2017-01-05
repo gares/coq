@@ -576,16 +576,16 @@ let rec instantiate_universes env evdref scl is = function
       d :: instantiate_universes env evdref scl is (sign, exp)
   | (LocalAssum (na,ty))::sign, Some l::exp ->
       let ctx,_ = CClosure.dest_arity env ty in
-      let u = Univ.Universe.make l in
+      let u = Sorts.of_level l in
       let s =
 	(* Does the sort of parameter [u] appear in (or equal)
            the sort of inductive [is] ? *)
-        if univ_level_mem l is then
+        if Sorts.level_mem l is then
           scl (* constrained sort: replace by scl *)
         else
           (* unconstrained sort: replace by fresh universe *)
           let evm, s = Evd.new_sort_variable Evd.univ_flexible !evdref in
-	  let evm = Evd.set_leq_sort env evm s (Sorts.sort_of_univ u) in
+          let evm = Evd.set_leq_sort env evm s u in
 	    evdref := evm; s
       in
       (LocalAssum (na,mkArity(ctx,s))) :: instantiate_universes env evdref scl is (sign, exp)

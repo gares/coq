@@ -23,7 +23,7 @@ type arguments
 type atom =
   | Aid of Vars.id_key
   | Aind of inductive
-  | Atype of Univ.universe
+  | Atype of sorts
 
 (** Zippers *)
 

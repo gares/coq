@@ -57,8 +57,8 @@ let refresh_universes ?(status=univ_rigid) ?(onlyalg=false) ?(refreshset=false)
   in
   let rec refresh ~onlyalg status ~direction t =
     match kind_of_term t with
-    | Sort (Type u as s) ->
-       (match Univ.universe_level u with
+    | Sort s when not (is_small s) ->
+       (match Sorts.level s with
 	| None -> refresh_sort status ~direction s
 	| Some l ->
 	   (match Evd.universe_rigidity evd l with
@@ -69,7 +69,7 @@ let refresh_universes ?(status=univ_rigid) ?(onlyalg=false) ?(refreshset=false)
 	       if onlyalg && alg then
 	         (evdref := Evd.make_flexible_variable !evdref false l; t)
 	       else t))
-    | Sort (Prop Pos as s) when refreshset && not direction ->
+    | Sort s when Sorts.is_set s && refreshset && not direction ->
        (* Cannot make a universe "lower" than "Set",
           only refreshing when we want higher universes. *)
        refresh_sort status ~direction s
@@ -1232,14 +1232,13 @@ let solve_evar_evar ?(force=false) f g env evd pbty (evk1,args1 as ev1) (evk2,ar
       let evi2 = Evd.find evd evk2 in
       let evi2env = Evd.evar_env evi2 in
       let ctx2, j = CClosure.dest_arity evi2env evi2.evar_concl in
-      let ui, uj = univ_of_sort i, univ_of_sort j in
-	if i == j || Evd.check_eq evd ui uj
+        if i == j || Evd.check_eq evd i j
 	then (* Shortcut, i = j *) 
 	  evd
-	else if Evd.check_leq evd ui uj then
+        else if Evd.check_leq evd i j then
           let t2 = it_mkProd_or_LetIn (mkSort i) ctx2 in
           downcast evk2 t2 evd
-	else if Evd.check_leq evd uj ui then
+        else if Evd.check_leq evd j i then
           let t1 = it_mkProd_or_LetIn (mkSort j) ctx1 in
           downcast evk1 t1 evd
 	else

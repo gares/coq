@@ -16,11 +16,7 @@ open Vars
 (**         Redeclaration of types from module Constr                 *)
 (**********************************************************************)
 
-type contents = Sorts.contents = Pos | Null
-
-type sorts = Sorts.t =
-  | Prop of contents       (** Prop and Set *)
-  | Type of Univ.universe  (** Type *)
+type sorts = Sorts.t
 
 type sorts_family = Sorts.family = InProp | InSet | InType
 
@@ -103,7 +99,6 @@ let sorts_ord = Sorts.compare
 let is_prop_sort = Sorts.is_prop
 let family_of_sort = Sorts.family
 let univ_of_sort = Sorts.univ_of_sort
-let sort_of_univ = Sorts.sort_of_univ
 
 (** {6 Term constructors. } *)
 
@@ -114,7 +109,6 @@ let mkEvar = Constr.mkEvar
 let mkSort = Constr.mkSort
 let mkProp = Constr.mkProp
 let mkSet  = Constr.mkSet 
-let mkType = Constr.mkType
 let mkCast = Constr.mkCast
 let mkProd = Constr.mkProd
 let mkLambda = Constr.mkLambda
@@ -197,22 +191,22 @@ let destSort c = match kind_of_term c with
   | _ -> raise DestKO
 
 let rec isprop c = match kind_of_term c with
-  | Sort (Prop _) -> true
+  | Sort s -> Sorts.is_small s
   | Cast (c,_,_) -> isprop c
   | _ -> false
 
 let rec is_Prop c = match kind_of_term c with
-  | Sort (Prop Null) -> true
+  | Sort s -> Sorts.is_prop s
   | Cast (c,_,_) -> is_Prop c
   | _ -> false
 
 let rec is_Set c = match kind_of_term c with
-  | Sort (Prop Pos) -> true
+  | Sort s -> Sorts.is_set s
   | Cast (c,_,_) -> is_Set c
   | _ -> false
 
 let rec is_Type c = match kind_of_term c with
-  | Sort (Type _) -> true
+  | Sort s -> not (Sorts.is_small s)
   | Cast (c,_,_) -> is_Type c
   | _ -> false
 

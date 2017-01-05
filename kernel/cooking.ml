@@ -213,7 +213,7 @@ let cook_constant env { from = cb; info } =
           abstract_constant_type (expmod t) hyps in
   	RegularArity typ
     | TemplateArity (ctx,s) ->
-  	let t = mkArity (ctx,Type s.template_level) in
+        let t = mkArity (ctx, s.template_level) in
   	let typ = abstract_constant_type (expmod t) hyps in
   	let j = make_judge (constr_of_def (opaque_tables env) body) typ in
   	Typeops.make_polymorphic_if_constant_for_ind env j

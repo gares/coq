@@ -425,17 +425,16 @@ let rec check_anonymous_type ind =
 let make_conclusion_flexible evdref ty poly =
   if poly && isArity ty then
     let _, concl = destArity ty in
-      match concl with
-      | Type u -> 
-        (match Univ.universe_level u with
-        | Some u -> 
-	  evdref := Evd.make_flexible_variable !evdref true u
-	| None -> ())
-      | _ -> ()
+    if not (Sorts.is_small concl) then
+    (match Sorts.level concl with
+     | Some u ->
+        evdref := Evd.make_flexible_variable !evdref true u
+     | None -> ())
+    else ()
   else () 
 	
 let is_impredicative env u = 
-  u = Prop Null || (is_impredicative_set env && u = Prop Pos)
+  Sorts.equal u Sorts.prop || (is_impredicative_set env && Sorts.equal u Sorts.set)
 
 let interp_ind_arity env evdref ind =
   let c = intern_gen IsType env ind.ind_arity in
@@ -464,11 +463,10 @@ let sign_level env evd sign =
 	let s = destSort (CClosure.whd_all env
 			    (nf_evar evd (Retyping.get_type_of env evd (RelDecl.get_type d))))
 	in
-	let u = univ_of_sort s in
-	  (Univ.sup u lev, push_rel d env))
-    sign (Univ.type0m_univ,env))
+          (Sorts.sup s lev, push_rel d env))
+    sign (Sorts.prop, env))
 
-let sup_list min = List.fold_left Univ.sup min
+let sup_list min = List.fold_left Sorts.sup min
 
 let extract_level env evd min tys = 
   let sorts = List.map (fun ty -> 
@@ -477,31 +475,30 @@ let extract_level env evd min tys =
   in sup_list min sorts
 
 let is_flexible_sort evd u =
-  match Univ.Universe.level u with
+  match Sorts.level u with
   | Some l -> Evd.is_flexible_level evd l
   | None -> false
 
 let inductive_levels env evdref poly arities inds =
   let destarities = List.map (fun x -> x, CClosure.dest_arity env x) arities in
   let levels = List.map (fun (x,(ctx,a)) -> 
-    if a = Prop Null then None
-    else Some (univ_of_sort a)) destarities
+    if Sorts.equal a Sorts.prop then None
+    else Some a) destarities
   in
   let cstrs_levels, min_levels, sizes = 
     CList.split3
       (List.map2 (fun (_,tys,_) (arity,(ctx,du)) -> 
 	let len = List.length tys in
-	let minlev = Sorts.univ_of_sort du in
-	let minlev =
+        let minlev =
 	  if len > 1 && not (is_impredicative env du) then
-	    Univ.sup minlev Univ.type0_univ
-	  else minlev
+            Sorts.sup du Sorts.set
+          else du
 	in
 	let minlev =
 	  (** Indices contribute. *)
 	  if Indtypes.is_indices_matter () && List.length ctx > 0 then (
 	    let ilev = sign_level env !evdref ctx in
-	      Univ.sup ilev minlev)
+              Sorts.sup ilev minlev)
 	  else minlev
 	in
 	let clev = extract_level env !evdref minlev tys in
@@ -526,27 +523,26 @@ let inductive_levels env evdref poly arities inds =
         (** Constructors contribute. *)
 	let evd = 
 	  if Sorts.is_set du then
-	    if not (Evd.check_leq evd cu Univ.type0_univ) then 
+            if not (Evd.check_leq evd cu Sorts.set) then
 	      raise (Indtypes.InductiveError Indtypes.LargeNonPropInductiveNotInType)
 	    else evd
 	  else evd
 	    (* Evd.set_leq_sort env evd (Type cu) du *)
 	in
 	let evd = 
-	  if len >= 2 && Univ.is_type0m_univ cu then 
+          if len >= 2 && Sorts.is_prop cu then
 	   (** "Polymorphic" type constraint and more than one constructor, 
 	       should not land in Prop. Add constraint only if it would
 	       land in Prop directly (no informative arguments as well). *)
-	    Evd.set_leq_sort env evd (Prop Pos) du
+            Evd.set_leq_sort env evd Sorts.set du
 	  else evd
-	in
-	let duu = Sorts.univ_of_sort du in
+        in
 	let evd =
-	  if not (Univ.is_small_univ duu) && Univ.Universe.equal cu duu then
-	    if is_flexible_sort evd duu && not (Evd.check_leq evd Univ.type0_univ duu) then
-	      Evd.set_eq_sort env evd (Prop Null) du
+          if not (Sorts.is_small du) && Sorts.equal cu du then
+            if is_flexible_sort evd du && not (Evd.check_leq evd Sorts.set du) then
+              Evd.set_eq_sort env evd Sorts.prop du
 	    else evd
-	  else Evd.set_eq_sort env evd (Type cu) du
+          else Evd.set_eq_sort env evd cu du
 	in
 	  (evd, arity :: arities))
     (!evdref,[]) (Array.to_list levels') destarities sizes
@@ -964,8 +960,8 @@ let build_wellfounded (recname,pl,n,bl,arityc,body) poly r measure notation =
       try
 	let ctx, ar = Reductionops.splay_prod_n env !evdref 2 relty in
 	  match ctx, kind_of_term ar with
-	  | [LocalAssum (_,t); LocalAssum (_,u)], Sort (Prop Null)
-	      when Reductionops.is_conv env !evdref t u -> t
+          | [LocalAssum (_,t); LocalAssum (_,u)], Sort s
+              when Sorts.is_prop s && Reductionops.is_conv env !evdref t u -> t
 	  | _, _ -> error ()
       with e when CErrors.noncritical e -> error ()
   in

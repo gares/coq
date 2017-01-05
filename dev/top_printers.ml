@@ -294,16 +294,19 @@ let constr_display csr =
        v "")^"|]"
 
   and univ_display u =
-    incr cnt; pp (str "with " ++ int !cnt ++ str" " ++ pr_uni u ++ fnl ())
+    incr cnt; pp (str "with " ++ int !cnt ++ str" " ++ Sorts.pr u ++ fnl ())
 
   and level_display u =
     incr cnt; pp (str "with " ++ int !cnt ++ str" " ++ Level.pr u ++ fnl ())
 
-  and sort_display = function
-    | Prop(Pos) -> "Prop(Pos)"
-    | Prop(Null) -> "Prop(Null)"
-    | Type u -> univ_display u;
-	"Type("^(string_of_int !cnt)^")"
+  and sort_display s =
+    if Sorts.is_prop s then "Prop(Pos)"
+    else if Sorts.is_set s then "Prop(Null)"
+    else
+      begin
+        univ_display s;
+        "Type("^(string_of_int !cnt)^")"
+      end
 
   and universes_display l = 
     Array.fold_right (fun x i -> level_display x; (string_of_int !cnt)^(if not(i="")
@@ -419,11 +422,12 @@ let print_pure_constr csr =
   and universes_display u =
     Array.iter (fun u -> print_space (); pp (Level.pr u)) (Instance.to_array u)
 
-  and sort_display = function
-    | Prop(Pos) -> print_string "Set"
-    | Prop(Null) -> print_string "Prop"
-    | Type u -> open_hbox();
-	print_string "Type("; pp (pr_uni u); print_string ")"; close_box()
+  and sort_display s =
+    if Sorts.is_set s then print_string "Set"
+    else if Sorts.is_prop s then print_string "Prop"
+    else
+      open_hbox();
+      print_string "Type("; pp (Sorts.pr s); print_string ")"; close_box()
 
   and name_display = function
     | Name id -> print_string (Id.to_string id)

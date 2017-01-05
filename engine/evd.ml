@@ -932,12 +932,12 @@ let new_univ_level_variable ?loc ?name rigid evd =
     ({evd with universes = uctx'}, u)
 
 let new_univ_variable ?loc ?name rigid evd =
-  let uctx', u = UState.new_univ_variable ?loc rigid name evd.universes in
-    ({evd with universes = uctx'}, Univ.Universe.make u)
+  let evd, u = new_univ_level_variable ?loc ?name rigid evd in
+  (evd, Univ.Universe.make u)
 
-let new_sort_variable ?loc ?name rigid d =
-  let (d', u) = new_univ_variable ?loc rigid ?name d in
-    (d', Type u)
+let new_sort_variable ?loc ?name rigid evd =
+  let evd, u = new_univ_level_variable ?loc rigid ?name evd in
+  (evd, Sorts.of_level u)
 
 let add_global_univ d u =
   { d with universes = UState.add_global_univ d.universes u }
@@ -984,11 +984,7 @@ let is_flexible_level evd l =
 
 let is_eq_sort s1 s2 =
   if Sorts.equal s1 s2 then None
-  else
-    let u1 = univ_of_sort s1
-    and u2 = univ_of_sort s2 in
-      if Univ.Universe.equal u1 u2 then None
-      else Some (u1, u2)
+  else Some (s1, s2)
 
 (* Precondition: l is not defined in the substitution *)
 let universe_rigidity evd l =
@@ -1002,17 +998,18 @@ let normalize_universe evd =
   let normalize = Universes.normalize_universe_opt_subst vars in
     normalize
 
+let normalize_sort evd =
+  let vars = ref (UState.subst evd.universes) in
+  Universes.normalize_sort_opt_subst vars
+
 let normalize_universe_instance evd l =
   let vars = ref (UState.subst evd.universes) in
   let normalize = Univ.level_subst_of (Universes.normalize_univ_variable_opt_subst vars) in
     Univ.Instance.subst_fn normalize l
 
 let normalize_sort evars s =
-  match s with
-  | Prop _ -> s
-  | Type u -> 
-    let u' = normalize_universe evars u in
-    if u' == u then s else Type u'
+  let s' = normalize_sort evars s in
+  if s' == s then s else s'
 
 (* FIXME inefficient *)
 let set_eq_sort env d s1 s2 =
@@ -1025,11 +1022,6 @@ let set_eq_sort env d s1 s2 =
         (Universes.Constraints.singleton (u1,Universes.UEq,u2))
     else
       d
-
-let has_lub evd u1 u2 =
-  if Univ.Universe.equal u1 u2 then evd
-  else add_universe_constraints evd
-    (Universes.Constraints.singleton (u1,Universes.ULub,u2))
 
 let set_eq_level d u1 u2 =
   add_constraints d (Univ.enforce_eq_level u1 u2 Univ.Constraint.empty)
@@ -1052,10 +1044,10 @@ let set_leq_sort env evd s1 s2 =
      else evd
 	    
 let check_eq evd s s' =
-  UGraph.check_eq (UState.ugraph evd.universes) s s'
+  Sorts.check_eq (UState.ugraph evd.universes) s s'
 
 let check_leq evd s s' =
-  UGraph.check_leq (UState.ugraph evd.universes) s s'
+  Sorts.check_leq (UState.ugraph evd.universes) s s'
 
 let normalize_evar_universe_context_variables = UState.normalize_variables
 

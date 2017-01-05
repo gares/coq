@@ -91,9 +91,9 @@ let rec whd_evar sigma c =
         whd_evar sigma c
       | _ -> c
       end
-    | Sort (Type u) -> 
-      let u' = Evd.normalize_universe sigma u in
-	if u' == u then c else mkSort (Sorts.sort_of_univ u')
+    | Sort s ->
+       let s' = Evd.normalize_sort sigma s in
+       if s' == s then c else mkSort s'
     | Const (c', u) when not (Univ.Instance.is_empty u) -> 
       let u' = Evd.normalize_universe_instance sigma u in
 	if u' == u then c else mkConstU (c', u')
@@ -748,8 +748,8 @@ let occur_evar_upto sigma n c =
    any type has type Type. May cause some trouble, but not so far... *)
 
 let judge_of_new_Type evd =
-  let Sigma (s, evd', p) = Sigma.new_univ_variable univ_rigid evd in
-  Sigma ({ uj_val = mkSort (Type s); uj_type = mkSort (Type (Univ.super s)) }, evd', p)
+  let Sigma (s, evd', p) = Sigma.new_sort_variable univ_rigid evd in
+  Sigma ({ uj_val = mkSort s; uj_type = mkSort (Sorts.super s) }, evd', p)
 
 let subterm_source evk (loc,k) =
   let evk = match k with

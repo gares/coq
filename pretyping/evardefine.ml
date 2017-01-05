@@ -99,8 +99,8 @@ let define_pure_evar_as_product evd evk =
           let Sigma (e, evd3, _) = new_type_evar newenv evd1 status ~src ~filter in
           (Sigma.to_evar_map evd3, e)
         in
-	let prods = Univ.sup (univ_of_sort u1) (univ_of_sort srng) in
-	let evd3 = Evd.set_leq_sort evenv evd3 (Type prods) s in
+        let prods = Sorts.sup u1 srng in
+        let evd3 = Evd.set_leq_sort evenv evd3 prods s in
 	  evd3, rng
   in
   let prod = mkProd (Name id, dom, subst_var id rng) in
@@ -166,13 +166,12 @@ let rec evar_absorb_arguments env evd (evk,args as ev) = function
 (* Refining an evar to a sort *)
 
 let define_evar_as_sort env evd (ev,args) =
-  let evd, u = new_univ_variable univ_rigid evd in
+  let evd, s = new_sort_variable univ_rigid evd in
   let evi = Evd.find_undefined evd ev in 
-  let s = Type u in
   let concl = Reductionops.whd_all (evar_env evi) evd evi.evar_concl in
   let sort = destSort concl in
   let evd' = Evd.define ev (mkSort s) evd in
-  Evd.set_leq_sort env evd' (Type (Univ.super u)) sort, s
+  Evd.set_leq_sort env evd' (Sorts.super s) sort, s
 
 (* Propagation of constraints through application and abstraction:
    Given a type constraint on a functional term, returns the type

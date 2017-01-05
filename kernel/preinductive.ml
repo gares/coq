@@ -70,11 +70,6 @@ let constructor_instantiate mind u mib c =
   let s = ind_subst mind mib u in
     substl s (subst_instance_constr u c)
 
-let sort_as_univ = function
-| Type u -> u
-| Prop Null -> Universe.type0m
-| Prop Pos -> Universe.type0
-
 (* Template polymorphism *)
 
 (************************************************************************)
@@ -134,7 +129,7 @@ let make_subst env =
         (* arity is a global level which, at typing time, will be enforce *)
         (* to be greater than the level of the argument; this is probably *)
         (* a useless extra constraint *)
-        let s = sort_as_univ (snd (dest_arity env (Lazy.force a))) in
+        let s = univ_of_sort (snd (dest_arity env (Lazy.force a))) in
           make (cons_subst u s subst) (sign, exp, args)
     | LocalAssum (na,t) :: sign, Some u::exp, [] ->
         (* No more argument here: we add the remaining universes to the *)
@@ -155,16 +150,8 @@ let make_subst env =
 let instantiate_universes env ctx ar argsorts =
   let args = Array.to_list argsorts in
   let subst = make_subst env (ctx,ar.template_param_levels,args) in
-  let level = Univ.subst_univs_universe (Univ.make_subst subst) ar.template_level in
-  let ty =
-    (* Singleton type not containing types are interpretable in Prop *)
-    if is_type0m_univ level then prop_sort
-    (* Non singleton type not containing types are interpretable in Set *)
-    else if is_type0_univ level then set_sort
-    (* This is a Type with constraints *)
-    else Type level
-  in
-    (ctx, ty)
+  let level = Sorts.subst_univs_sort (Univ.make_subst subst) ar.template_level in
+    (ctx, level)
 
 
 exception SingletonInductiveBecomesProp of Id.t
@@ -180,7 +167,7 @@ let type_of_inductive_gen ?(polyprop=true) env ((mib,mip),u) paramtyps =
       (* The Ocaml extraction cannot handle (yet?) "Prop-polymorphism", i.e.
          the situation where a non-Prop singleton inductive becomes Prop
          when applied to Prop params *)
-      if not polyprop && not (is_type0m_univ ar.template_level) && is_prop_sort s
+      if not polyprop && not (is_prop_sort ar.template_level) && is_prop_sort s
       then raise (SingletonInductiveBecomesProp mip.mind_typename);
       mkArity (List.rev ctx,s)
 

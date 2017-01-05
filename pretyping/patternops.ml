@@ -128,9 +128,12 @@ let pattern_of_constr env sigma t =
     | Rel n  -> PRel n
     | Meta n -> PMeta (Some (Id.of_string ("META" ^ string_of_int n)))
     | Var id -> PVar id
-    | Sort (Prop Null) -> PSort GProp
-    | Sort (Prop Pos) -> PSort GSet
-    | Sort (Type _) -> PSort (GType [])
+    | Sort s ->
+       begin match Sorts.family_of_sort s with
+       | InProp -> PSort GProp
+       | InSet -> PSort GSet
+       | InType -> PSort (GType [])
+       end
     | Cast (c,_,_)      -> pattern_of_constr env c
     | LetIn (na,c,t,b) -> PLetIn (na,pattern_of_constr env c,
 				  pattern_of_constr (push_rel (LocalDef (na,c,t)) env) b)

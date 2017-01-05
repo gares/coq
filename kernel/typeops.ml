@@ -64,8 +64,8 @@ let type1 = mkSort type1_sort
 (* Type of Type(i). *)
 
 let type_of_type u =
-  let uu = Universe.super u in
-    mkType uu
+  let uu = Sorts.super u in
+    mkSort uu
 
 (*s Type of a de Bruijn index. *)
 
@@ -190,25 +190,8 @@ let type_of_apply env func funt argsv argstv =
 (* Type of product *)
 
 let sort_of_product env domsort rangsort =
-  match (domsort, rangsort) with
-    (* Product rule (s,Prop,Prop) *)
-    | (_,       Prop Null)  -> rangsort
-    (* Product rule (Prop/Set,Set,Set) *)
-    | (Prop _,  Prop Pos) -> rangsort
-    (* Product rule (Type,Set,?) *)
-    | (Type u1, Prop Pos) ->
-        if is_impredicative_set env then
-          (* Rule is (Type,Set,Set) in the Set-impredicative calculus *)
-          rangsort
-        else
-          (* Rule is (Type_i,Set,Type_i) in the Set-predicative calculus *)
-          Type (Universe.sup Universe.type0 u1)
-    (* Product rule (Prop,Type_i,Type_i) *)
-    | (Prop Pos,  Type u2)  -> Type (Universe.sup Universe.type0 u2)
-    (* Product rule (Prop,Type_i,Type_i) *)
-    | (Prop Null, Type _)  -> rangsort
-    (* Product rule (Type_i,Type_i,Type_i) *)
-    | (Type u1, Type u2) -> Type (Universe.sup u1 u2)
+  let is_impredicative_set = is_impredicative_set env in
+  Sorts.sort_of_product ~is_impredicative_set domsort rangsort
 
 (* [judge_of_product env name (typ1,s1) (typ2,s2)] implements the rule
 
@@ -344,11 +327,11 @@ let rec execute env cstr =
   let open Context.Rel.Declaration in
   match kind_of_term cstr with
     (* Atomic terms *)
-    | Sort (Prop c) ->
+    | Sort s when Sorts.is_small s ->
       type1
 	
-    | Sort (Type u) ->
-      type_of_type u
+    | Sort s ->
+      type_of_type s
 
     | Rel n ->
       type_of_relative env n
@@ -502,11 +485,7 @@ let infer_local_decls env decls =
 
 let judge_of_prop = make_judge mkProp type1
 let judge_of_set = make_judge mkSet type1
-let judge_of_type u = make_judge (mkType u) (type_of_type u)
-
-let judge_of_prop_contents = function
-  | Null -> judge_of_prop
-  | Pos -> judge_of_set
+let judge_of_type u = make_judge (mkSort u) (type_of_type u)
 
 let judge_of_relative env k = make_judge (mkRel k) (type_of_relative env k)
 
@@ -570,7 +549,7 @@ let type_of_projection_constant env (p,u) =
 
 let extract_level env p =
   let _,c = dest_prod_assum env p in
-  match kind_of_term c with Sort (Type u) -> Univ.Universe.level u | _ -> None
+  match kind_of_term c with Sort u -> Sorts.level u | _ -> None
 
 let extract_context_levels env l =
   let fold l = function
@@ -582,7 +561,7 @@ let extract_context_levels env l =
 let make_polymorphic_if_constant_for_ind env {uj_val = c; uj_type = t} =
   let params, ccl = dest_prod_assum env t in
   match kind_of_term ccl with
-  | Sort (Type u) ->
+  | Sort u ->
      let ind, l = decompose_app (whd_all env c) in
      if isInd ind && List.is_empty l then
        let mis = lookup_mind_specif env (fst (destInd ind)) in

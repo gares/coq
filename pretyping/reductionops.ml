@@ -683,7 +683,7 @@ let magicaly_constant_of_fixbody env reference bd = function
         begin match csts with
         | Some csts ->
           let subst = Universes.Constraints.fold (fun (l,d,r) acc ->
-            Univ.LMap.add (Option.get (Universe.level l)) (Option.get (Universe.level r)) acc)
+            Univ.LMap.add (Option.get (Sorts.level l)) (Option.get (Sorts.level r)) acc)
             csts Univ.LMap.empty
           in
           let inst = Instance.subst_fn (fun u -> Univ.LMap.find u subst) u in

@@ -621,14 +621,14 @@ let rec compile_constr reloc c sz cont =
 	   (Univ.Instance.to_array u)
 	   sz
 	   cont
-  | Sort (Prop _) | Construct _ ->
+  | Construct _ ->
       compile_str_cst reloc (str_const c) sz cont
-  | Sort (Type u) ->
+  | Sort u ->
      (* We separate global and local universes in [u]. The former will be part
         of the structured constant, while the later (if any) will be applied as
         arguments. *)
      let open Univ in begin
-      let levels = Universe.levels u in
+      let levels = Sorts.levels u in
       let global_levels =
 	LSet.filter (fun x -> Level.var_index x = None) levels
       in
@@ -638,10 +638,10 @@ let rec compile_constr reloc c sz cont =
       in
       (* We assume that [Universe.type0m] is a neutral element for [Universe.sup] *)
       let uglob =
-	LSet.fold (fun lvl u -> Universe.sup u (Universe.make lvl)) global_levels Universe.type0m
+        LSet.fold (fun lvl u -> Sorts.sup u (Sorts.of_level lvl)) global_levels Sorts.prop
       in
       if local_levels = [] then
-	compile_str_cst reloc (Bstrconst (Const_sorts (Type uglob))) sz cont
+        compile_str_cst reloc (Bstrconst (Const_sorts uglob)) sz cont
       else
 	let compile_get_univ reloc idx sz cont =
           set_max_stack_size sz;

@@ -249,7 +249,7 @@ let change_property_sort evd toSort princ princName =
     (get_name decl,
      let args,ty = decompose_prod (get_type decl) in
      let s = destSort ty in
-       Global.add_constraints (Univ.enforce_leq (univ_of_sort toSort) (univ_of_sort s) Univ.Constraint.empty);
+       Global.add_constraints (Sorts.enforce_leq toSort s Univ.Constraint.empty);
        compose_prod args (mkSort toSort)
     )
   in

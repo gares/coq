@@ -87,7 +87,6 @@ val mkEvar : existential -> constr
 val mkSort : Sorts.t -> types
 val mkProp : types
 val mkSet  : types
-val mkType : Univ.universe -> types
 
 
 (** This defines the strategy to use for verifiying a Cast *)

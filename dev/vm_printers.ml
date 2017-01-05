@@ -21,12 +21,10 @@ let print_vfix () = print_string "vfix"
 let print_vfix_app () = print_string "vfix_app"
 let print_vswith () = print_string "switch"
 
-let ppsort = function
-  | Prop(Pos) -> print_string "Set"
-  | Prop(Null) -> print_string "Prop"
-  | Type u -> print_string "Type"
-
-
+let ppsort s =
+  if Sorts.is_prop s then print_string "Prop"
+  else if Sorts.is_set s then print_string "Set"
+  else print_string "Type"
 
 let print_idkey idk =
   match idk with

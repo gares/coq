@@ -101,9 +101,9 @@ let head_name c = (* Find the head constant of a constr if any *)
 let lowercase_first_char id = (* First character of a constr *)
   Unicode.lowercase_first_char (Id.to_string id)
 
-let sort_hdchar = function
-  | Prop(_) -> "P"
-  | Type(_) -> "T"
+let sort_hdchar s =
+  if is_small s then "P"
+  else "T"
 
 let hdchar env c =
   let rec hdrec k c =

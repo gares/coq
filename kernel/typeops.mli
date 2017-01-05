@@ -40,8 +40,7 @@ val type_judgment          :  env -> unsafe_judgment -> unsafe_type_judgment
 (** {6 Type of sorts. } *)
 val judge_of_prop : unsafe_judgment
 val judge_of_set  : unsafe_judgment
-val judge_of_prop_contents  : contents -> unsafe_judgment
-val judge_of_type           : universe -> unsafe_judgment
+val judge_of_type : sorts -> unsafe_judgment
 
 (** {6 Type of a bound variable. } *)
 val judge_of_relative : env -> int -> unsafe_judgment

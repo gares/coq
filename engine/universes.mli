@@ -32,11 +32,11 @@ val set_remote_new_univ_level : universe_level RemoteCounter.installer
 (** Side-effecting functions creating new universe levels. *)
 
 val new_univ_level : Names.dir_path -> universe_level
-val new_univ : Names.dir_path -> universe
-val new_Type : Names.dir_path -> types
-val new_Type_sort : Names.dir_path -> sorts
+(* val new_univ : Names.dir_path -> universe *)
+(* val new_Type : Names.dir_path -> types *)
 
 val new_global_univ : unit -> universe in_universe_context_set
+val new_global_sort : unit -> sorts in_universe_context_set
 val new_sort_in_family : sorts_family -> sorts
 
 (** {6 Constraints for type inference}
@@ -48,7 +48,7 @@ val new_sort_in_family : sorts_family -> sorts
 
 type universe_constraint_type = ULe | UEq | ULub
 
-type universe_constraint = universe * universe_constraint_type * universe
+type universe_constraint = sorts * universe_constraint_type * sorts
 module Constraints : sig
   include Set.S with type elt = universe_constraint
 		       
@@ -178,6 +178,9 @@ val normalize_univ_variable_subst : universe_subst ref ->
 val normalize_universe_opt_subst : universe_opt_subst ref ->
   (universe -> universe)
 
+val normalize_sort_opt_subst : universe_opt_subst ref ->
+  (sorts -> sorts)
+
 val normalize_universe_subst : universe_subst ref ->
   (universe -> universe)
 
@@ -227,5 +230,5 @@ val pr_universe_opt_subst : universe_opt_subst -> Pp.std_ppcmds
 
 (** {6 Support for old-style sort-polymorphism } *)
 
-val solve_constraints_system : universe option array -> universe array -> universe array ->
-  universe array
+val solve_constraints_system : sorts option array -> sorts array -> sorts array ->
+  sorts array

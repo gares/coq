@@ -130,10 +130,10 @@ let type_of_rel env n =
 
 let type_of_prop = mkSort type1_sort
 
-let type_of_sort s = 
-  match s with
-  | Prop _ -> type_of_prop
-  | Type u -> mkType (Univ.super u)
+let type_of_sort s =
+  if is_small s
+  then type_of_prop
+  else mkSort (Sorts.super s)
 
 let type_of_var env id =
   let open Context.Named.Declaration in
@@ -142,25 +142,8 @@ let type_of_var env id =
     anomaly ~label:"type_of_var" (str "variable " ++ Id.print id ++ str " unbound")
 
 let sort_of_product env domsort rangsort =
-  match (domsort, rangsort) with
-    (* Product rule (s,Prop,Prop) *)
-    | (_,       Prop Null)  -> rangsort
-    (* Product rule (Prop/Set,Set,Set) *)
-    | (Prop _,  Prop Pos) -> rangsort
-    (* Product rule (Type,Set,?) *)
-    | (Type u1, Prop Pos) ->
-        if is_impredicative_set env then
-          (* Rule is (Type,Set,Set) in the Set-impredicative calculus *)
-          rangsort
-        else
-          (* Rule is (Type_i,Set,Type_i) in the Set-predicative calculus *)
-          Type (sup u1 type0_univ)
-    (* Product rule (Prop,Type_i,Type_i) *)
-    | (Prop Pos,  Type u2)  -> Type (sup type0_univ u2)
-    (* Product rule (Prop,Type_i,Type_i) *)
-    | (Prop Null, Type _)  -> rangsort
-    (* Product rule (Type_i,Type_i,Type_i) *)
-    | (Type u1, Type u2) -> Type (sup u1 u2)
+  let is_impredicative_set = is_impredicative_set env in
+  Sorts.sort_of_product ~is_impredicative_set domsort rangsort
 
 (* normalisation of values *)
 

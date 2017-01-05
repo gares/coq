@@ -42,13 +42,11 @@ let check_type env c t =
 
 let judge_of_prop = mkSort type1_sort
 
-let judge_of_prop_contents _ = judge_of_prop
-
 (* Type of Type(i). *)
 
 let judge_of_type u =
-  let uu = Universe.super u in
-    mkType uu
+  let uu = Sorts.super u in
+    mkSort uu
 
 (*s Type of a de Bruijn index. *)
 
@@ -119,25 +117,8 @@ let judge_of_apply env func funt argsv argstv =
 (* Type of product *)
 
 let sort_of_product env domsort rangsort =
-  match (domsort, rangsort) with
-    (* Product rule (s,Prop,Prop) *)
-    | (_,       Prop Null)  -> rangsort
-    (* Product rule (Prop/Set,Set,Set) *)
-    | (Prop _,  Prop Pos) -> rangsort
-    (* Product rule (Type,Set,?) *)
-    | (Type u1, Prop Pos) ->
-        if is_impredicative_set env then
-          (* Rule is (Type,Set,Set) in the Set-impredicative calculus *)
-          rangsort
-        else
-          (* Rule is (Type_i,Set,Type_i) in the Set-predicative calculus *)
-          Type (Universe.sup Universe.type0 u1)
-    (* Product rule (Prop,Type_i,Type_i) *)
-    | (Prop Pos,  Type u2)  -> Type (Universe.sup Universe.type0 u2)
-    (* Product rule (Prop,Type_i,Type_i) *)
-    | (Prop Null, Type _)  -> rangsort
-    (* Product rule (Type_i,Type_i,Type_i) *)
-    | (Type u1, Type u2) -> Type (Universe.sup u1 u2)
+  let is_impredicative_set = is_impredicative_set env in
+  Sorts.sort_of_product ~is_impredicative_set domsort rangsort
 
 (* [judge_of_product env name (typ1,s1) (typ2,s2)] implements the rule
 
@@ -209,10 +190,10 @@ let execute env sigma cstr =
   let open Context.Rel.Declaration in
   match kind_of_term cstr with
     (* Atomic terms *)
-    | Sort (Prop c) ->
-      judge_of_prop_contents c
+    | Sort s when is_small s ->
+      judge_of_prop
 	
-    | Sort (Type u) ->
+    | Sort u ->
       judge_of_type u
 
     | Rel n ->

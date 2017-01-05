@@ -21,10 +21,11 @@ module CompactedDecl = Context.Compacted.Declaration
 
 (* Sorts and sort family *)
 
-let print_sort = function
-  | Prop Pos -> (str "Set")
-  | Prop Null -> (str "Prop")
-  | Type u -> (str "Type(" ++ Univ.Universe.pr u ++ str ")")
+let print_sort s =
+  let open Sorts in
+  if is_prop s then (str "Prop")
+  else if is_set s then (str "Set")
+  else (str "Type(" ++ Sorts.pr s ++ str ")")
 
 let pr_sort_family = function
   | InSet -> (str "Set")
@@ -816,11 +817,10 @@ let is_template_polymorphic env f =
   | _ -> false
 
 let base_sort_cmp pb s0 s1 =
-  match (s0,s1) with
-    | (Prop c1, Prop c2) -> c1 == Null || c2 == Pos  (* Prop <= Set *)
-    | (Prop c1, Type u)  -> pb == Reduction.CUMUL
-    | (Type u1, Type u2) -> true
-    | _ -> false
+  let open Sorts in
+  (is_prop s0 && is_small s1)
+  || (is_small s0 && pb == Reduction.CUMUL)
+  || (not (is_small s0) && not (is_small s1))
 
 (* eq_constr extended with universe erasure *)
 let compare_constr_univ f cv_pb t1 t2 =

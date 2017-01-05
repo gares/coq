@@ -63,7 +63,7 @@ val check_cofix : env -> cofixpoint -> unit
     parameter instantiation. This is used by the Ocaml extraction,
     which cannot handle (yet?) Prop-polymorphism. *)
 
-val max_inductive_sort : sorts array -> universe
+val max_inductive_sort : universe array -> universe
 
 (** {6 Debug} *)
 

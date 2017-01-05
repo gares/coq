@@ -189,7 +189,7 @@ let infos_and_sort env t =
       | Prod (name,c1,c2) ->
         let varj = infer_type env c1 in
 	let env1 = Environ.push_rel (LocalAssum (name,varj.utj_val)) env in
-	let max = Universe.sup max (univ_of_sort varj.utj_type) in
+        let max = Sorts.sup max varj.utj_type in
 	  aux env1 c2 max
       | _ ->
          (* We check that we can be in Prop even if max is not Prop,
@@ -197,7 +197,7 @@ let infos_and_sort env t =
          let _hd, args = decompose_app t in
          (* Don't check isRelN _ hd, that's in positivity. *)
          max, constructor_unit_conditions env args
-    in aux env t Universe.type0m
+    in aux env t Sorts.prop
 
 (* Computing the levels of polymorphic inductive types
 
@@ -232,7 +232,7 @@ let infer_constructor_packet env_ar_par params lc =
   let levels, conds = List.split (List.map (infos_and_sort env_ar_par) lc) in
   let cond = if Array.length jlc <= 1 then AlwaysUnit else NeverUnit in
   let cond = List.fold_left combine_conditions cond conds in
-  let level = List.fold_left (fun level l -> Universe.sup level l) Universe.type0m levels in
+  let level = List.fold_left (fun level l -> Sorts.sup level l) Sorts.prop levels in
   (lc'', level, cond)
 
 (* If indices matter *)
@@ -242,14 +242,14 @@ let cumulate_arity_large_levels env sign =
      match d with
      | LocalAssum (_,t) ->
 	let tj = infer_type env t in
-	let u = univ_of_sort tj.utj_type in
-	  (Universe.sup u lev, push_rel d env)
+        let u = tj.utj_type in
+          (Sorts.sup u lev, push_rel d env)
      | LocalDef _ ->
 	lev, push_rel d env)
-    sign (Universe.type0m,env))
+    sign (Sorts.prop, env))
 
 let is_impredicative env u =
-  is_type0m_univ u || (is_type0_univ u && is_impredicative_set env)
+  Sorts.is_prop u || (Sorts.is_set u && is_impredicative_set env)
 
 (* Returns the list [x_1, ..., x_n] of levels contributing to template
    polymorphism. The elements x_k is None if the k-th parameter (starting
@@ -260,14 +260,14 @@ let param_ccls paramsctxt =
     | (LocalAssum (_, p)) ->
       (let c = strip_prod_assum p in
       match kind_of_term c with
-        | Sort (Type u) -> Univ.Universe.level u
+        | Sort u -> Sorts.level u
         | _ -> None) :: acc
     | LocalDef _ -> acc
   in
   List.fold_left fold [] paramsctxt
 
 let squash_from_level target =
-  if Univ.is_type0m_univ target
+  if Sorts.is_prop target
   then PropSquash
   else SetSquash
 
@@ -300,22 +300,8 @@ let typecheck_inductive env mie =
          (* Arities (without params) are typed-checked here *)
 	 let expltype = ind.mind_entry_template in
          let arity =
-	   if isArity ind.mind_entry_arity then
-	     let (ctx,s) = dest_arity env_params ind.mind_entry_arity in
-	       match s with
-	       | Type u when Univ.universe_level u = None ->
-	         (** We have an algebraic universe as the conclusion of the arity,
-		     typecheck the dummy Π ctx, Prop and do a special case for the conclusion.
-		 *)
-	         let proparity = infer_type env_params (mkArity (ctx, prop_sort)) in
-		 let (cctx, _) = destArity proparity.utj_val in
-		   (* Any universe is well-formed, we don't need to check [s] here *)
-		   mkArity (cctx, s)
-	       | _ -> 
-		 let arity = infer_type env_params ind.mind_entry_arity in
-		   arity.utj_val
-	   else let arity = infer_type env_params ind.mind_entry_arity in
-		  arity.utj_val
+           let arity = infer_type env_params ind.mind_entry_arity in
+           arity.utj_val
 	 in
 	 let (sign, deflev) = dest_arity env_params arity in
 	 let inflev = 
@@ -365,58 +351,58 @@ let typecheck_inductive env mie =
       let infu = 
 	(** Inferred level, with parameters and constructors. *)
 	match inf_level with
-	| Some alev -> Universe.sup clev alev
+        | Some alev -> Sorts.sup clev alev
 	| None -> clev
       in
       let full_polymorphic () = 
-        let defu = Term.univ_of_sort def_level in
         let is_natural =
-          if type_in_type env || UGraph.check_leq (universes env') infu defu
-          then if not (Univ.is_type0m_univ defu)
+          if type_in_type env || Sorts.check_leq (universes env') infu def_level
+          then if not (Sorts.is_prop def_level)
                then NoSquash
                else (* Prop has additional conditions on constructor shapes*)
                  squash_from_cond cond
-          else squash_from_level defu
+          else squash_from_level def_level
         in
         let _ =
 	  (** Impredicative sort, always allow *)
-	  if is_impredicative env defu then ()
+          if is_impredicative env def_level then ()
 	  else (** Predicative case: the inferred level must be lower or equal to the
 		   declared level. *)
             if is_natural <> NoSquash then
 	      anomaly ~label:"check_inductive" 
 		(Pp.str"Incorrect universe " ++
-		   Universe.pr defu ++ Pp.str " declared for inductive type, inferred level is "
-		 ++ Universe.pr infu)
+                   Sorts.pr def_level ++ Pp.str " declared for inductive type, inferred level is "
+                 ++ Sorts.pr infu)
 	in
-          RegularArity (is_natural,full_arity,defu)
+          RegularArity (is_natural,full_arity,def_level)
       in
       let template_polymorphic () =
 	let sign, s =
           try dest_arity env full_arity
           with NotArity -> raise (InductiveError (NotAnArity (env, full_arity)))
-	in
-	  match s with
-	  | Type u when expltype (* Explicitly polymorphic *) ->
-	    (* The polymorphic level is a function of the level of the *)
-	    (* conclusions of the parameters *)
-            (* We enforce [u >= lev] in case [lev] has a strict upper *)
-            (* constraints over [u] *)
-            (* Template polymorphic: do not squash to Prop if constructors have bad shape *)
-            let infu = match cond with
-              | NeverUnit | CondUnit _ -> Universe.sup Universe.type0 infu
-              | AlwaysUnit -> infu
-            in
-	    let b = type_in_type env || UGraph.check_leq (universes env') infu u in
-	      if not b then
-		anomaly ~label:"check_inductive" 
-		  (Pp.str"Incorrect universe " ++
-		     Universe.pr u ++ Pp.str " declared for inductive type, inferred level is "
-		   ++ Universe.pr clev)
-	      else
-		TemplateArity (param_ccls paramsctxt, infu)
-	  | _ (* Not an explicit occurrence of Type *) ->
-	    full_polymorphic ()
+        in
+        if expltype && not (Sorts.is_small s)
+        then
+          (* Explicitly polymorphic *)
+          (* The polymorphic level is a function of the level of the *)
+          (* conclusions of the parameters *)
+          (* We enforce [u >= lev] in case [lev] has a strict upper *)
+          (* constraints over [u] *)
+          (* Template polymorphic: do not squash to Prop if constructors have bad shape *)
+          let infu = match cond with
+            | NeverUnit | CondUnit _ -> Sorts.sup Sorts.set infu
+            | AlwaysUnit -> infu
+          in
+          let b = type_in_type env || Sorts.check_leq (universes env') infu s in
+          if not b then
+            anomaly ~label:"check_inductive"
+                    (Pp.str"Incorrect universe " ++
+                       Sorts.pr s ++ Pp.str " declared for inductive type, inferred level is "
+                     ++ Sorts.pr clev)
+          else
+            TemplateArity (param_ccls paramsctxt, infu)
+        else (* Not an explicit occurrence of Type *)
+          full_polymorphic ()
       in
       let arity = 
 	if mie.mind_entry_polymorphic then full_polymorphic ()
@@ -773,7 +759,7 @@ let allowed_sorts is_smashed s =
 
 let arity_conclusion = function
   | RegularArity (_, c, _) -> c
-  | TemplateArity (_, s) -> mkType s
+  | TemplateArity (_, s) -> mkSort s
 
 let fold_inductive_blocks f =
   Array.fold_left (fun acc (_,_,lc,(arsign,ar)) ->
@@ -918,7 +904,7 @@ let build_inductive env p prv ctx env_ar paramsctxt kn isrecord isfinite inds nm
       | RegularArity (squash,ar,defs) ->
         let ar = RegularArity
 	  { mind_user_arity = Vars.subst_univs_level_constr subst ar; 
-	    mind_sort = sort_of_univ (Univ.subst_univs_level_universe subst defs); } in
+            mind_sort = Sorts.subst_univs_level_sort subst defs; } in
           ar, squash in
     (* Assigning VM tags to constructors *)
     let nconst, nblock = ref 0, ref 0 in

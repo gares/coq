@@ -503,9 +503,7 @@ let pr_depth l = prlist_with_sep (fun () -> str ".") int (List.rev l)
 
 let is_Prop env sigma concl =
   let ty = Retyping.get_type_of env sigma concl in
-  match kind_of_term ty with
-  | Sort (Prop Null) -> true
-  | _ -> false
+  Constr.equal ty mkProp
 
 let is_unique env concl =
   try

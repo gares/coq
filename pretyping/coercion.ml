@@ -198,11 +198,9 @@ and coerce loc env evdref (x : Term.constr) (y : Term.constr)
     in
       match (kind_of_term x, kind_of_term y) with
       | Sort s, Sort s' ->
-        (match s, s' with
-	| Prop x, Prop y when x == y -> None
-	| Prop _, Type _ -> None
-	| Type x, Type y when Univ.Universe.equal x y -> None (* false *)
-	| _ -> subco ())
+         if is_small s && not (is_small s') then None
+         else if Sorts.equal s s' then None
+         else subco ()
       | Prod (name, a, b), Prod (name', a', b') ->
 	  let name' = 
 	    Name (Namegen.next_ident_away Namegen.default_dependent_ident (Termops.ids_of_context env))

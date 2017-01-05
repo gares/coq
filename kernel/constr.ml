@@ -125,11 +125,10 @@ let mkRel n = if 0<n && n<=16 then rels.(n-1) else Rel n
 (* Construct a type *)
 let mkProp   = Sort Sorts.prop
 let mkSet    = Sort Sorts.set
-let mkType u = Sort (Sorts.Type u)
-let mkSort   = function
-  | Sorts.Prop Sorts.Null -> mkProp (* Easy sharing *)
-  | Sorts.Prop Sorts.Pos -> mkSet
-  | s -> Sort s
+let mkSort s =
+  if Sorts.is_prop s then mkProp
+  else if Sorts.is_set s then mkSet
+  else Sort s
 
 (* Constructs the term t1::t2, i.e. the term t1 casted with the type t2 *)
 (* (that means t2 is declared as the type of t1) *)
@@ -558,9 +557,9 @@ let eq_constr_univs univs m n =
   if m == n then true
   else 
     let eq_universes _ = UGraph.check_eq_instances univs in
-    let eq_sorts s1 s2 = s1 == s2 || UGraph.check_eq univs (Sorts.univ_of_sort s1) (Sorts.univ_of_sort s2) in
+    let eq_sorts s1 s2 = s1 == s2 || Sorts.check_eq univs s1 s2 in
     let rec eq_constr' m n = 
-      m == n ||	compare_head_gen eq_universes eq_sorts eq_constr' m n
+      m == n || compare_head_gen eq_universes eq_sorts eq_constr' m n
     in compare_head_gen eq_universes eq_sorts eq_constr' m n
 
 let leq_constr_univs univs m n =
@@ -568,11 +567,11 @@ let leq_constr_univs univs m n =
   else 
     let eq_universes _ = UGraph.check_eq_instances univs in
     let eq_sorts s1 s2 = s1 == s2 || 
-      UGraph.check_eq univs (Sorts.univ_of_sort s1) (Sorts.univ_of_sort s2) in
+      Sorts.check_eq univs s1 s2 in
     let leq_sorts s1 s2 = s1 == s2 || 
-      UGraph.check_leq univs (Sorts.univ_of_sort s1) (Sorts.univ_of_sort s2) in
+      Sorts.check_leq univs s1 s2 in
     let rec eq_constr' m n = 
-      m == n ||	compare_head_gen eq_universes eq_sorts eq_constr' m n
+      m == n || compare_head_gen eq_universes eq_sorts eq_constr' m n
     in
     let rec compare_leq m n =
       compare_head_gen_leq eq_universes leq_sorts eq_constr' leq_constr' m n
@@ -585,16 +584,13 @@ let eq_constr_univs_infer univs m n =
     let cstrs = ref Constraint.empty in
     let eq_universes strict = UGraph.check_eq_instances univs in
     let eq_sorts s1 s2 = 
-      if Sorts.equal s1 s2 then true
-      else
-	let u1 = Sorts.univ_of_sort s1 and u2 = Sorts.univ_of_sort s2 in
-	if UGraph.check_eq univs u1 u2 then true
+        if Sorts.check_eq univs s1 s2 then true
 	else
-	  (cstrs := Univ.enforce_eq u1 u2 !cstrs;
+          (cstrs := Sorts.enforce_eq s1 s2 !cstrs;
 	   true)
     in
     let rec eq_constr' m n = 
-      m == n ||	compare_head_gen eq_universes eq_sorts eq_constr' m n
+      m == n || compare_head_gen eq_universes eq_sorts eq_constr' m n
     in
     let res = compare_head_gen eq_universes eq_sorts eq_constr' m n in
     res, !cstrs
@@ -605,20 +601,14 @@ let leq_constr_univs_infer univs m n =
     let cstrs = ref Constraint.empty in
     let eq_universes strict l l' = UGraph.check_eq_instances univs l l' in
     let eq_sorts s1 s2 = 
-      if Sorts.equal s1 s2 then true
-      else
-	let u1 = Sorts.univ_of_sort s1 and u2 = Sorts.univ_of_sort s2 in
-	if UGraph.check_eq univs u1 u2 then true
-	else (cstrs := Univ.enforce_eq u1 u2 !cstrs;
+        if Sorts.check_eq univs s1 s2 then true
+        else (cstrs := Sorts.enforce_eq s1 s2 !cstrs;
 	      true)
     in
     let leq_sorts s1 s2 = 
-      if Sorts.equal s1 s2 then true
-      else 
-	let u1 = Sorts.univ_of_sort s1 and u2 = Sorts.univ_of_sort s2 in
-	if UGraph.check_leq univs u1 u2 then true
+        if Sorts.check_leq univs s1 s2 then true
 	else
-	  (cstrs := Univ.enforce_leq u1 u2 !cstrs; 
+          (cstrs := Sorts.enforce_leq s1 s2 !cstrs;
 	   true)
     in
     let rec eq_constr' m n = 
@@ -971,27 +961,6 @@ end
 module Hcaseinfo = Hashcons.Make(CaseinfoHash)
 
 let case_info_hash = CaseinfoHash.hash
-
-module Hsorts =
-  Hashcons.Make(
-    struct
-      open Sorts
-
-      type t = Sorts.t
-      type u = universe -> universe
-      let hashcons huniv = function
-          Prop c -> Prop c
-        | Type u -> Type (huniv u)
-      let eq s1 s2 =
-        s1 == s2 ||
-	  match (s1,s2) with
-            (Prop c1, Prop c2) -> c1 == c2
-          | (Type u1, Type u2) -> u1 == u2
-          |_ -> false
-      let hash = function
-	| Prop Null -> 0 | Prop Pos -> 1
-	| Type u -> 2 + Universe.hash u
-    end)
 
 (* let hcons_sorts = Hashcons.simple_hcons Hsorts.generate hcons_univ *)
 let hcons_caseinfo = Hashcons.simple_hcons Hcaseinfo.generate Hcaseinfo.hcons hcons_ind

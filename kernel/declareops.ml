@@ -40,7 +40,7 @@ let map_decl_arity f g = function
 let hcons_template_arity ar =
   { template_param_levels = ar.template_param_levels;
       (* List.smartmap (Option.smartmap Univ.hcons_univ_level) ar.template_param_levels; *)
-    template_level = Univ.hcons_univ ar.template_level }
+    template_level = Sorts.hcons ar.template_level }
 
 (** {6 Constants } *)
 

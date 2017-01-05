@@ -70,7 +70,7 @@ let rec eq_structured_constant c1 c2 = match c1, c2 with
 | Const_bn _, _ -> false
 | Const_univ_level l1 , Const_univ_level l2 -> Univ.eq_levels l1 l2
 | Const_univ_level _ , _ -> false
-| Const_type u1 , Const_type u2 -> Univ.Universe.equal u1 u2
+| Const_type u1 , Const_type u2 -> Sorts.equal u1 u2
 | Const_type _ , _ -> false
 
 let rec hash_structured_constant c =
@@ -85,7 +85,7 @@ let rec hash_structured_constant c =
     let h = Array.fold_left fold 0 a in
     combinesmall 5 (combine (Int.hash t) h)
   | Const_univ_level l -> combinesmall 6 (Univ.Level.hash l)
-  | Const_type u -> combinesmall 7 (Univ.Universe.hash u)
+  | Const_type u -> combinesmall 7 (Sorts.hash u)
 
 module SConstTable = Hashtbl.Make (struct
   type t = structured_constant

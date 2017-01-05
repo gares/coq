@@ -15,11 +15,7 @@ open Names
 
 *)
 
-type contents = Sorts.contents = Pos | Null
-
-type sorts = Sorts.t =
-  | Prop of contents       (** Prop and Set *)
-  | Type of Univ.universe  (** Type *)
+type sorts = Sorts.t
 
 type sorts_family = Sorts.family = InProp | InSet | InType
 
@@ -409,7 +405,6 @@ val mkEvar : existential -> constr
 val mkSort : sorts -> types
 val mkProp : types
 val mkSet  : types
-val mkType : Univ.universe -> types
 val mkCast : constr * cast_kind * constr -> constr
 val mkProd : Name.t * types * types -> types
 val mkLambda : Name.t * types * constr -> constr
@@ -462,7 +457,6 @@ val map_constr_with_binders :
 
 val map_puniverses : ('a -> 'b) -> 'a puniverses -> 'b puniverses
 val univ_of_sort : sorts -> Univ.universe
-val sort_of_univ : Univ.universe -> sorts
 
 val iter_constr : (constr -> unit) -> constr -> unit
 (** Alias for [Constr.iter] *)

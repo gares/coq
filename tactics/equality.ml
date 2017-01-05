@@ -917,7 +917,7 @@ let rec build_discriminator env sigma dirn c = function
       let (cnum_nlams,cnum_env,kont) = descend_then env sigma c cnum in
       let newc = mkRel(cnum_nlams-argnum) in
       let subval = build_discriminator cnum_env sigma dirn newc l in
-      kont subval (build_coq_False (),mkSort (Prop Null))
+      kont subval (build_coq_False (), mkProp)
 
 (* Note: discrimination could be more clever: if some elimination is
    not allowed because of a large impredicative constructor in the

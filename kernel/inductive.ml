@@ -67,10 +67,7 @@ let full_constructor_instantiate ((mind,_),u,(mib,_),params) t =
 
 (* The max of an array of universes *)
 
-let cumulate_constructor_univ u = function
-  | Prop Null -> u
-  | Prop Pos -> Universe.sup Universe.type0 u
-  | Type u' -> Universe.sup u u'
+let cumulate_constructor_univ u u' = Universe.sup u u'
 
 let max_inductive_sort =
   Array.fold_left cumulate_constructor_univ Universe.type0m
@@ -422,7 +419,7 @@ let rec ienv_decompose_prod (env,_ as ienv) n c =
 
 let lambda_implicit_lift n a =
   let level = Level.make (DirPath.make [Id.of_string "implicit"]) 0 in
-  let implicit_sort = mkType (Universe.make level) in
+  let implicit_sort = mkSort (Sorts.of_level level) in
   let lambda_implicit a = mkLambda (Anonymous, implicit_sort, a) in
   iterate lambda_implicit n (lift n a)
 

@@ -8,13 +8,9 @@
 
 (** {6 The sorts of CCI. } *)
 
-type contents = Pos | Null
-
 type family = InProp | InSet | InType
 
-type t =
-| Prop of contents       (** Prop and Set *)
-| Type of Univ.universe  (** Type *)
+type t
 
 val set  : t
 val prop : t
@@ -36,10 +32,37 @@ val family_equal : family -> family -> bool
 
 val family_leq : family -> family -> bool
 
+val family_of_sort : t -> family
+
+val sort_of_product : is_impredicative_set:bool -> t -> t -> t
+
+val sup : t -> t -> t
+val super : t -> t
+
 module List : sig
   val mem : family -> family list -> bool
   val intersect : family list -> family list -> family list
 end
 
 val univ_of_sort : t -> Univ.universe
-val sort_of_univ : Univ.universe -> t
+
+val check_eq : t UGraph.check_function
+val check_leq : t UGraph.check_function
+
+val enforce_eq : t Univ.constraint_function
+val enforce_leq : t Univ.constraint_function
+
+val subst_univs_sort : Univ.universe_subst_fn -> t -> t
+val subst_univs_level_sort : Univ.universe_level_subst -> t -> t
+val subst_instance_sort : Univ.universe_instance -> t -> t
+
+val of_level : Univ.Level.t -> t
+val is_level : t -> bool
+val level : t -> Univ.Level.t option
+val levels : t -> Univ.LSet.t
+val level_mem : Univ.Level.t -> t -> bool
+
+val is_variable : t -> bool
+
+val pr : t -> Pp.std_ppcmds
+val pr_with : (Univ.Level.t -> Pp.std_ppcmds) -> t -> Pp.std_ppcmds

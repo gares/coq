@@ -85,10 +85,10 @@ let compute_constructor_level evars env l =
     let univ = 
       if is_local_assum d then
 	let s = Retyping.get_sort_of env evars (RelDecl.get_type d) in
-	  Univ.sup (univ_of_sort s) univ 
+          Sorts.sup s univ
       else univ
     in (push_rel d env, univ)) 
-    l (env, Univ.type0m_univ)
+    l (env, Sorts.prop)
 
 let binder_of_decl = function
   | Vernacexpr.AssumExpr(n,t) -> (n,None,t)
@@ -151,13 +151,13 @@ let typecheck_params_and_fields def id pl t ps nots fs =
 	(Sorts.is_set aritysort && is_impredicative_set env0)) then
 	arity, evars
       else
-	let evars = Evd.set_leq_sort env_ar evars (Type univ) aritysort in
-	if Univ.is_small_univ univ &&
+        let evars = Evd.set_leq_sort env_ar evars univ aritysort in
+        if Sorts.is_small univ &&
 	   Option.cata (Evd.is_flexible_level evars) false (Evd.is_sort_variable evars aritysort) then
 	   (* We can assume that the level in aritysort is not constrained
 	       and clear it, if it is flexible *)
-	  mkArity (ctx, Sorts.sort_of_univ univ),
-	  Evd.set_eq_sort env_ar evars (Prop Pos) aritysort
+          mkArity (ctx, univ),
+          Evd.set_eq_sort env_ar evars Sorts.set aritysort
 	else arity, evars
   in
   let evars, nf = Evarutil.nf_evars_and_universes evars in

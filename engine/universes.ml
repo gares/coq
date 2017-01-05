@@ -40,7 +40,7 @@ let is_set_minimization () = !set_minimization
 			    
 type universe_constraint_type = ULe | UEq | ULub
 
-type universe_constraint = universe * universe_constraint_type * universe
+type universe_constraint = sorts * universe_constraint_type * sorts
 
 module Constraints = struct
   module S = Set.Make(
@@ -60,10 +60,10 @@ module Constraints = struct
     let compare (u,c,v) (u',c',v') =
       let i = compare_type c c' in
 	if Int.equal i 0 then
-	  let i' = Universe.compare u u' in
-	    if Int.equal i' 0 then Universe.compare v v'
+          let i' = Sorts.compare u u' in
+            if Int.equal i' 0 then Sorts.compare v v'
 	    else 
-	      if c != ULe && Universe.compare u v' = 0 && Universe.compare v u' = 0 then 0
+              if c != ULe && Sorts.compare u v' = 0 && Sorts.compare v u' = 0 then 0
 	      else i'
 	else i
   end)
@@ -71,7 +71,7 @@ module Constraints = struct
   include S
   
   let add (l,d,r as cst) s = 
-    if Universe.equal l r then s
+    if Sorts.equal l r then s
     else add cst s
 
   let tr_dir = function
@@ -83,8 +83,8 @@ module Constraints = struct
 
   let pr c =
     fold (fun (u1,op,u2) pp_std ->
-	pp_std ++ Universe.pr u1 ++ str (op_str op) ++
-	Universe.pr u2 ++ fnl ()) c (str "")
+        pp_std ++ Sorts.pr u1 ++ str (op_str op) ++
+        Sorts.pr u2 ++ fnl ()) c (str "")
 
   let equal x y = 
     x == y || equal x y
@@ -104,12 +104,12 @@ let enforce_eq_instances_univs strict x y c =
       CErrors.anomaly (Pp.str "Invalid argument: enforce_eq_instances_univs called with" ++
 	       Pp.str " instances of different lengths");
     CArray.fold_right2
-      (fun x y -> Constraints.add (Universe.make x, d, Universe.make y))
+      (fun x y -> Constraints.add (Sorts.of_level x, d, Sorts.of_level y))
       ax ay c
 
 let subst_univs_universe_constraint fn (u,d,v) =
-  let u' = subst_univs_universe fn u and v' = subst_univs_universe fn v in
-    if Universe.equal u' v' then None
+  let u' = Sorts.subst_univs_sort fn u and v' = Sorts.subst_univs_sort fn v in
+    if Sorts.equal u' v' then None
     else Some (u',d,v')
 
 let subst_univs_universe_constraints subst csts =
@@ -121,12 +121,12 @@ let subst_univs_universe_constraints subst csts =
 let to_constraints g s = 
   let tr (x,d,y) acc =
     let add l d l' acc = Constraint.add (l,Constraints.tr_dir d,l') acc in
-      match Universe.level x, d, Universe.level y with
+      match Sorts.level x, d, Sorts.level y with
       | Some l, (ULe | UEq | ULub), Some l' -> add l d l' acc
-      | _, ULe, Some l' -> enforce_leq x y acc
+      | _, ULe, Some l' -> Sorts.enforce_leq x y acc
       | _, ULub, _ -> acc
       | _, d, _ -> 
-	let f = if d == ULe then UGraph.check_leq else UGraph.check_eq in
+        let f = if d == ULe then Sorts.check_leq else Sorts.check_eq in
 	  if f g x y then acc else 
 	    raise (Invalid_argument 
 		   "to_constraints: non-trivial algebraic constraint between universes")
@@ -140,21 +140,19 @@ let test_constr_univs_infer leq univs fold m n accu =
     let eq_sorts s1 s2 = 
       if Sorts.equal s1 s2 then true
       else
-	let u1 = Sorts.univ_of_sort s1 and u2 = Sorts.univ_of_sort s2 in
-	match fold (Constraints.singleton (u1, UEq, u2)) !cstrs with
+        match fold (Constraints.singleton (s1, UEq, s2)) !cstrs with
 	| None -> false
 	| Some accu -> cstrs := accu; true
     in
     let leq_sorts s1 s2 = 
       if Sorts.equal s1 s2 then true
       else 
-	let u1 = Sorts.univ_of_sort s1 and u2 = Sorts.univ_of_sort s2 in
-	match fold (Constraints.singleton (u1, ULe, u2)) !cstrs with
+        match fold (Constraints.singleton (s1, ULe, s2)) !cstrs with
 	| None -> false
 	| Some accu -> cstrs := accu; true
     in
     let rec eq_constr' m n = 
-      m == n ||	Constr.compare_head_gen eq_universes eq_sorts eq_constr' m n
+      m == n || Constr.compare_head_gen eq_universes eq_sorts eq_constr' m n
     in
     let res =
       if leq then
@@ -187,8 +185,7 @@ let eq_constr_univs_infer_with kind1 kind2 univs fold m n accu =
   let eq_sorts s1 s2 = 
     if Sorts.equal s1 s2 then true
     else
-      let u1 = Sorts.univ_of_sort s1 and u2 = Sorts.univ_of_sort s2 in
-      match fold (Constraints.singleton (u1, UEq, u2)) !cstrs with
+      match fold (Constraints.singleton (s1, UEq, s2)) !cstrs with
       | None -> false
       | Some accu -> cstrs := accu; true
   in
@@ -206,19 +203,14 @@ let test_constr_universes leq m n =
       cstrs := enforce_eq_instances_univs strict l l' !cstrs; true in
     let eq_sorts s1 s2 = 
       if Sorts.equal s1 s2 then true
-      else (cstrs := Constraints.add 
-	      (Sorts.univ_of_sort s1,UEq,Sorts.univ_of_sort s2) !cstrs; 
-	    true)
+      else (cstrs := Constraints.add (s1, UEq, s2) !cstrs; true)
     in
     let leq_sorts s1 s2 = 
       if Sorts.equal s1 s2 then true
-      else 
-	(cstrs := Constraints.add 
-	   (Sorts.univ_of_sort s1,ULe,Sorts.univ_of_sort s2) !cstrs; 
-	 true)
+      else (cstrs := Constraints.add (s1, ULe, s2) !cstrs; true)
     in
     let rec eq_constr' m n = 
-      m == n ||	Constr.compare_head_gen eq_universes eq_sorts eq_constr' m n
+      m == n || Constr.compare_head_gen eq_universes eq_sorts eq_constr' m n
     in
     let res =
       if leq then
@@ -256,10 +248,7 @@ let eq_constr_universes_proj env m n =
       cstrs := enforce_eq_instances_univs strict l l' !cstrs; true in
     let eq_sorts s1 s2 = 
       if Sorts.equal s1 s2 then true
-      else
-	(cstrs := Constraints.add 
-	   (Sorts.univ_of_sort s1, UEq, Sorts.univ_of_sort s2) !cstrs;
-	 true)
+      else (cstrs := Constraints.add (s1, UEq, s2) !cstrs; true)
     in
     let rec eq_constr' m n = 
       m == n ||	compare_head_gen_proj env eq_universes eq_sorts eq_constr' m n
@@ -277,10 +266,9 @@ let new_univ_level _ = new_univ_level ()
 
 let fresh_level () = new_univ_level (Global.current_dirpath ())
 
-(* TODO: remove *)
-let new_univ dp = Univ.Universe.make (new_univ_level dp)
-let new_Type dp = mkType (new_univ dp)
-let new_Type_sort dp = Type (new_univ dp)
+(* (\* TODO: remove *\) *)
+(* let new_univ dp = Univ.Universe.make (new_univ_level dp) *)
+(* let new_Type dp = mkType (new_univ dp) *)
 
 let fresh_universe_instance ctx =
   Instance.subst_fn (fun _ -> new_univ_level (Global.current_dirpath ())) 
@@ -510,7 +498,7 @@ let fresh_sort_in_family env = function
   | InSet -> set_sort, ContextSet.empty
   | InType -> 
     let u = fresh_level () in
-      Type (Univ.Universe.make u), ContextSet.singleton u
+      Sorts.of_level u, ContextSet.singleton u
 
 let new_sort_in_family sf =
   fst (fresh_sort_in_family (Global.env ()) sf)
@@ -521,6 +509,10 @@ let extend_context (a, ctx) (ctx') =
 let new_global_univ () =
   let u = fresh_level () in
     (Univ.Universe.make u, ContextSet.singleton u)
+
+let new_global_sort () =
+  let u = fresh_level () in
+    (Sorts.of_level u, ContextSet.singleton u)
 
 (** Simplification *)
 
@@ -580,9 +572,9 @@ let nf_evars_and_universes_opt_subst f subst =
     | Construct pu ->
       let pu' = subst_univs_fn_puniverses lsubst pu in
 	if pu' == pu then c else mkConstructU pu'
-    | Sort (Type u) ->
-      let u' = Univ.subst_univs_universe subst u in
-	if u' == u then c else mkSort (sort_of_univ u')
+    | Sort s ->
+       let s' = Sorts.subst_univs_sort subst s in
+       if s' == s then c else mkSort s'
     | _ -> map_constr aux c
   in aux
 
@@ -628,6 +620,10 @@ let normalize_univ_variable_subst subst =
 let normalize_universe_opt_subst subst =
   let normlevel = normalize_univ_variable_opt_subst subst in
     subst_univs_universe normlevel
+
+let normalize_sort_opt_subst subst =
+  let normlevel = normalize_univ_variable_opt_subst subst in
+  Sorts.subst_univs_sort normlevel
 
 let normalize_universe_subst subst =
   let normlevel = normalize_univ_variable_subst subst in
@@ -992,9 +988,8 @@ let universes_of_constr c =
     match kind_of_term c with
     | Const (_, u) | Ind (_, u) | Construct (_, u) ->
       LSet.fold LSet.add (Instance.levels u) s
-    | Sort u when not (Sorts.is_small u) -> 
-      let u = univ_of_sort u in
-      LSet.fold LSet.add (Universe.levels u) s
+    | Sort u when not (Sorts.is_small u) ->
+      LSet.fold LSet.add (Sorts.levels u) s
     | _ -> fold_constr aux s c
   in aux LSet.empty c
 
@@ -1085,7 +1080,7 @@ where
 *)
 
 let is_direct_sort_constraint s v = match s with
-  | Some u -> univ_level_mem u v
+  | Some u -> Sorts.level_mem u v
   | None -> false
 
 let solve_constraints_system levels level_bounds level_min =
@@ -1094,9 +1089,9 @@ let solve_constraints_system levels level_bounds level_min =
     Array.mapi (fun i o ->
       match o with
       | Some u ->
-	(match Universe.level u with 
+        (match Sorts.level u with
 	| Some u -> Some u 
-	| _ -> level_bounds.(i) <- Universe.sup level_bounds.(i) u; None)
+        | _ -> level_bounds.(i) <- Sorts.sup level_bounds.(i) u; None)
       | None -> None)
       levels in
   let v = Array.copy level_bounds in
@@ -1125,7 +1120,7 @@ let solve_constraints_system levels level_bounds level_min =
   for i=0 to nind-1 do
     for j=0 to nind-1 do
       if not (Int.equal i j) && Int.Set.mem j clos.(i) then
-	(v.(i) <- Universe.sup v.(i) level_bounds.(j));
+        (v.(i) <- Sorts.sup v.(i) level_bounds.(j));
     done;
   done;
   v

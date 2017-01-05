@@ -414,14 +414,15 @@ let detype_case computable detype detype_eqns testdep avoid data p c bl =
       let eqnl = detype_eqns constructs constagsl bl in
       GCases (dl,tag,pred,[tomatch,(alias,aliastyp)],eqnl)
 
-let detype_sort sigma = function
-  | Prop Null -> GProp
-  | Prop Pos -> GSet
-  | Type u ->
-    GType
-      (if !print_universes
-       then [dl, Pp.string_of_ppcmds (Univ.Universe.pr_with (Evd.pr_evd_level sigma) u)]
-       else [])
+let detype_sort sigma s =
+  match family_of_sort s with
+  | InProp -> GProp
+  | InSet -> GSet
+  | InType ->
+     GType
+       (if !print_universes
+        then [dl, Pp.string_of_ppcmds (Sorts.pr_with (Evd.pr_evd_level sigma) s)]
+        else [])
 
 type binder_kind = BProd | BLambda | BLetIn
 

@@ -144,11 +144,11 @@ let check_inductive cst env mp1 l info1 mp2 mib2 spec2 subst1 subst2 reso1 reso2
     let (ctx1,s1) = dest_arity env t1 in
     let (ctx2,s2) = dest_arity env t2 in
     let s1,s2 =
-      match s1, s2 with
-      | Type _, Type _ -> (* shortcut here *) prop_sort, prop_sort
-      | (Prop _, Type _) | (Type _,Prop _) ->
+      match is_small s1, is_small s2 with
+      | false, false -> (* shortcut here *) prop_sort, prop_sort
+      | (true, false) | (false, true) ->
 	error (NotConvertibleInductiveField name)
-      | _ -> (s1, s2) in
+      | true, true -> (s1, s2) in
     check_conv (NotConvertibleInductiveField name)
       cst poly u infer_conv_leq env (mkArity (ctx1,s1)) (mkArity (ctx2,s2))
   in
@@ -255,35 +255,32 @@ let check_constant cst env mp1 l info1 cb2 spec2 subst1 subst2 =
     let t1,t2 =
       if isArity t2 then
         let (ctx2,s2) = destArity t2 in
-        match s2 with
-        | Type v when not (is_univ_variable v) ->
+        if is_small s2 || Sorts.is_variable s2
+        then t1, t2
+        else
           (* The type in the interface is inferred and is made of algebraic
              universes *)
           begin try
-            let (ctx1,s1) = dest_arity env t1 in
-            match s1 with
-            | Type u when not (is_univ_variable u) ->
-              (* Both types are inferred, no need to recheck them. We
-                 cheat and collapse the types to Prop *)
-                mkArity (ctx1,prop_sort), mkArity (ctx2,prop_sort)
-            | Prop _ ->
-              (* The type in the interface is inferred, it may be the case
+              let (ctx1,s1) = dest_arity env t1 in
+              if is_small s1 || not (Sorts.is_variable s1)
+              then
+                 (* Both types are inferred, no need to recheck them:
+                 cheat and collapse the types to Prop
+                 or the type in the interface is inferred, it may be the case
                  that the type in the implementation is smaller because
                  the body is more reduced. We safely collapse the upper
                  type to Prop *)
-                mkArity (ctx1,prop_sort), mkArity (ctx2,prop_sort)
-            | Type _ ->
-              (* The type in the interface is inferred and the type in the
+                 mkArity (ctx1,prop_sort), mkArity (ctx2,prop_sort)
+              else
+                (* The type in the interface is inferred and the type in the
                  implementation is not inferred or is inferred but from a
                  more reduced body so that it is just a variable. Since
                  constraints of the form "univ <= max(...)" are not
                  expressible in the system of algebraic universes: we fail
                  (the user has to use an explicit type in the interface *)
-                error NoTypeConstraintExpected
-          with NotArity ->
-            error err end
-        | _ ->
-	  t1,t2
+                 error NoTypeConstraintExpected
+            with NotArity ->
+              error err end
       else
         (t1,t2) in
       check_conv err cst poly u infer_conv_leq env t1 t2

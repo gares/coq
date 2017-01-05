@@ -207,11 +207,8 @@ let rec execute env evdref cstr =
         check_cofix env cofix;
 	make_judge (mkCoFix cofix) tys.(i)
 
-    | Sort (Prop c) ->
-	judge_of_prop_contents c
-
-    | Sort (Type u) ->
-        judge_of_type u
+    | Sort s ->
+        judge_of_type s
 
     | Proj (p, c) -> 
         let cj = execute env evdref c in

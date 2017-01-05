@@ -111,12 +111,9 @@ let mk_ind_accu ind u =
   mk_accu (Aind (ind,Univ.Instance.of_array u))
 
 let mk_sort_accu s u =
-  match s with
-  | Prop _ -> mk_accu (Asort s)
-  | Type s ->
-     let u = Univ.Instance.of_array u in
-     let s = Univ.subst_instance_universe u s in
-     mk_accu (Asort (Type s))
+  let u = Univ.Instance.of_array u in
+  let s = Sorts.subst_instance_sort u s in
+  mk_accu (Asort s)
 
 let mk_var_accu id = 
   mk_accu (Avar id)

@@ -216,23 +216,21 @@ let interp_universe_level_name evd (loc,s) =
 
 let interp_universe ?loc evd = function
   | [] -> let evd, l = new_univ_level_variable ?loc univ_rigid evd in
-	    evd, Univ.Universe.make l
+            evd, Sorts.of_level l
   | l ->
     List.fold_left (fun (evd, u) l -> 
       let evd', l = interp_universe_level_name evd l in
-	(evd', Univ.sup u (Univ.Universe.make l)))
-    (evd, Univ.Universe.type0m) l
+        (evd', Sorts.sup u (Sorts.of_level l)))
+    (evd, Sorts.prop) l
 
 let interp_universe_level loc evd = function
   | None -> new_univ_level_variable ~loc univ_rigid evd
   | Some (loc,s) -> interp_universe_level_name evd (loc,s)
 
 let interp_sort ?loc evd = function
-  | GProp -> evd, Prop Null
-  | GSet -> evd, Prop Pos
-  | GType n -> 
-    let evd, u = interp_universe ?loc evd n in
-      evd, Type u
+  | GProp -> evd, Sorts.prop
+  | GSet -> evd, Sorts.set
+  | GType n -> interp_universe ?loc evd n
 
 let interp_elimination_sort = function
   | GProp -> InProp
@@ -512,8 +510,8 @@ let pretype_ref loc evdref env ref us =
 
 let judge_of_Type loc evd s =
   let evd, s = interp_universe ~loc evd s in
-  let judge = 
-    { uj_val = mkSort (Type s); uj_type = mkSort (Type (Univ.super s)) }
+  let judge =
+    { uj_val = mkSort s; uj_type = mkSort (Sorts.super s) }
   in
     evd, judge
 

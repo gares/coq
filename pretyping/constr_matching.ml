@@ -197,11 +197,11 @@ let matches_core env sigma convert allow_partial_app allow_bound_rels
 
       | PRel n1, Rel n2 when Int.equal n1 n2 -> subst
 
-      | PSort GProp, Sort (Prop Null) -> subst
+      | PSort GProp, Sort s when Sorts.is_prop s -> subst
 
-      | PSort GSet, Sort (Prop Pos) -> subst
+      | PSort GSet, Sort s when Sorts.is_set s -> subst
 
-      | PSort (GType _), Sort (Type _) -> subst
+      | PSort (GType _), Sort s when not (Sorts.is_small s) -> subst
 
       | PApp (p, [||]), _ -> sorec ctx env subst p t
 

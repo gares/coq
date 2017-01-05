@@ -161,11 +161,9 @@ let id_of_name = function
 	  let basename = Nametab.basename_of_global ref in
 	  basename
        | Sort s ->
-	  begin
-	    match s with
-	    | Prop _ -> Label.to_id (Label.make "Prop")
-	    | Type _ -> Label.to_id (Label.make "Type")
-	  end
+          if Sorts.is_prop s
+          then Label.to_id (Label.make "Prop")
+          else Label.to_id (Label.make "Type")
        | _ -> fail()
 
 

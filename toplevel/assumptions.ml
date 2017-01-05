@@ -276,7 +276,7 @@ let traverse current t =
 let type_of_constant cb = match cb.Declarations.const_type with
 | Declarations.RegularArity ty -> ty
 | Declarations.TemplateArity (ctx, arity) ->
-  Term.mkArity (ctx, Sorts.sort_of_univ arity.Declarations.template_level)
+  Term.mkArity (ctx, arity.Declarations.template_level)
 
 let assumptions ?(add_opaque=false) ?(add_transparent=false) st gr t =
   let (idts, knst) = st in

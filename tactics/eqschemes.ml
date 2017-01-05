@@ -754,10 +754,10 @@ let build_congr env (eq,refl,ctx) ind =
   let varH = fresh env (Id.of_string "H") in
   let varf = fresh env (Id.of_string "f") in
   let ci = make_case_info (Global.env()) ind RegularStyle in
-  let uni, ctx = Universes.extend_context (Universes.new_global_univ ()) ctx in
+  let uni, ctx = Universes.extend_context (Universes.new_global_sort ()) ctx in
   let c = 
   my_it_mkLambda_or_LetIn paramsctxt
-     (mkNamedLambda varB (mkSort (Type uni))
+     (mkNamedLambda varB (mkSort uni)
      (mkNamedLambda varf (mkArrow (lift 1 ty) (mkVar varB))
      (my_it_mkLambda_or_LetIn_name (lift_rel_context 2 realsign)
      (mkNamedLambda varH
