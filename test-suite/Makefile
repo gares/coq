@@ -86,7 +86,7 @@ VSUBSYSTEMS := prerequisite success failure $(BUGS) output \
   output-modulo-time interactive micromega $(COMPLEXITY) modules stm
 
 # All subsystems
-SUBSYSTEMS := $(VSUBSYSTEMS) misc bugs ide vio coqchk
+SUBSYSTEMS := $(VSUBSYSTEMS) misc bugs ide vio coqchk coq-makefile
 
 PREREQUISITELOG = prerequisite/admit.v.log			\
   prerequisite/make_local.v.log prerequisite/make_notation.v.log
@@ -150,6 +150,7 @@ summary:
 	  $(call summary_dir, "IDE tests", ide); \
 	  $(call summary_dir, "VI tests", vio); \
 	  $(call summary_dir, "Coqchk tests", coqchk); \
+	  $(call summary_dir, "Coq makefile", coq-makefile); \
 	  nb_success=`find . -name '*.log' -exec tail -n2 '{}' \; | grep -e $(log_success) | wc -l`; \
 	  nb_failure=`find . -name '*.log' -exec tail -n2 '{}' \; | grep -e $(log_failure) | wc -l`; \
 	  nb_tests=`expr $$nb_success + $$nb_failure`; \
@@ -528,3 +529,19 @@ coqchk: $(patsubst %.v,%.chk.log,$(wildcard coqchk/*.v))
 	    echo "    $<...Error!"; \
 	  fi; \
 	} > "$@"
+
+coq-makefile: $(patsubst %/run.sh,%.log,$(wildcard coq-makefile/*/run.sh))
+
+coq-makefile/%.log : coq-makefile/%/run.sh
+	@echo "TEST      $*"
+	$(HIDE)(\
+	  cd coq-makefile/$* && \
+	  ./run.sh 2>&1; \
+       	  if [ $$? = 0 ]; then \
+	    echo $(log_success); \
+	    echo "    $<...Ok"; \
+	  else \
+	    echo $(log_failure); \
+	    echo "    $<...Error!"; \
+	  fi; \
+	) > "$@"
