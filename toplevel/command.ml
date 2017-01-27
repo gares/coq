@@ -504,7 +504,6 @@ let is_direct_sort_constraint s v = match s with
   | None -> false
 
 let solve_constraints_system levels level_bounds =
-  let open Univ in
   let levels =
     Array.mapi (fun i o ->
       match o with
@@ -552,8 +551,8 @@ let inductive_levels env evdref poly arities inds =
     if Sorts.equal a Sorts.prop then None
     else Some a) destarities
   in
-  let cstrs_levels, min_levels, sizes = 
-    CList.split3
+  let cstrs_levels, sizes =
+    CList.split
       (List.map2 (fun (_,tys,_) (arity,(ctx,du)) -> 
 	let len = List.length tys in
         let minlev =
@@ -569,7 +568,7 @@ let inductive_levels env evdref poly arities inds =
 	  else minlev
 	in
 	let clev = extract_level env !evdref minlev tys in
-	  (clev, minlev, len)) inds destarities)
+	  (clev, len)) inds destarities)
   in
   (* Take the transitive closure of the system of constructors *)
   (* level constraints and remove the recursive dependencies *)
