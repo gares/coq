@@ -222,8 +222,3 @@ val refresh_constraints : UGraph.t -> universe_context_set -> universe_context_s
 (** Pretty-printing *)
 
 val pr_universe_opt_subst : universe_opt_subst -> Pp.std_ppcmds
-
-(** {6 Support for old-style sort-polymorphism } *)
-
-val solve_constraints_system : sorts option array -> sorts array -> sorts array ->
-  sorts array
