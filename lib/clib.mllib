@@ -5,6 +5,7 @@ Canary
 Hook
 Hashset
 Hashcons
+Hashlist
 CSet
 CMap
 Int
