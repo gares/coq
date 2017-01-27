@@ -261,17 +261,14 @@ let new_univ_level, set_remote_new_univ_level =
   RemoteCounter.new_counter ~name:"Universes" 0 ~incr:((+) 1)
     ~build:(fun n -> Univ.Level.make (Global.current_dirpath ()) n)
 
-let new_univ_level _ = new_univ_level ()
-  (* Univ.Level.make db (new_univ_level ()) *)
-
-let fresh_level () = new_univ_level (Global.current_dirpath ())
+let fresh_level = new_univ_level
 
 (* (\* TODO: remove *\) *)
 (* let new_univ dp = Univ.Universe.make (new_univ_level dp) *)
 (* let new_Type dp = mkType (new_univ dp) *)
 
 let fresh_universe_instance ctx =
-  Instance.subst_fn (fun _ -> new_univ_level (Global.current_dirpath ())) 
+  Instance.subst_fn (fun _ -> new_univ_level ())
     (UContext.instance ctx)
 
 let fresh_instance_from_context ctx =
@@ -283,7 +280,7 @@ let fresh_instance ctx =
   let ctx' = ref LSet.empty in
   let inst = 
     Instance.subst_fn (fun v -> 
-      let u = new_univ_level (Global.current_dirpath ()) in
+      let u = new_univ_level () in
 	ctx' := LSet.add u !ctx'; u) 
       (UContext.instance ctx)
   in !ctx', inst

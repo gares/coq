@@ -483,7 +483,7 @@ let do_universe poly l =
   in
   let l =
     List.map (fun (l, id) ->
-	      let lev = Universes.new_univ_level (Global.current_dirpath ()) in
+	      let lev = Universes.new_univ_level () in
 	      (id, lev)) l
   in
     Lib.add_anonymous_leaf (input_universes (poly, l))

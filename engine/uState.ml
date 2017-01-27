@@ -351,7 +351,7 @@ let emit_side_effects eff u =
 
 let new_univ_variable ?loc rigid name
   ({ uctx_local = ctx; uctx_univ_variables = uvars; uctx_univ_algebraic = avars} as uctx) =
-  let u = Universes.new_univ_level (Global.current_dirpath ()) in
+  let u = Universes.new_univ_level () in
   let ctx' = Univ.ContextSet.add_universe u ctx in
   let uctx', pred =
     match rigid with

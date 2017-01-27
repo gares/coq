@@ -31,7 +31,7 @@ val set_remote_new_univ_level : universe_level RemoteCounter.installer
 
 (** Side-effecting functions creating new universe levels. *)
 
-val new_univ_level : Names.dir_path -> universe_level
+val new_univ_level : unit -> universe_level
 (* val new_univ : Names.dir_path -> universe *)
 (* val new_Type : Names.dir_path -> types *)
 

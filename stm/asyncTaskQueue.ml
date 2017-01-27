@@ -171,7 +171,7 @@ module Make(T : Task) = struct
         | Unix.WSTOPPED sno -> Printf.sprintf "stopped(%d)" sno) in
     let more_univs n =
       CList.init 10 (fun _ ->
-        Universes.new_univ_level (Global.current_dirpath ())) in
+        Universes.new_univ_level ()) in
 
     let rec kill_if () =
       if not (Worker.is_alive proc) then ()
