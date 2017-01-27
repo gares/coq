@@ -107,17 +107,6 @@ let enforce_eq_instances_univs strict x y c =
       (fun x y -> Constraints.add (Sorts.of_level x, d, Sorts.of_level y))
       ax ay c
 
-let subst_univs_universe_constraint fn (u,d,v) =
-  let u' = Sorts.subst_univs_sort fn u and v' = Sorts.subst_univs_sort fn v in
-    if Sorts.equal u' v' then None
-    else Some (u',d,v')
-
-let subst_univs_universe_constraints subst csts =
-  Constraints.fold 
-    (fun c -> Option.fold_right Constraints.add (subst_univs_universe_constraint subst c))
-    csts Constraints.empty 
-
-
 let to_constraints g s = 
   let tr (x,d,y) acc =
     let add l d l' acc = Constraint.add (l,Constraints.tr_dir d,l') acc in

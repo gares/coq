@@ -60,9 +60,6 @@ type 'a constraint_accumulator = universe_constraints -> 'a -> 'a option
 type 'a universe_constrained = 'a * universe_constraints
 type 'a universe_constraint_function = 'a -> 'a -> universe_constraints -> universe_constraints
 
-val subst_univs_universe_constraints : universe_subst_fn -> 
-  universe_constraints -> universe_constraints
-
 val enforce_eq_instances_univs : bool -> universe_instance universe_constraint_function
 
 val to_constraints : UGraph.t -> universe_constraints -> constraints
@@ -151,8 +148,6 @@ val extend_context : 'a in_universe_context_set -> universe_context_set ->
 module UF : Unionfind.PartitionSig with type elt = universe_level
 
 type universe_opt_subst = universe option universe_map
-
-val make_opt_subst : universe_opt_subst -> universe_subst_fn
 
 val subst_opt_univs_constr : universe_opt_subst -> constr -> constr
 

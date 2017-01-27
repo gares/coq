@@ -121,8 +121,7 @@ let define internal id c p univs =
   let fd = declare_constant ~internal in
   let id = compute_name internal id in
   let ctx = Evd.normalize_evar_universe_context univs in
-  let c = Vars.subst_univs_fn_constr 
-    (Universes.make_opt_subst (Evd.evar_universe_context_subst ctx)) c in
+  let c = Universes.subst_opt_univs_constr (Evd.evar_universe_context_subst ctx) c in
   let entry = {
     const_entry_body =
       Future.from_val ((c,Univ.ContextSet.empty),
