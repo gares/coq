@@ -62,11 +62,6 @@ let sup = Universe.sup
 
 let super = Universe.super
 
-module List = struct
-  let mem = List.memq
-  let intersect l l' = CList.intersect family_equal l l'
-end
-
 let hcons = hcons_univ
 let hash = Universe.hash
 

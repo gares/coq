@@ -719,7 +719,7 @@ let find_positions env sigma t1 t2 =
   let project env sorts posn t1 t2 =
     let ty1 = get_type_of env sigma t1 in
     let s = get_sort_family_of env sigma ty1 in
-    if Sorts.List.mem s sorts
+    if List.memq s sorts
     then [(List.rev posn,t1,t2)] else []
   in
   let rec findrec sorts posn t1 t2 =
@@ -740,7 +740,7 @@ let find_positions env sigma t1 t2 =
             List.flatten
 	      (List.map2_i (fun i -> findrec sorts' ((sp1,i)::posn))
 		0 rargs1 rargs2)
-	  else if Sorts.List.mem InType sorts'
+          else if List.memq InType sorts'
           then (* see build_discriminator *)
 	    raise (DiscrFound (List.rev posn,sp1,sp2))
 	  else 

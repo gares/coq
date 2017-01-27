@@ -39,11 +39,6 @@ val sort_of_product : is_impredicative_set:bool -> t -> t -> t
 val sup : t -> t -> t
 val super : t -> t
 
-module List : sig
-  val mem : family -> family list -> bool
-  val intersect : family list -> family list -> family list
-end
-
 val univ_of_sort : t -> Univ.universe
 
 val check_eq : t UGraph.check_function
@@ -57,7 +52,6 @@ val subst_univs_level_sort : Univ.universe_level_subst -> t -> t
 val subst_instance_sort : Univ.universe_instance -> t -> t
 
 val of_level : Univ.Level.t -> t
-val is_level : t -> bool
 val level : t -> Univ.Level.t option
 val levels : t -> Univ.LSet.t
 val level_mem : Univ.Level.t -> t -> bool
