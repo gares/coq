@@ -8,9 +8,9 @@
 
 open Util
 open Names
-open Term
 open Environ
 open Univ
+open Constr
 
 val set_minimization : bool ref
 val is_set_minimization : unit -> bool
@@ -36,8 +36,8 @@ val new_univ_level : unit -> universe_level
 (* val new_Type : Names.dir_path -> types *)
 
 val new_global_univ : unit -> universe in_universe_context_set
-val new_global_sort : unit -> sorts in_universe_context_set
-val new_sort_in_family : sorts_family -> sorts
+val new_global_sort : unit -> Sorts.t in_universe_context_set
+val new_sort_in_family : Sorts.family -> Sorts.t
 
 (** {6 Constraints for type inference}
     
@@ -48,7 +48,7 @@ val new_sort_in_family : sorts_family -> sorts
 
 type universe_constraint_type = ULe | UEq | ULub
 
-type universe_constraint = sorts * universe_constraint_type * sorts
+type universe_constraint = Sorts.t * universe_constraint_type * Sorts.t
 module Constraints : sig
   include Set.S with type elt = universe_constraint
 		       
@@ -104,8 +104,8 @@ val fresh_instance_from_context : universe_context ->
 val fresh_instance_from : universe_context -> universe_instance option ->
   universe_instance in_universe_context_set
 
-val fresh_sort_in_family : env -> sorts_family -> 
-  sorts in_universe_context_set
+val fresh_sort_in_family : env -> Sorts.family ->
+  Sorts.t in_universe_context_set
 val fresh_constant_instance : env -> constant ->
   pconstant in_universe_context_set
 val fresh_inductive_instance : env -> inductive ->
@@ -174,7 +174,7 @@ val normalize_universe_opt_subst : universe_opt_subst ref ->
   (universe -> universe)
 
 val normalize_sort_opt_subst : universe_opt_subst ref ->
-  (sorts -> sorts)
+  (Sorts.t -> Sorts.t)
 
 val normalize_universe_subst : universe_subst ref ->
   (universe -> universe)
