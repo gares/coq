@@ -124,7 +124,7 @@ let define internal id c p univs =
   let c = Universes.subst_opt_univs_constr (Evd.evar_universe_context_subst ctx) c in
   let entry = {
     const_entry_body =
-      Future.from_val ((c,Univ.ContextSet.empty),
+      Future.from_val ((c,Sorts.ContextSet.empty),
                        Safe_typing.empty_private_constants);
     const_entry_secctx = None;
     const_entry_type = None;

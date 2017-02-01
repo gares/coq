@@ -22,7 +22,7 @@ open Pfedit
 
 val do_universe : polymorphic -> Id.t Loc.located list -> unit
 val do_constraint : polymorphic ->
-  (Misctypes.glob_level * Univ.constraint_type * Misctypes.glob_level) list -> unit
+  (Misctypes.glob_level * Sorts.constraint_type * Misctypes.glob_level) list -> unit
 
 (** {6 Hooks for Pcoq} *)
 
@@ -48,21 +48,21 @@ val do_definition : Id.t -> definition_kind -> lident list option ->
 
 (* val interp_assumption : env -> evar_map ref -> *)
 (*   local_binder list -> constr_expr ->  *)
-(*   types Univ.in_universe_context_set * Impargs.manual_implicits *)
+(*   types Sorts.in_universe_context_set * Impargs.manual_implicits *)
 
 (** returns [false] if the assumption is neither local to a section,
     nor in a module type and meant to be instantiated. *)
 val declare_assumption : coercion_flag -> assumption_kind -> 
-  types Univ.in_universe_context_set ->
+  types Sorts.in_universe_context_set ->
   Universes.universe_binders -> Impargs.manual_implicits ->
   bool (** implicit *) -> Vernacexpr.inline -> variable Loc.located ->
-  global_reference * Univ.Instance.t * bool
+  global_reference * Sorts.Instance.t * bool
 
 val do_assumptions : locality * polymorphic * assumption_object_kind ->
   Vernacexpr.inline -> (plident list * constr_expr) with_coercion list -> bool
 
 (* val declare_assumptions : variable Loc.located list -> *)
-(*   coercion_flag -> assumption_kind -> types Univ.in_universe_context_set ->  *)
+(*   coercion_flag -> assumption_kind -> types Sorts.in_universe_context_set ->  *)
 (*   Impargs.manual_implicits -> bool -> Vernacexpr.inline -> bool *)
 
 (** {6 Inductive and coinductive types} *)
@@ -172,5 +172,5 @@ val do_cofixpoint :
 
 val check_mutuality : Environ.env -> bool -> (Id.t * types) list -> unit
 
-val declare_fix : ?opaque:bool -> definition_kind -> Universes.universe_binders -> Univ.universe_context -> Id.t ->
+val declare_fix : ?opaque:bool -> definition_kind -> Universes.universe_binders -> Sorts.universe_context -> Id.t ->
   Safe_typing.private_constants Entries.proof_output -> types -> Impargs.manual_implicits -> global_reference

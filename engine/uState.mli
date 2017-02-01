@@ -22,41 +22,41 @@ type t
 
 val empty : t
 
-val make : UGraph.t -> t
+val make : Sorts.Graph.t -> t
 
 val is_empty : t -> bool
 
 val union : t -> t -> t
 
-val of_context_set : Univ.universe_context_set -> t
+val of_context_set : Sorts.universe_context_set -> t
 
 val of_binders : Universes.universe_binders -> t
 
 (** {5 Projections} *)
 
-val context_set : t -> Univ.universe_context_set
+val context_set : t -> Sorts.universe_context_set
 (** The local context of the state, i.e. a set of bound variables together
     with their associated constraints. *)
 
 val subst : t -> Universes.universe_opt_subst
 (** The local universes that are unification variables *)
 
-val ugraph : t -> UGraph.t
+val ugraph : t -> Sorts.Graph.t
 (** The current graph extended with the local constraints *)
 
-val algebraics : t -> Univ.LSet.t
+val algebraics : t -> Univ.USet.t
 (** The subset of unification variables that can be instantiated with algebraic
     universes as they appear in inferred types only. *)
 
-val constraints : t -> Univ.constraints
+val constraints : t -> Sorts.constraints
 (** Shorthand for {!context_set} composed with {!ContextSet.constraints}. *)
 
-val context : t -> Univ.universe_context
+val context : t -> Sorts.universe_context
 (** Shorthand for {!context_set} with {!Context_set.to_context}. *)
 
 (** {5 Constraints handling} *)
 
-val add_constraints : t -> Univ.constraints -> t
+val add_constraints : t -> Sorts.constraints -> t
 (**
   @raise UniversesDiffer when universes differ
 *)
@@ -86,7 +86,7 @@ val univ_rigid : rigid
 val univ_flexible : rigid
 val univ_flexible_alg : rigid
 
-val merge : ?loc:Loc.t -> bool -> rigid -> t -> Univ.universe_context_set -> t
+val merge : ?loc:Loc.t -> bool -> rigid -> t -> Sorts.universe_context_set -> t
 val merge_subst : t -> Universes.universe_opt_subst -> t
 val emit_side_effects : Safe_typing.private_constants -> t -> t
 
@@ -98,7 +98,7 @@ val is_sort_variable : t -> Sorts.t -> Univ.Level.t option
 
 val normalize_variables : t -> Univ.universe_subst * t
 
-val constrain_variables : Univ.LSet.t -> t -> Univ.constraints
+val constrain_variables : Univ.USet.t -> t -> Sorts.constraints
 
 val abstract_undefined_variables : t -> t
 
@@ -110,7 +110,7 @@ val normalize : t -> t
 
 (** {5 TODO: Document me} *)
 
-val universe_context : ?names:(Id.t Loc.located) list -> t -> (Id.t * Univ.Level.t) list * Univ.universe_context
+val universe_context : ?names:(Id.t Loc.located) list -> t -> (Id.t * Univ.Level.t) list * Sorts.universe_context
 
 val update_sigma_env : t -> Environ.env -> t
 

@@ -352,7 +352,7 @@ type vernac_expr =
   | VernacScheme of (lident option * scheme) list
   | VernacCombinedScheme of lident * lident list
   | VernacUniverse of lident list
-  | VernacConstraint of (glob_level * Univ.constraint_type * glob_level) list
+  | VernacConstraint of (glob_level * Sorts.constraint_type * glob_level) list
 
   (* Gallina extensions *)
   | VernacBeginSection of lident

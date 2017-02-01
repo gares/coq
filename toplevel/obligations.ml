@@ -365,7 +365,7 @@ let get_body obl =
   | None -> None
   | Some (DefinedObl c) ->
     let ctx = Environ.constant_context (Global.env ()) c in
-    let pc = (c, Univ.UContext.instance ctx) in
+    let pc = (c, Sorts.UContext.instance ctx) in
       Some (DefinedObl pc)
   | Some (TermObl c) ->
       Some (TermObl c)
@@ -525,7 +525,7 @@ let compute_possible_guardness_evidences (n,_) fixbody fixtype =
       let ctx = fst (decompose_prod_n_assum m fixtype) in
 	List.map_i (fun i _ -> i) 0 ctx
 
-let mk_proof c = ((c, Univ.ContextSet.empty), Safe_typing.empty_private_constants)
+let mk_proof c = ((c, Sorts.ContextSet.empty), Safe_typing.empty_private_constants)
 
 let declare_mutual_definition l =
   let len = List.length l in
@@ -638,7 +638,7 @@ let declare_obligation prg obl body ty uctx =
 	if get_shrink_obligations () && not poly then
 	  shrink_body body ty else [], body, ty, [||]
       in
-      let body = ((body,Univ.ContextSet.empty),Safe_typing.empty_private_constants) in
+      let body = ((body,Sorts.ContextSet.empty),Safe_typing.empty_private_constants) in
       let ce =
         { const_entry_body = Future.from_val ~fix_exn:(fun x -> x) body;
           const_entry_secctx = None;

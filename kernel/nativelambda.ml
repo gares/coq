@@ -757,8 +757,8 @@ let compile_dynamic_int31 fc prefix c args =
 
 (* We are relying here on the order of digits constructors *)
 let digits_from_uint digits_ind prefix i =
-  let d0 = Lconstruct (prefix, ((digits_ind, 1), Univ.Instance.empty)) in
-  let d1 = Lconstruct (prefix, ((digits_ind, 2), Univ.Instance.empty)) in
+  let d0 = Lconstruct (prefix, ((digits_ind, 1), Sorts.Instance.empty)) in
+  let d1 = Lconstruct (prefix, ((digits_ind, 2), Sorts.Instance.empty)) in
   let digits = Array.make 31 d0 in
   for k = 0 to 30 do
     if Int.equal ((Uint31.to_int i lsr k) land 1) 1 then
@@ -773,9 +773,9 @@ let before_match_int31 digits_ind fc prefix c t =
   match t with
   | Luint (UintVal i) ->
      let digits = digits_from_uint digits_ind prefix i in
-     mkLapp (Lconstruct (prefix,(c, Univ.Instance.empty))) digits
+     mkLapp (Lconstruct (prefix,(c, Sorts.Instance.empty))) digits
   | Luint (UintDigits (prefix,c,args)) ->
-     mkLapp (Lconstruct (prefix,(c, Univ.Instance.empty))) args
+     mkLapp (Lconstruct (prefix,(c, Sorts.Instance.empty))) args
   | _ -> Luint (UintDecomp (prefix,c,t))
 
 let compile_prim prim kn fc prefix args =

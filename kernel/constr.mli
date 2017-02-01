@@ -12,7 +12,7 @@
 open Names
 
 (** {6 Value under universe substitution } *)
-type 'a puniverses = 'a Univ.puniverses
+type 'a puniverses = 'a Sorts.polymorphic
 
 (** {6 Simply type aliases } *)
 type pconstant = constant puniverses
@@ -229,19 +229,19 @@ val equal : constr -> constr -> bool
 
 (** [eq_constr_univs u a b] is [true] if [a] equals [b] modulo alpha, casts,
    application grouping and the universe equalities in [u]. *)
-val eq_constr_univs : constr UGraph.check_function
+val eq_constr_univs : constr Sorts.Graph.check_function
 
 (** [leq_constr_univs u a b] is [true] if [a] is convertible to [b] modulo 
     alpha, casts, application grouping and the universe inequalities in [u]. *)
-val leq_constr_univs : constr UGraph.check_function
+val leq_constr_univs : constr Sorts.Graph.check_function
 
 (** [eq_constr_univs u a b] is [true] if [a] equals [b] modulo alpha, casts,
    application grouping and the universe equalities in [u]. *)
-val eq_constr_univs_infer : UGraph.t -> constr -> constr -> bool Univ.constrained
+val eq_constr_univs_infer : Sorts.Graph.t -> constr -> constr -> bool Sorts.constrained
 
 (** [leq_constr_univs u a b] is [true] if [a] is convertible to [b] modulo 
     alpha, casts, application grouping and the universe inequalities in [u]. *)
-val leq_constr_univs_infer : UGraph.t -> constr -> constr -> bool Univ.constrained
+val leq_constr_univs_infer : Sorts.Graph.t -> constr -> constr -> bool Sorts.constrained
 
 (** [eq_constr_univs a b] [true, c] if [a] equals [b] modulo alpha, casts,
    application grouping and ignoring universe instances. *)
@@ -304,7 +304,7 @@ val compare_head : (constr -> constr -> bool) -> constr -> constr -> bool
    compare sorts; Cast's, binders name and Cases annotations are not taken 
     into account *)
 
-val compare_head_gen : (bool -> Univ.Instance.t -> Univ.Instance.t -> bool) ->
+val compare_head_gen : (bool -> Sorts.Instance.t -> Sorts.Instance.t -> bool) ->
   (Sorts.t -> Sorts.t -> bool) ->
   (constr -> constr -> bool) ->
   constr -> constr -> bool
@@ -316,7 +316,7 @@ val compare_head_gen : (bool -> Univ.Instance.t -> Univ.Instance.t -> bool) ->
 val compare_head_gen_with :
   (constr -> (constr,types) kind_of_term) ->
   (constr -> (constr,types) kind_of_term) ->
-  (bool -> Univ.Instance.t -> Univ.Instance.t -> bool) ->
+  (bool -> Sorts.Instance.t -> Sorts.Instance.t -> bool) ->
   (Sorts.t -> Sorts.t -> bool) ->
   (constr -> constr -> bool) ->
   constr -> constr -> bool
@@ -328,7 +328,7 @@ val compare_head_gen_with :
     [s] to compare sorts for for subtyping; Cast's, binders name and
     Cases annotations are not taken into account *)
 
-val compare_head_gen_leq : (bool -> Univ.Instance.t -> Univ.Instance.t -> bool) ->
+val compare_head_gen_leq : (bool -> Sorts.Instance.t -> Sorts.Instance.t -> bool) ->
   (Sorts.t -> Sorts.t -> bool) ->
   (constr -> constr -> bool) ->
   (constr -> constr -> bool) ->

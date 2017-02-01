@@ -887,7 +887,7 @@ let make_graph (f_ref:global_reference) =
 		 [(((Loc.ghost,id),None),(None,Constrexpr.CStructRec),nal_tas,t,Some b),[]]
 	 in
 	 let mp,dp,_ = repr_con c in
-	 do_generate_principle [c,Univ.Instance.empty] error_error  false false expr_list;
+	 do_generate_principle [c,Sorts.Instance.empty] error_error  false false expr_list;
 	 (* We register the infos *)
 	 List.iter
 	   (fun ((((_,id),_),_,_,_,_),_) -> add_Function false (make_con mp dp (Label.of_id id)))

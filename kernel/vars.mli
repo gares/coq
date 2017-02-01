@@ -137,8 +137,8 @@ val subst_univs_level_constr : universe_level_subst -> constr -> constr
 val subst_univs_level_context : Univ.universe_level_subst -> Context.Rel.t -> Context.Rel.t
 
 (** Instance substitution for polymorphism. *)
-val subst_instance_constr : universe_instance -> constr -> constr
-val subst_instance_context : universe_instance -> Context.Rel.t -> Context.Rel.t
+val subst_instance_constr : Sorts.sort_instance -> constr -> constr
+val subst_instance_context : Sorts.sort_instance -> Context.Rel.t -> Context.Rel.t
 
 type id_key = constant tableKey
 val eq_id_key : id_key -> id_key -> bool

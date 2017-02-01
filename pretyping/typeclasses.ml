@@ -120,15 +120,15 @@ let typeclass_univ_instance (cl,u') =
       match cl.cl_impl with
       | ConstRef c -> 
         let cb = Global.lookup_constant c in
-	  if cb.const_polymorphic then Univ.UContext.instance cb.const_universes
-	  else Univ.Instance.empty
+	  if cb.const_polymorphic then Sorts.UContext.instance cb.const_universes
+	  else Sorts.Instance.empty
       | IndRef c ->
          let mib,oib = Global.lookup_inductive c in
-	  if mib.mind_polymorphic then Univ.UContext.instance mib.mind_universes
-	  else Univ.Instance.empty
-      | _ -> Univ.Instance.empty
-    in Array.fold_left2 (fun subst u u' -> Univ.LMap.add u u' subst) 
-      Univ.LMap.empty (Univ.Instance.to_array u) (Univ.Instance.to_array u')
+	  if mib.mind_polymorphic then Sorts.UContext.instance mib.mind_universes
+	  else Sorts.Instance.empty
+      | _ -> Sorts.Instance.empty
+    in Array.fold_left2 (fun subst u u' -> Univ.UMap.add u u' subst)
+      Univ.UMap.empty (Sorts.Instance.to_array u) (Sorts.Instance.to_array u')
   in
   let subst_ctx = Context.Rel.map (subst_univs_level_constr subst) in
     { cl with cl_context = fst cl.cl_context, subst_ctx (snd cl.cl_context);
@@ -284,7 +284,7 @@ let build_subclasses ~check env sigma glob { hint_priority = pri } =
         Nameops.add_suffix _id ("_subinstance_" ^ string_of_int !i))
   in
   let ty, ctx = Global.type_of_global_in_context env glob in
-  let sigma = Evd.merge_context_set Evd.univ_rigid sigma (Univ.ContextSet.of_context ctx) in
+  let sigma = Evd.merge_context_set Evd.univ_rigid sigma (Sorts.ContextSet.of_context ctx) in
   let rec aux pri c ty path =
     let ty = Evarutil.nf_evar sigma ty in
       match class_of_constr ty with
@@ -319,7 +319,7 @@ let build_subclasses ~check env sigma glob { hint_priority = pri } =
 	    hints @ (path', info, body) :: rest
 	in List.fold_left declare_proj [] projs 
   in
-  let term = Universes.constr_of_global_univ (glob,Univ.UContext.instance ctx) in
+  let term = Universes.constr_of_global_univ (glob,Sorts.UContext.instance ctx) in
     (*FIXME subclasses should now get substituted for each particular instance of
       the polymorphic superclass *)
     aux pri term ty [glob]

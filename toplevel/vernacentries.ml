@@ -82,7 +82,7 @@ let show_universes () =
   let sigma = gls.Evd.sigma in
   let ctx = Evd.universe_context_set (Evd.nf_constraints sigma) in
     Feedback.msg_notice (Evd.pr_evar_universe_context (Evd.evar_universe_context sigma));
-    Feedback.msg_notice (str"Normalized constraints: " ++ Univ.pr_universe_context_set (Evd.pr_evd_level sigma) ctx)
+    Feedback.msg_notice (str"Normalized constraints: " ++ Sorts.ContextSet.pr (Evd.pr_evd_level sigma) ctx)
 
 let show_prooftree () =
   (* Spiwack: proof tree is currently not working *)
@@ -333,11 +333,11 @@ let dump_universes_gen g s =
       begin fun kind left right ->
         let () = Lazy.force init in
         match kind with
-          | Univ.Lt ->
+          | Sorts.Lt ->
             Printf.fprintf output "  \"%s\" -> \"%s\" [style=bold];\n" right left
-          | Univ.Le ->
+          | Sorts.Le ->
             Printf.fprintf output "  \"%s\" -> \"%s\" [style=solid];\n" right left
-          | Univ.Eq ->
+          | Sorts.Eq ->
             Printf.fprintf output "  \"%s\" -> \"%s\" [style=dashed];\n" left right
       end, begin fun () ->
         if Lazy.is_val init then Printf.fprintf output "}\n";
@@ -346,15 +346,15 @@ let dump_universes_gen g s =
     end else begin
       begin fun kind left right ->
         let kind = match kind with
-          | Univ.Lt -> "<"
-          | Univ.Le -> "<="
-          | Univ.Eq -> "="
+          | Sorts.Lt -> "<"
+          | Sorts.Le -> "<="
+          | Sorts.Eq -> "="
         in Printf.fprintf output "%s %s %s ;\n" left kind right
       end, (fun () -> close_out output)
     end
   in
   try
-    UGraph.dump_universes output_constraint g;
+    Sorts.Graph.dump output_constraint g;
     close ();
     Feedback.msg_info (str "Universes written to file \"" ++ str s ++ str "\".")
   with reraise ->
@@ -1679,13 +1679,13 @@ let vernac_print = let open Feedback in function
   | PrintCanonicalConversions -> msg_notice (Prettyp.print_canonical_projections ())
   | PrintUniverses (b, dst) ->
      let univ = Global.universes () in
-     let univ = if b then UGraph.sort_universes univ else univ in
+     let univ = if b then Sorts.Graph.sort univ else univ in
      let pr_remaining =
        if Global.is_joined_environment () then mt ()
        else str"There may remain asynchronous universe constraints"
      in
      begin match dst with
-     | None -> msg_notice (UGraph.pr_universes Universes.pr_with_global_universes univ ++ pr_remaining)
+     | None -> msg_notice (Sorts.Graph.pr Universes.pr_with_global_universes univ ++ pr_remaining)
      | Some s -> dump_universes_gen univ s
      end
   | PrintHint r -> msg_notice (Hints.pr_hint_ref (smart_global r))
@@ -1816,7 +1816,7 @@ let vernac_register id r =
     error "Register inline: a constant is expected";
   let kn = destConst t in
   match r with
-  | RegisterInline -> Global.register_inline (Univ.out_punivs kn)
+  | RegisterInline -> Global.register_inline (Sorts.out_polymorphic kn)
 
 (********************)
 (* Proof management *)

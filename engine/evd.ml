@@ -980,7 +980,7 @@ let is_sort_variable evd s = UState.is_sort_variable evd.universes s
 
 let is_flexible_level evd l = 
   let uctx = evd.universes in
-    Univ.LMap.mem l (UState.subst uctx)
+    Univ.UMap.mem l (UState.subst uctx)
 
 let is_eq_sort s1 s2 =
   if Sorts.equal s1 s2 then None
@@ -989,14 +989,9 @@ let is_eq_sort s1 s2 =
 (* Precondition: l is not defined in the substitution *)
 let universe_rigidity evd l =
   let uctx = evd.universes in
-  if Univ.LSet.mem l (Univ.ContextSet.levels (UState.context_set uctx)) then
-    UnivFlexible (Univ.LSet.mem l (UState.algebraics uctx))
+  if Univ.USet.mem l (Sorts.ContextSet.levels (UState.context_set uctx)) then
+    UnivFlexible (Univ.USet.mem l (UState.algebraics uctx))
   else UnivRigid
-
-let normalize_universe evd =
-  let vars = ref (UState.subst evd.universes) in
-  let normalize = Universes.normalize_universe_opt_subst vars in
-    normalize
 
 let normalize_sort evd =
   let vars = ref (UState.subst evd.universes) in
@@ -1004,8 +999,8 @@ let normalize_sort evd =
 
 let normalize_universe_instance evd l =
   let vars = ref (UState.subst evd.universes) in
-  let normalize = Univ.level_subst_of (Universes.normalize_univ_variable_opt_subst vars) in
-    Univ.Instance.subst_fn normalize l
+  let normalize = Univ.univ_level_subst_of (Universes.normalize_univ_variable_opt_subst vars) in
+    Sorts.Instance.apply_subst normalize l
 
 let normalize_sort evars s =
   let s' = normalize_sort evars s in
@@ -1023,12 +1018,6 @@ let set_eq_sort env d s1 s2 =
     else
       d
 
-let set_eq_level d u1 u2 =
-  add_constraints d (Univ.enforce_eq_level u1 u2 Univ.Constraint.empty)
-
-let set_leq_level d u1 u2 =
-  add_constraints d (Univ.enforce_leq_level u1 u2 Univ.Constraint.empty)
-
 let set_eq_instances ?(flex=false) d u1 u2 =
   add_universe_constraints d
     (Universes.enforce_eq_instances_univs flex u1 u2 Universes.Constraints.empty)
@@ -1044,10 +1033,10 @@ let set_leq_sort env evd s1 s2 =
      else evd
 	    
 let check_eq evd s s' =
-  Sorts.check_eq (UState.ugraph evd.universes) s s'
+  Sorts.Graph.check_eq (UState.ugraph evd.universes) s s'
 
 let check_leq evd s s' =
-  Sorts.check_leq (UState.ugraph evd.universes) s s'
+  Sorts.Graph.check_leq (UState.ugraph evd.universes) s s'
 
 let normalize_evar_universe_context_variables = UState.normalize_variables
 
@@ -1104,7 +1093,7 @@ exception UniversesDiffer = UState.UniversesDiffer
 let eq_constr_univs evd t u =
   let fold cstr sigma =
     try Some (add_universe_constraints sigma cstr)
-    with Univ.UniverseInconsistency _ | UniversesDiffer -> None
+    with Sorts.UniverseInconsistency _ | UniversesDiffer -> None
   in
   match Universes.eq_constr_univs_infer (UState.ugraph evd.universes) fold t u evd with
   | None -> evd, false
@@ -1401,9 +1390,9 @@ let pr_evar_universe_context ctx =
   if is_empty_evar_universe_context ctx then mt ()
   else
     (str"UNIVERSES:"++brk(0,1)++ 
-       h 0 (Univ.pr_universe_context_set prl (evar_universe_context_set ctx)) ++ fnl () ++
+       h 0 (Sorts.ContextSet.pr prl (evar_universe_context_set ctx)) ++ fnl () ++
      str"ALGEBRAIC UNIVERSES:"++brk(0,1)++
-     h 0 (Univ.LSet.pr prl (UState.algebraics ctx)) ++ fnl() ++
+     h 0 (Univ.USet.pr prl (UState.algebraics ctx)) ++ fnl() ++
      str"UNDEFINED UNIVERSES:"++brk(0,1)++
        h 0 (Universes.pr_universe_opt_subst (UState.subst ctx)) ++ fnl())
 

@@ -16,7 +16,7 @@ open Vernacexpr
 open Decl_kinds
 
 (** Forward declaration. *)
-val declare_fix_ref : (?opaque:bool -> definition_kind -> Univ.universe_context -> Id.t ->
+val declare_fix_ref : (?opaque:bool -> definition_kind -> Sorts.universe_context -> Id.t ->
   Safe_typing.private_constants Entries.proof_output -> types -> Impargs.manual_implicits -> global_reference) ref
 
 val declare_definition_ref :

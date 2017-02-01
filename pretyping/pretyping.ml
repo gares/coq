@@ -198,7 +198,7 @@ let interp_universe_level_name evd (loc,s) =
 	 let level = Univ.Level.make dp num in
 	 let evd =
 	   try Evd.add_global_univ evd level
-	   with UGraph.AlreadyDeclared -> evd
+	   with Sorts.Graph.AlreadyDeclared -> evd
 	 in evd, level
     else 
       try
@@ -474,7 +474,7 @@ let pretype_global loc rigid env evd gr us =
     | None -> evd, None
     | Some l -> 
        let _, ctx = Universes.unsafe_constr_of_global gr in
-       let arr = Univ.Instance.to_array (Univ.UContext.instance ctx) in
+       let arr = Sorts.Instance.to_array (Sorts.UContext.instance ctx) in
        let len = Array.length arr in
        if len != List.length l then
 	 user_err ~loc ~hdr:"pretype"
@@ -488,7 +488,7 @@ let pretype_global loc rigid env evd gr us =
 	   user_err ~loc ~hdr:"pretype"
 		 (str "Universe instances cannot contain Prop, polymorphic" ++
 		   str " universe instances must be greater or equal to Set.");
-	 evd, Some (Univ.Instance.of_array (Array.of_list (List.rev l')))
+	 evd, Some (Sorts.Instance.of_array (Array.of_list (List.rev l')))
   in
     Evd.fresh_global ~loc ~rigid ?names:instance env.ExtraEnv.env evd gr
 

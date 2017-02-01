@@ -247,7 +247,7 @@ let save_remaining_recthms (locality,p,kind) norm ctx body opaq i ((id,pl),(t_i,
           | Global -> false
           | Discharge -> assert false
           in
-          let ctx = Univ.ContextSet.to_context ctx in
+          let ctx = Sorts.ContextSet.to_context ctx in
           let decl = (ParameterEntry (None,p,(t_i,ctx),None), k) in
           let kn = declare_constant id ~local decl in
           (locality,ConstRef kn,imps))
@@ -265,12 +265,12 @@ let save_remaining_recthms (locality,p,kind) norm ctx body opaq i ((id,pl),(t_i,
       match locality with
       | Discharge ->
           let const = definition_entry ~types:t_i ~opaque:opaq ~poly:p 
-	    ~univs:(Univ.ContextSet.to_context ctx) body_i in
+	    ~univs:(Sorts.ContextSet.to_context ctx) body_i in
 	  let c = SectionLocalDef const in
 	  let _ = declare_variable id (Lib.cwd(), c, k) in
           (Discharge,VarRef id,imps)
       | Local | Global ->
-        let ctx = Univ.ContextSet.to_context ctx in
+        let ctx = Sorts.ContextSet.to_context ctx in
         let local = match locality with
         | Local -> true
         | Global -> false

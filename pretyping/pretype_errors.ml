@@ -21,7 +21,7 @@ type unification_error =
   | ConversionFailed of env * constr * constr (* Non convertible closed terms *)
   | MetaOccurInBody of existential_key
   | InstanceNotSameType of existential_key * env * types * types
-  | UnifUnivInconsistency of Univ.univ_inconsistency
+  | UnifUnivInconsistency of Sorts.univ_inconsistency
   | CannotSolveConstraint of Evd.evar_constraint * unification_error
   | ProblemBeyondCapabilities
 

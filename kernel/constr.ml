@@ -25,7 +25,6 @@
 
 open Util
 open Names
-open Univ
 
 type existential_key = Evar.t
 type metavariable = int
@@ -74,7 +73,7 @@ type ('constr, 'types) pfixpoint =
     (int array * int) * ('constr, 'types) prec_declaration
 type ('constr, 'types) pcofixpoint =
     int * ('constr, 'types) prec_declaration
-type 'a puniverses = 'a Univ.puniverses
+type 'a puniverses = 'a Sorts.polymorphic
 type pconstant = constant puniverses
 type pinductive = inductive puniverses
 type pconstructor = constructor puniverses
@@ -156,7 +155,7 @@ let mkApp (f, a) =
       | _ -> App (f, a)
 
 let map_puniverses f (x,u) = (f x, u)
-let in_punivs a = (a, Univ.Instance.empty)
+let in_punivs a = (a, Sorts.Instance.empty)
 
 (* Constructs a constant *)
 let mkConst c = Const (in_punivs c)
@@ -540,7 +539,7 @@ let compare_head_gen_with kind1 kind2 eq_universes eq_sorts eq t1 t2 =
 let compare_head_gen eq_universes eq_sorts eq t1 t2 =
   compare_head_gen_leq eq_universes eq_sorts eq eq t1 t2
 
-let compare_head = compare_head_gen (fun _ -> Univ.Instance.equal) Sorts.equal
+let compare_head = compare_head_gen (fun _ -> Sorts.Instance.equal) Sorts.equal
 
 (*******************************)
 (*  alpha conversion functions *)
@@ -549,15 +548,15 @@ let compare_head = compare_head_gen (fun _ -> Univ.Instance.equal) Sorts.equal
 (* alpha conversion : ignore print names and casts *)
 
 let rec eq_constr m n =
-  (m == n) || compare_head_gen (fun _ -> Instance.equal) Sorts.equal eq_constr m n
+  (m == n) || compare_head_gen (fun _ -> Sorts.Instance.equal) Sorts.equal eq_constr m n
 
 let equal m n = eq_constr m n (* to avoid tracing a recursive fun *)
 
 let eq_constr_univs univs m n =
   if m == n then true
   else 
-    let eq_universes _ = UGraph.check_eq_instances univs in
-    let eq_sorts s1 s2 = s1 == s2 || Sorts.check_eq univs s1 s2 in
+    let eq_universes _ = Sorts.Graph.check_eq_instances univs in
+    let eq_sorts s1 s2 = s1 == s2 || Sorts.Graph.check_eq univs s1 s2 in
     let rec eq_constr' m n = 
       m == n || compare_head_gen eq_universes eq_sorts eq_constr' m n
     in compare_head_gen eq_universes eq_sorts eq_constr' m n
@@ -565,11 +564,11 @@ let eq_constr_univs univs m n =
 let leq_constr_univs univs m n =
   if m == n then true
   else 
-    let eq_universes _ = UGraph.check_eq_instances univs in
+    let eq_universes _ = Sorts.Graph.check_eq_instances univs in
     let eq_sorts s1 s2 = s1 == s2 || 
-      Sorts.check_eq univs s1 s2 in
+      Sorts.Graph.check_eq univs s1 s2 in
     let leq_sorts s1 s2 = s1 == s2 || 
-      Sorts.check_leq univs s1 s2 in
+      Sorts.Graph.check_leq univs s1 s2 in
     let rec eq_constr' m n = 
       m == n || compare_head_gen eq_universes eq_sorts eq_constr' m n
     in
@@ -579,12 +578,12 @@ let leq_constr_univs univs m n =
     compare_leq m n
 
 let eq_constr_univs_infer univs m n =
-  if m == n then true, Constraint.empty
+  if m == n then true, Sorts.Constraint.empty
   else 
-    let cstrs = ref Constraint.empty in
-    let eq_universes strict = UGraph.check_eq_instances univs in
+    let cstrs = ref Sorts.Constraint.empty in
+    let eq_universes strict = Sorts.Graph.check_eq_instances univs in
     let eq_sorts s1 s2 = 
-        if Sorts.check_eq univs s1 s2 then true
+        if Sorts.Graph.check_eq univs s1 s2 then true
 	else
           (cstrs := Sorts.enforce_eq s1 s2 !cstrs;
 	   true)
@@ -596,17 +595,17 @@ let eq_constr_univs_infer univs m n =
     res, !cstrs
 
 let leq_constr_univs_infer univs m n =
-  if m == n then true, Constraint.empty
+  if m == n then true, Sorts.Constraint.empty
   else 
-    let cstrs = ref Constraint.empty in
-    let eq_universes strict l l' = UGraph.check_eq_instances univs l l' in
+    let cstrs = ref Sorts.Constraint.empty in
+    let eq_universes strict l l' = Sorts.Graph.check_eq_instances univs l l' in
     let eq_sorts s1 s2 = 
-        if Sorts.check_eq univs s1 s2 then true
+        if Sorts.Graph.check_eq univs s1 s2 then true
         else (cstrs := Sorts.enforce_eq s1 s2 !cstrs;
 	      true)
     in
     let leq_sorts s1 s2 = 
-        if Sorts.check_leq univs s1 s2 then true
+        if Sorts.Graph.check_leq univs s1 s2 then true
 	else
           (cstrs := Sorts.enforce_leq s1 s2 !cstrs;
 	   true)
@@ -776,7 +775,7 @@ let hash_cast_kind = function
 | DEFAULTcast -> 2
 | REVERTcast -> 3
 
-let sh_instance = Univ.Instance.share
+let sh_instance = Sorts.Instance.share
 
 (* [hashcons hash_consing_functions constr] computes an hash-consed
    representation for [constr] using [hash_consing_functions] on
@@ -904,11 +903,11 @@ let rec hash t =
     | Evar (e,l) ->
       combinesmall 8 (combine (Evar.hash e) (hash_term_array l))
     | Const (c,u) ->
-      combinesmall 9 (combine (Constant.hash c) (Instance.hash u))
+      combinesmall 9 (combine (Constant.hash c) (Sorts.Instance.hash u))
     | Ind (ind,u) ->
-      combinesmall 10 (combine (ind_hash ind) (Instance.hash u))
+      combinesmall 10 (combine (ind_hash ind) (Sorts.Instance.hash u))
     | Construct (c,u) ->
-      combinesmall 11 (combine (constructor_hash c) (Instance.hash u))
+      combinesmall 11 (combine (constructor_hash c) (Sorts.Instance.hash u))
     | Case (_ , p, c, bl) ->
       combinesmall 12 (combine3 (hash c) (hash p) (hash_term_array bl))
     | Fix (ln ,(_, tl, bl)) ->

@@ -215,8 +215,8 @@ let mkListConst c =
     Coqlib.gen_reference "" ["Init";"Datatypes"] c
   in 
   let inst = 
-    if Global.is_polymorphic r then fun u -> Univ.Instance.of_array [|u|]
-    else fun _ -> Univ.Instance.empty
+    if Global.is_polymorphic r then fun u -> Sorts.Instance.of_array [|u|]
+    else fun _ -> Sorts.Instance.empty
   in
     fun u -> Term.mkConstructU (Globnames.destConstructRef r, inst u)
 

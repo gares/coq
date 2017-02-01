@@ -35,6 +35,8 @@
 
  *)
 
+type constraint_type = Lt | Le | Eq
+exception AlreadyDeclared
 
 module type GraphIn =
   sig
@@ -65,13 +67,13 @@ module type GraphIn =
       val pr : t -> Pp.std_ppcmds
     end
 
-    module LSet : CSig.SetS with type elt = Level.t
-    module LMap : CMap.ExtS with type key = Level.t and module Set := LSet
+    module USet : CSig.SetS with type elt = Level.t
+    module UMap : CMap.ExtS with type key = Level.t and module Set := USet
 
-    type constraint_type = Lt | Le | Eq
     type level_constraint = Level.t * constraint_type * Level.t
+    type constraints
 
-    module Constraints : Set.S with type elt = level_constraint
+    val add_constraint : level_constraint -> constraints -> constraints
 
     type explanation = (constraint_type * Level.t) list
     val error_inconsistency : constraint_type -> Level.t -> Level.t -> explanation option -> 'a
@@ -92,15 +94,12 @@ module type GraphS =
 
     val sort_universes : t -> t
 
-    exception AlreadyDeclared
     val add_level : Level.t -> bool -> t -> t
 
     val check_constraint : t -> level_constraint -> bool
-    val check_constraints : Constraints.t -> t -> bool
 
-    val constraints_of_universes : t -> Constraints.t
+    val constraints_of_universes : t -> constraints -> constraints
 
-    val merge_constraints : Constraints.t -> t -> t
     val enforce_constraint : level_constraint -> t -> t
 
     val pr : (Level.t -> Pp.std_ppcmds) -> t -> Pp.std_ppcmds
@@ -117,8 +116,6 @@ open Util
 module Make (Input : GraphIn) : GraphS with module Input := Input = struct
   open Input
 
-  module UMap = LMap
-
   type status = NoMark | Visited | WeakVisited | ToMerge
 
   (* Comparison on this type is pointer equality *)
@@ -126,7 +123,7 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
     { univ: Level.t;
       ltle: bool UMap.t;  (* true: strict (lt) constraint.
                              false: weak  (le) constraint. *)
-      gtge: LSet.t;
+      gtge: USet.t;
       rank : int;
       klvl: int;
       ilvl: int;
@@ -204,7 +201,7 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
   let rec repr g u =
     let a =
       try UMap.find u g.entries
-      with Not_found -> CErrors.anomaly ~label:"Univ.repr"
+      with Not_found -> CErrors.anomaly ~label:"Sorts.Graph.repr"
                                         (str"Universe " ++ Level.pr u ++ str" undefined")
     in
     match a with
@@ -223,8 +220,6 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
     | Some u -> Some (repr g u)
 
   let get_var_min_arc g = repr g  Level.var_min
-
-  exception AlreadyDeclared
 
   (* Reindexes the given universe, using the next available index. *)
   let use_index g u =
@@ -245,7 +240,7 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
     with Not_found ->
       let can =
         { univ = u;
-          ltle = UMap.empty; gtge = LSet.empty;
+          ltle = UMap.empty; gtge = USet.empty;
           rank = if Level.is_litteral u then big_rank else 0;
           klvl = 0; ilvl = 0;
           status = NoMark }
@@ -279,10 +274,10 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
                let v = repr g v in
                assert (topo_compare u v = -1);
                if u.klvl = v.klvl then
-                 assert (LSet.mem u.univ v.gtge ||
-                           LSet.exists (fun l -> u == repr g l) v.gtge))
+                 assert (USet.mem u.univ v.gtge ||
+                           USet.exists (fun l -> u == repr g l) v.gtge))
                      u.ltle;
-           LSet.iter (fun v ->
+           USet.iter (fun v ->
                let v = repr g v in
                assert (v.klvl = u.klvl &&
                          (UMap.mem u.univ v.ltle ||
@@ -309,10 +304,10 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
               ltle (ltle, false)
 
   let clean_gtge g gtge =
-    LSet.fold (fun u acc ->
+    USet.fold (fun u acc ->
         let uu = (repr g u).univ in
         if Level.equal uu u then acc
-        else LSet.add uu (LSet.remove u (fst acc)), true)
+        else USet.add uu (USet.remove u (fst acc)), true)
               gtge (gtge, false)
 
   (* [get_ltle] and [get_gtge] return ltle and gtge arcs.
@@ -380,7 +375,7 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
         let to_revert = x.univ::to_revert in
         let gtge, x, g = get_gtge g x in
         let to_revert, b_traversed, count, g =
-          LSet.fold (fun y (to_revert, b_traversed, count, g) ->
+          USet.fold (fun y (to_revert, b_traversed, count, g) ->
               backward_traverse to_revert b_traversed count g y)
                     gtge (to_revert, b_traversed, count, g)
         in
@@ -392,8 +387,8 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
     let y = repr g y in
     if y.klvl < v_klvl then begin
         let y = { y with klvl = v_klvl;
-                         gtge = if x == y then LSet.empty
-                                else LSet.singleton x.univ }
+                         gtge = if x == y then USet.empty
+                                else USet.singleton x.univ }
         in
         let g = change_node g y in
         let ltle, y, g = get_ltle g y in
@@ -405,7 +400,7 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
         y.univ::f_traversed, g
       end else if y.klvl = v_klvl && x != y then
       let g = change_node g
-                          { y with gtge = LSet.add x.univ y.gtge } in
+                          { y with gtge = USet.add x.univ y.gtge } in
       f_traversed, g
     else f_traversed, g
 
@@ -419,7 +414,7 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
          begin x.status <- ToMerge; true, to_revert end
        else
          begin
-           let merge, to_revert = LSet.fold
+           let merge, to_revert = USet.fold
                                     (fun y (merge, to_revert) ->
                                       let merge', to_revert = find_to_merge to_revert g y v in
                                       merge' || merge, to_revert) x.gtge (false, to_revert)
@@ -457,11 +452,11 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
         ) to_merge_lvl ltle
     in
     let gtge =
-      UMap.fold (fun _ n acc -> LSet.union acc n.gtge)
-                to_merge_lvl LSet.empty
+      UMap.fold (fun _ n acc -> USet.union acc n.gtge)
+                to_merge_lvl USet.empty
     in
     let gtge, _ = clean_gtge g gtge in
-    let gtge = LSet.diff gtge (UMap.domain to_merge_lvl) in
+    let gtge = USet.diff gtge (UMap.domain to_merge_lvl) in
     (ltle, gtge)
 
 
@@ -570,9 +565,9 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
             { (change_node g { u with ltle = UMap.add v.univ strict u.ltle })
             with n_edges = g.n_edges + 1 }
         in
-        if u.klvl <> v.klvl || LSet.mem u.univ v.gtge then g
+        if u.klvl <> v.klvl || USet.mem u.univ v.gtge then g
         else
-          let v = { v with gtge = LSet.add u.univ v.gtge } in
+          let v = { v with gtge = USet.add u.univ v.gtge } in
           change_node g v
     with
     | CycleDetected as e -> raise e
@@ -589,8 +584,8 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
       assert (g.index > min_int);
       let v = {
           univ = vlev;
-          ltle = LMap.empty;
-          gtge = LSet.empty;
+          ltle = UMap.empty;
+          gtge = USet.empty;
           rank = 0;
           klvl = 0;
           ilvl = g.index;
@@ -753,7 +748,7 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
       UMap.add univ (Canonical {
                          univ = univ;
                          ltle = UMap.empty;
-                         gtge = LSet.empty;
+                         gtge = USet.empty;
                          rank = big_rank;
                          klvl = 0;
                          ilvl = ilvl;
@@ -783,17 +778,11 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
     | (u,Le,v) -> enforce_univ_leq u v g
     | (u,Eq,v) -> enforce_univ_eq u v g
 
-  let merge_constraints c g =
-    Constraints.fold enforce_constraint c g
-
   let check_constraint g (l,d,r) =
     match d with
     | Eq -> check_equal g l r
     | Le -> check_smaller g false l r
     | Lt -> check_smaller g true l r
-
-  let check_constraints c g =
-    Constraints.for_all (check_constraint g) c
 
   (* Normalization *)
 
@@ -820,19 +809,19 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
            g)
               g.entries g
 
-  let constraints_of_universes g =
+  let constraints_of_universes g acc =
     let constraints_of u v acc =
       match v with
       | Canonical {univ=u; ltle} ->
          UMap.fold (fun v strict acc->
              let typ = if strict then Lt else Le in
-             Constraints.add (u,typ,v) acc) ltle acc
-      | Equiv v -> Constraints.add (u,Eq,v) acc
+             add_constraint (u,typ,v) acc) ltle acc
+      | Equiv v -> add_constraint (u,Eq,v) acc
     in
-    UMap.fold constraints_of g.entries Constraints.empty
+    UMap.fold constraints_of g.entries acc
 
-  let constraints_of_universes g =
-    constraints_of_universes (normalize_universes g)
+  let constraints_of_universes g acc =
+    constraints_of_universes (normalize_universes g) acc
 
   (** [sort_universes g] builds a totally ordered universe graph.  The
     output graph should imply the input graph (and the implication
@@ -921,30 +910,4 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
     in
     UMap.iter dump_arc g.entries
 
-  (** Profiling *)
-
-  let merge_constraints =
-    if Flags.profile then
-      let key = Profile.declare_profile "merge_constraints" in
-      Profile.profile2 key merge_constraints
-    else merge_constraints
-  let check_constraints =
-    if Flags.profile then
-      let key = Profile.declare_profile "check_constraints" in
-      Profile.profile2 key check_constraints
-    else check_constraints
 end
-
-(*
-let check_eq =
-  if Flags.profile then
-    let check_eq_key = Profile.declare_profile "check_eq" in
-    Profile.profile3 check_eq_key check_eq
-  else check_eq
-
-  let check_leq =
-    if Flags.profile then
-      let check_leq_key = Profile.declare_profile "check_leq" in
-      Profile.profile3 check_leq_key check_leq
-    else check_leq
- *)

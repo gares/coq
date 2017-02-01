@@ -44,7 +44,7 @@ let if_xml f x = if !Flags.xml_export then f x else ()
 
 type section_variable_entry =
   | SectionLocalDef of Safe_typing.private_constants definition_entry
-  | SectionLocalAssum of types Univ.in_universe_context_set * polymorphic * bool (** Implicit status *)
+  | SectionLocalAssum of types Sorts.in_universe_context_set * polymorphic * bool (** Implicit status *)
 
 type variable_declaration = DirPath.t * section_variable_entry * logical_kind
 
@@ -77,7 +77,7 @@ let discharge_variable (_,o) = match o with
   | Inl _ -> Some o
 
 type variable_obj =
-    (Univ.ContextSet.t, Id.t * variable_declaration) union
+    (Sorts.ContextSet.t, Id.t * variable_declaration) union
 
 let inVariable : variable_obj -> obj =
   declare_object { (default_object "VARIABLE") with
@@ -180,7 +180,7 @@ let discharge_constant ((sp, kn), obj) =
 (* Hack to reduce the size of .vo: we keep only what load/open needs *)
 let dummy_constant_entry = 
   ConstantEntry
-    (false, ParameterEntry (None,false,(mkProp,Univ.UContext.empty),None))
+    (false, ParameterEntry (None,false,(mkProp,Sorts.UContext.empty),None))
 
 let dummy_constant cst = {
   cst_decl = dummy_constant_entry;
@@ -236,8 +236,8 @@ let declare_constant_common id cst =
   c
 
 let definition_entry ?fix_exn ?(opaque=false) ?(inline=false) ?types
-    ?(poly=false) ?(univs=Univ.UContext.empty) ?(eff=Safe_typing.empty_private_constants) body =
-  { const_entry_body = Future.from_val ?fix_exn ((body,Univ.ContextSet.empty), eff);
+    ?(poly=false) ?(univs=Sorts.UContext.empty) ?(eff=Safe_typing.empty_private_constants) body =
+  { const_entry_body = Future.from_val ?fix_exn ((body,Sorts.ContextSet.empty), eff);
     const_entry_secctx = None;
     const_entry_type = types;
     const_entry_polymorphic = poly;
@@ -274,7 +274,7 @@ let declare_definition ?(internal=UserIndividualRequest)
   ?(opaque=false) ?(kind=Decl_kinds.Definition) ?(local = false)
   ?(poly=false) id ?types (body,ctx) =
   let cb =
-    definition_entry ?types ~poly ~univs:(Univ.ContextSet.to_context ctx) ~opaque body
+    definition_entry ?types ~poly ~univs:(Sorts.ContextSet.to_context ctx) ~opaque body
   in
     declare_constant ~internal ~local id
       (Entries.DefinitionEntry cb, Decl_kinds.IsDefinition kind)
@@ -352,7 +352,7 @@ let dummy_inductive_entry (_,m) = ([],{
   mind_entry_finite = Decl_kinds.BiFinite;
   mind_entry_inds = List.map dummy_one_inductive_entry m.mind_entry_inds;
   mind_entry_polymorphic = false;
-  mind_entry_universes = Univ.UContext.empty;
+  mind_entry_universes = Sorts.UContext.empty;
   mind_entry_private = None;
 })
 
@@ -434,7 +434,7 @@ let assumption_message id =
 
 (** Global universe names, in a different summary *)
 
-type universe_context_decl = polymorphic * Univ.universe_context_set
+type universe_context_decl = polymorphic * Sorts.universe_context_set
 
 let cache_universe_context (p, ctx) =
   Global.push_context_set p ctx;
@@ -459,9 +459,9 @@ let cache_universes (p, l) =
   let glob', ctx =
     List.fold_left (fun ((idl,lid),ctx) (id, lev) ->
         ((Idmap.add id (p, lev) idl,
-          Univ.LMap.add lev id lid),
-         Univ.ContextSet.add_universe lev ctx))
-      (glob, Univ.ContextSet.empty) l
+          Univ.UMap.add lev id lid),
+         Sorts.ContextSet.add_universe lev ctx))
+      (glob, Sorts.ContextSet.empty) l
   in
   cache_universe_context (p, ctx);
   Global.set_global_universe_names glob'
@@ -488,12 +488,12 @@ let do_universe poly l =
   in
     Lib.add_anonymous_leaf (input_universes (poly, l))
 
-type constraint_decl = polymorphic * Univ.constraints
+type constraint_decl = polymorphic * Sorts.constraints
 
 let cache_constraints (na, (p, c)) =
   let ctx =
-    Univ.ContextSet.add_constraints c
-      Univ.ContextSet.empty (* No declared universes here, just constraints *)
+    Sorts.ContextSet.add_constraints c
+      Sorts.ContextSet.empty (* No declared universes here, just constraints *)
   in cache_universe_context (p,ctx)
 
 let discharge_constraints (_, (p, c as a)) =
@@ -542,7 +542,7 @@ let do_constraint poly l =
   let constraints = List.fold_left (fun acc (l, d, r) ->
      let ploc, (p, lu) = u_of_id l and rloc, (p', ru) = u_of_id r in
      check_poly ploc p rloc p';
-     Univ.Constraint.add (lu, d, ru) acc)
-    Univ.Constraint.empty l
+     Sorts.Constraint.add_univ (lu, d, ru) acc)
+    Sorts.Constraint.empty l
   in
     Lib.add_anonymous_leaf (input_constraints (poly, constraints))

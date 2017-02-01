@@ -393,9 +393,9 @@ let do_mutual_induction_scheme lnamedepindsort =
 	 match inst with
 	 | None ->
 	    let _, ctx = Global.type_of_global_in_context env0 (IndRef ind) in
-	    let ctxs = Univ.ContextSet.of_context ctx in
+	    let ctxs = Sorts.ContextSet.of_context ctx in
 	    let evd = Evd.from_ctx (Evd.evar_universe_context_of ctxs) in
-	    let u = Univ.UContext.instance ctx in
+	    let u = Sorts.UContext.instance ctx in
 	      evd, (ind,u), Some u
 	 | Some ui -> evd, (ind, ui), inst
        in
@@ -405,7 +405,7 @@ let do_mutual_induction_scheme lnamedepindsort =
   let sigma, listdecl = Indrec.build_mutual_induction_scheme env0 sigma lrecspec in
   let declare decl fi lrecref =
     let decltype = Retyping.get_type_of env0 sigma decl in
-    let proof_output = Future.from_val ((decl,Univ.ContextSet.empty),Safe_typing.empty_private_constants) in
+    let proof_output = Future.from_val ((decl,Sorts.ContextSet.empty),Safe_typing.empty_private_constants) in
     let cst = define fi UserIndividualRequest sigma proof_output (Some decltype) in
     ConstRef cst :: lrecref
   in
@@ -503,7 +503,7 @@ let do_combined_scheme name schemes =
       schemes
   in
   let body,typ = build_combined_scheme (Global.env ()) csts in
-  let proof_output = Future.from_val ((body,Univ.ContextSet.empty),Safe_typing.empty_private_constants) in
+  let proof_output = Future.from_val ((body,Sorts.ContextSet.empty),Safe_typing.empty_private_constants) in
   ignore (define (snd name) UserIndividualRequest Evd.empty proof_output (Some typ));
   fixpoint_message None [snd name]
 

@@ -211,9 +211,9 @@ let safe_pr_constr t =
   safe_pr_constr_env env sigma t
 
 let pr_universe_ctx sigma c =
-  if !Detyping.print_universes && not (Univ.UContext.is_empty c) then
+  if !Detyping.print_universes && not (Sorts.UContext.is_empty c) then
     fnl()++pr_in_comment (fun c -> v 0 
-      (Univ.pr_universe_context (Evd.pr_evd_level sigma) c)) c
+      (Sorts.UContext.pr (Evd.pr_evd_level sigma) c)) c
   else
     mt()
 
@@ -226,7 +226,7 @@ let pr_global = pr_global_env Id.Set.empty
 let pr_puniverses f env (c,u) =
   f env c ++ 
   (if !Constrextern.print_universes then
-    str"(*" ++ Univ.Instance.pr Universes.pr_with_global_universes u ++ str"*)"
+    str"(*" ++ Sorts.Instance.pr Universes.pr_with_global_universes u ++ str"*)"
    else mt ())
 
 let pr_constant env cst = pr_global_env (Termops.vars_of_env env) (ConstRef cst)
@@ -910,5 +910,5 @@ let pr_polymorphic b =
   else mt ()
 
 let pr_universe_instance evd ctx =
-  let inst = Univ.UContext.instance ctx in
-    str"@{" ++ Univ.Instance.pr (Evd.pr_evd_level evd) inst ++ str"}"
+  let inst = Sorts.UContext.instance ctx in
+    str"@{" ++ Sorts.Instance.pr (Evd.pr_evd_level evd) inst ++ str"}"

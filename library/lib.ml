@@ -399,14 +399,14 @@ let find_opening_node id =
 type variable_info = Context.Named.Declaration.t * Decl_kinds.binding_kind
 
 type variable_context = variable_info list
-type abstr_info = variable_context * Univ.universe_level_subst * Univ.UContext.t
+type abstr_info = variable_context * Univ.universe_level_subst * Sorts.UContext.t
 		  
 type abstr_list = abstr_info Names.Cmap.t * abstr_info Names.Mindmap.t
 
 type secentry =
   | Variable of (Names.Id.t * Decl_kinds.binding_kind *
-		   Decl_kinds.polymorphic * Univ.universe_context_set)
-  | Context of Univ.universe_context_set
+		   Decl_kinds.polymorphic * Sorts.universe_context_set)
+  | Context of Sorts.universe_context_set
 
 let sectab =
   Summary.ref ([] : (secentry list * Opaqueproof.work_list * abstr_list) list)
@@ -439,14 +439,14 @@ let extract_hyps (secs,ohyps) =
   let rec aux = function
     | (Variable (id,impl,poly,ctx)::idl, decl::hyps) when Names.Id.equal id (NamedDecl.get_id decl) ->
       let l, r = aux (idl,hyps) in 
-      (decl,impl) :: l, if poly then Univ.ContextSet.union r ctx else r
+      (decl,impl) :: l, if poly then Sorts.ContextSet.union r ctx else r
     | (Variable (_,_,poly,ctx)::idl,hyps) ->
         let l, r = aux (idl,hyps) in
-          l, if poly then Univ.ContextSet.union r ctx else r
+          l, if poly then Sorts.ContextSet.union r ctx else r
     | (Context ctx :: idl, hyps) ->
        let l, r = aux (idl, hyps) in
-       l, Univ.ContextSet.union r ctx
-    | [], _ -> [],Univ.ContextSet.empty
+       l, Sorts.ContextSet.union r ctx
+    | [], _ -> [],Sorts.ContextSet.empty
   in aux (secs,ohyps)
 
 let instance_from_variable_context =
@@ -461,10 +461,10 @@ let add_section_replacement f g poly hyps =
   | (vars,exps,abs)::sl ->
     let () = check_same_poly poly vars in
     let sechyps,ctx = extract_hyps (vars,hyps) in
-    let ctx = Univ.ContextSet.to_context ctx in
-    let subst, ctx = Univ.abstract_universes true ctx in
+    let ctx = Sorts.ContextSet.to_context ctx in
+    let subst, ctx = Sorts.abstract_sorts true ctx in
     let args = instance_from_variable_context (List.rev sechyps) in
-    sectab := (vars,f (Univ.UContext.instance ctx,args) exps,
+    sectab := (vars,f (Sorts.UContext.instance ctx,args) exps,
 	      g (sechyps,subst,ctx) abs)::sl
 
 let add_section_kn poly kn =
@@ -496,7 +496,7 @@ let section_instance = function
        | Context _ -> false
      in
      if List.exists eq (pi1 (List.hd !sectab))
-     then Univ.Instance.empty, [||]
+     then Sorts.Instance.empty, [||]
      else raise Not_found
   | ConstRef con ->
       Names.Cmap.find con (fst (pi2 (List.hd !sectab)))

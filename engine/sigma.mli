@@ -84,7 +84,7 @@ val fresh_inductive_instance :
 val fresh_constructor_instance : ?loc:Loc.t -> Environ.env -> 'r t -> constructor ->
   (pconstructor, 'r) sigma
 
-val fresh_global : ?loc:Loc.t -> ?rigid:Evd.rigid -> ?names:Univ.Instance.t -> Environ.env ->
+val fresh_global : ?loc:Loc.t -> ?rigid:Evd.rigid -> ?names:Sorts.Instance.t -> Environ.env ->
   'r t -> Globnames.global_reference -> (constr, 'r) sigma
 
 (** FILLME *)

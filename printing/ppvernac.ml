@@ -839,7 +839,7 @@ module Make
         )
       | VernacConstraint v ->
         let pr_uconstraint (l, d, r) =
-          pr_glob_level l ++ spc () ++ Univ.pr_constraint_type d ++ spc () ++
+          pr_glob_level l ++ spc () ++ Sorts.pr_constraint_type d ++ spc () ++
             pr_glob_level r
         in
         return (

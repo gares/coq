@@ -19,7 +19,6 @@ open Names
 open Term
 open Declarations
 open Environ
-open Univ
 
 module NamedDecl = Context.Named.Declaration
 
@@ -82,7 +81,7 @@ let share cache r (cstl,knl) =
 
 let share_univs cache r u l =
   let r', (u', args) = share cache r l in
-    mkApp (instantiate_my_gr r' (Instance.append u' u), args)
+    mkApp (instantiate_my_gr r' (Sorts.Instance.append u' u), args)
 
 let update_case_info cache ci modlist =
   try
@@ -125,7 +124,7 @@ let expmod_constr cache modlist c =
 
       | Proj (p, c') ->
           (try 
-	     let p' = share_univs (ConstRef (Projection.constant p)) Univ.Instance.empty modlist in
+	     let p' = share_univs (ConstRef (Projection.constant p)) Sorts.Instance.empty modlist in
 	     let make c = Projection.make c (Projection.unfolded p) in
 	     match kind_of_term p' with
 	     | Const (p',_) -> mkProj (make p', substrec c')
@@ -179,16 +178,16 @@ let cook_constr { Opaqueproof.modlist ; abstract } c =
   abstract_constant_body (expmod c) hyps
 
 let lift_univs cb subst =
-  if cb.const_polymorphic && not (Univ.LMap.is_empty subst) then
-    let inst = Univ.UContext.instance cb.const_universes in
-    let cstrs = Univ.UContext.constraints cb.const_universes in
-    let len = Univ.LMap.cardinal subst in
+  if cb.const_polymorphic && not (Univ.UMap.is_empty subst) then
+    let inst = Sorts.UContext.instance cb.const_universes in
+    let cstrs = Sorts.UContext.constraints cb.const_universes in
+    let len = Univ.UMap.cardinal subst in
     let subst = 
-      Array.fold_left_i (fun i acc v -> Univ.LMap.add (Level.var i) (Level.var (i + len)) acc)
-	subst (Univ.Instance.to_array inst)
+      Array.fold_left_i (fun i acc v -> Univ.UMap.add (Univ.Level.var i) (Univ.Level.var (i + len)) acc)
+	subst (Sorts.Instance.to_array inst)
     in
-    let cstrs' = Univ.subst_univs_level_constraints subst cstrs in
-      subst, Univ.UContext.make (inst,cstrs')
+    let cstrs' = Sorts.level_subst_constraints subst cstrs in
+      subst, Sorts.UContext.make (inst,cstrs')
   else subst, cb.const_universes
 
 let cook_constant env { from = cb; info } =
@@ -224,12 +223,12 @@ let cook_constant env { from = cb; info } =
     let etat = abstract_constant_body (expmod (snd pb.proj_eta)) hyps in
     let ((mind, _), _), n' =
       try 
-	let c' = share_univs cache (IndRef (pb.proj_ind,0)) Univ.Instance.empty modlist in
+	let c' = share_univs cache (IndRef (pb.proj_ind,0)) Sorts.Instance.empty modlist in
 	  match kind_of_term c' with
 	  | App (f,l) -> (destInd f, Array.length l)
 	  | Ind ind -> ind, 0
 	  | _ -> assert false 
-      with Not_found -> (((pb.proj_ind,0),Univ.Instance.empty), 0)
+      with Not_found -> (((pb.proj_ind,0),Sorts.Instance.empty), 0)
     in 
     let typ = (* By invariant, a regular arity *)
       match typ with RegularArity t -> t | TemplateArity _ -> assert false 
@@ -242,9 +241,9 @@ let cook_constant env { from = cb; info } =
   let univs = 
     let abs' = 
       if cb.const_polymorphic then abs_ctx
-      else instantiate_univ_context abs_ctx
+      else Sorts.instantiate_univ_context abs_ctx
     in
-      UContext.union abs' univs
+    Sorts.UContext.union abs' univs
   in
     (body, typ, Option.map projection cb.const_proj, 
      cb.const_polymorphic, univs, cb.const_inline_code, 

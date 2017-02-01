@@ -37,7 +37,7 @@ val translate_modtype :
       the extraction. *)
 
 type 'alg translation =
-  module_signature * 'alg * delta_resolver * Univ.ContextSet.t
+  module_signature * 'alg * delta_resolver * Sorts.ContextSet.t
 
 val translate_mse :
   env -> module_path option -> inline -> module_struct_entry ->

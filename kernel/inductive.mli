@@ -8,14 +8,14 @@
 
 open Names
 open Term
-open Univ
+open Sorts
 open Declarations
 open Environ
 
 type mind_specif = mutual_inductive_body * one_inductive_body
 
 (** {6 Functions to build standard types related to inductive } *)
-val ind_subst : mutual_inductive -> mutual_inductive_body -> universe_instance -> constr list
+val ind_subst : mutual_inductive -> mutual_inductive_body -> sort_instance -> constr list
 
 val elim_sorts_abstract : mind_specif -> sorts_family
 val elim_sorts : env -> mind_specif -> constr list -> sorts_family
@@ -53,17 +53,6 @@ val check_case_info : env -> pinductive -> case_info -> unit
     checked. *)
 val check_fix : env -> fixpoint -> unit
 val check_cofix : env -> cofixpoint -> unit
-
-(** {6 Support for sort-polymorphic inductive types } *)
-
-(** The "polyprop" optional argument below controls
-    the "Prop-polymorphism". By default, it is allowed.
-    But when "polyprop=false", the following exception is raised
-    when a polymorphic singleton inductive type becomes Prop due to
-    parameter instantiation. This is used by the Ocaml extraction,
-    which cannot handle (yet?) Prop-polymorphism. *)
-
-val max_inductive_sort : universe array -> universe
 
 (** {6 Debug} *)
 

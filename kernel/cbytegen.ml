@@ -514,7 +514,7 @@ let rec str_const c =
               end
 	| _ -> Bconstr c
       end
-  | Ind (ind,u) when Univ.Instance.is_empty u ->
+  | Ind (ind,u) when Sorts.Instance.is_empty u ->
     Bstrconst (Const_ind ind)
   | Construct (((kn,j),i),_) ->
       begin
@@ -613,12 +613,12 @@ let rec compile_constr reloc c sz cont =
   | Const (kn,u) -> compile_const reloc kn u [||] sz cont
   | Ind (ind,u) ->
      let bcst = Bstrconst (Const_ind ind) in
-    if Univ.Instance.is_empty u then
+    if Sorts.Instance.is_empty u then
       compile_str_cst reloc bcst sz cont
     else
       comp_app compile_str_cst compile_universe reloc
 	   bcst
-	   (Univ.Instance.to_array u)
+	   (Sorts.Instance.to_array u)
 	   sz
 	   cont
   | Construct _ ->
@@ -630,15 +630,15 @@ let rec compile_constr reloc c sz cont =
      let open Univ in begin
       let levels = Sorts.levels u in
       let global_levels =
-	LSet.filter (fun x -> Level.var_index x = None) levels
+	USet.filter (fun x -> Level.var_index x = None) levels
       in
       let local_levels =
 	List.map_filter (fun x -> Level.var_index x)
-	  (LSet.elements levels)
+	  (USet.elements levels)
       in
       (* We assume that [Universe.type0m] is a neutral element for [Universe.sup] *)
       let uglob =
-        LSet.fold (fun lvl u -> Sorts.sup u (Sorts.of_level lvl)) global_levels Sorts.prop
+        USet.fold (fun lvl u -> Sorts.sup u (Sorts.of_level lvl)) global_levels Sorts.prop
       in
       if local_levels = [] then
         compile_str_cst reloc (Bstrconst (Const_sorts uglob)) sz cont
@@ -871,11 +871,11 @@ and compile_str_cst reloc sc sz cont =
 and compile_get_global reloc (kn,u) sz cont =
   set_max_stack_size sz;
   let kn = get_alias !global_env kn in
-  if Univ.Instance.is_empty u then
+  if Sorts.Instance.is_empty u then
     Kgetglobal kn :: cont
   else
     comp_app (fun _ _ _ cont -> Kgetglobal kn :: cont)
-      compile_universe reloc () (Univ.Instance.to_array u) sz cont
+      compile_universe reloc () (Sorts.Instance.to_array u) sz cont
 
 and compile_universe reloc uni sz cont =
   set_max_stack_size sz;
@@ -896,7 +896,7 @@ and compile_const reloc kn u args sz cont =
     if Int.equal nargs 0 then
       compile_get_global reloc (kn,u) sz cont
     else
-      if Univ.Instance.is_empty u then
+      if Sorts.Instance.is_empty u then
         (* normal compilation *)
         comp_app (fun _ _ sz cont ->
             compile_get_global reloc (kn,u) sz cont)
@@ -907,7 +907,7 @@ and compile_const reloc kn u args sz cont =
           | ArgConstr cst -> compile_constr reloc cst sz cont
           | ArgUniv uni -> compile_universe reloc uni sz cont
         in
-	let u = Univ.Instance.to_array u in
+	let u = Sorts.Instance.to_array u in
 	let lu = Array.length u in
 	let all =
 	  Array.init (lu + Array.length args) 
@@ -917,7 +917,7 @@ and compile_const reloc kn u args sz cont =
           compile_arg reloc () all sz cont
 
 let is_univ_copy max u =
-  let u = Univ.Instance.to_array u in
+  let u = Sorts.Instance.to_array u in
   if Array.length u = max then
     Array.fold_left_i (fun i acc u ->
         if acc then
@@ -993,7 +993,7 @@ let compile_constant_body fail_on_error env univs = function
       let instance_size =
         match univs with
         | None -> 0
-        | Some univ -> Univ.UContext.size univ
+        | Some univ -> Sorts.UContext.size univ
       in
       match kind_of_term body with
 	| Const (kn',u) when is_univ_copy instance_size u ->

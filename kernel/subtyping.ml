@@ -14,7 +14,7 @@
 (*i*)
 open Util
 open Names
-open Univ
+open Sorts
 open Term
 open Declarations
 open Declareops
@@ -298,31 +298,31 @@ let check_constant cst env mp1 l info1 cb2 spec2 subst1 subst2 =
       in
       let cst', env', u = 
 	if poly then 
-	  let ctx1 = Univ.instantiate_univ_context cb1.const_universes in
-	  let ctx2 = Univ.instantiate_univ_context cb2.const_universes in
-	  let inst1, ctx1 = Univ.UContext.dest ctx1 in
-	  let inst2, ctx2 = Univ.UContext.dest ctx2 in
-	    if not (Univ.Instance.length inst1 == Univ.Instance.length inst2) then
+	  let ctx1 = Sorts.instantiate_univ_context cb1.const_universes in
+	  let ctx2 = Sorts.instantiate_univ_context cb2.const_universes in
+	  let inst1, ctx1 = Sorts.UContext.dest ctx1 in
+	  let inst2, ctx2 = Sorts.UContext.dest ctx2 in
+	    if not (Sorts.Instance.length inst1 == Sorts.Instance.length inst2) then
 	      error IncompatibleInstances
 	    else 
-	      let cstrs = Univ.enforce_eq_instances inst1 inst2 cst in
-	      let cstrs = Univ.Constraint.union cstrs ctx2 in
+	      let cstrs = Sorts.enforce_eq_instances inst1 inst2 cst in
+	      let cstrs = Sorts.Constraint.union cstrs ctx2 in
 		try 
 		  (* The environment with the expected universes plus equality 
 		     of the body instances with the expected instance *)
-		  let ctxi = Univ.Instance.append inst1 inst2 in
-		  let ctx = Univ.UContext.make (ctxi, cstrs) in
+		  let ctxi = Sorts.Instance.append inst1 inst2 in
+		  let ctx = Sorts.UContext.make (ctxi, cstrs) in
 		  let env = Environ.push_context ctx env in
 		  (* Check that the given definition does not add any constraint over
 		     the expected ones, so that it can be used in place of 
                      the original. *)
-		    if UGraph.check_constraints ctx1 (Environ.universes env) then
+		    if Sorts.Graph.check_constraints ctx1 (Environ.universes env) then
 		      cstrs, env, inst2
 		    else error (IncompatibleConstraints ctx1)
-		with Univ.UniverseInconsistency incon -> 
+		with Sorts.UniverseInconsistency incon ->
 		  error (IncompatibleUniverses incon)
 	else
-	  cst, env, Univ.Instance.empty
+	  cst, env, Sorts.Instance.empty
       in
       (* Now check types *)
       let typ1 = Typeops.type_of_constant_type env' cb1.const_type in
@@ -361,7 +361,7 @@ let check_constant cst env mp1 l info1 cb2 spec2 subst1 subst2 =
       let typ2 = Typeops.type_of_constant_type env cb2.const_type in
       let cst = Constraint.union cst (Constraint.union cst1 cst2) in
       let error = NotConvertibleTypeField (env, arity1, typ2) in
-       check_conv error cst false Univ.Instance.empty infer_conv_leq env arity1 typ2
+       check_conv error cst false Sorts.Instance.empty infer_conv_leq env arity1 typ2
    | IndConstr (((kn,i),j) as cstr,mind1) ->
       ignore (CErrors.error (
        "The kernel does not recognize yet that a parameter can be " ^
@@ -377,7 +377,7 @@ let check_constant cst env mp1 l info1 cb2 spec2 subst1 subst2 =
       let ty2 = Typeops.type_of_constant_type env cb2.const_type in
       let cst = Constraint.union cst (Constraint.union cst1 cst2) in
       let error = NotConvertibleTypeField (env, ty1, ty2) in
-       check_conv error cst false Univ.Instance.empty infer_conv env ty1 ty2
+       check_conv error cst false Sorts.Instance.empty infer_conv env ty1 ty2
 
 let rec check_modules cst env msb1 msb2 subst1 subst2 =
   let mty1 = module_type_of_module msb1 in
@@ -429,7 +429,7 @@ and check_modtypes cst env mtb1 mtb2 subst1 subst2 equiv =
 	    mtb2.mod_mp list2 mtb1.mod_mp list1 subst2 subst1
 	    mtb2.mod_delta  mtb1.mod_delta
 	  in
-	  Univ.Constraint.union cst1 cst2
+	  Sorts.Constraint.union cst1 cst2
 	else
 	  check_signatures cst env
 	    mtb1.mod_mp list1 mtb2.mod_mp list2 subst1 subst2
@@ -460,7 +460,7 @@ and check_modtypes cst env mtb1 mtb2 subst1 subst2 equiv =
 let check_subtypes env sup super =
   let env = add_module_type sup.mod_mp sup env in
   let env = Environ.push_context_set ~strict:true super.mod_constraints env in
-  check_modtypes Univ.Constraint.empty env
+  check_modtypes Sorts.Constraint.empty env
     (strengthen sup sup.mod_mp) super empty_subst
     (map_mp super.mod_mp sup.mod_mp sup.mod_delta) false
 

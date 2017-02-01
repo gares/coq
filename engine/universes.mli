@@ -10,6 +10,7 @@ open Util
 open Names
 open Environ
 open Univ
+open Sorts
 open Constr
 
 val set_minimization : bool ref
@@ -17,7 +18,7 @@ val is_set_minimization : unit -> bool
 
 (** Universes *)
 
-val pr_with_global_universes : Level.t -> Pp.std_ppcmds
+val pr_with_global_universes : Sorts.level_printer
 
 (** Local universe name <-> level mapping *)
 
@@ -60,13 +61,13 @@ type 'a constraint_accumulator = universe_constraints -> 'a -> 'a option
 type 'a universe_constrained = 'a * universe_constraints
 type 'a universe_constraint_function = 'a -> 'a -> universe_constraints -> universe_constraints
 
-val enforce_eq_instances_univs : bool -> universe_instance universe_constraint_function
+val enforce_eq_instances_univs : bool -> sort_instance universe_constraint_function
 
-val to_constraints : UGraph.t -> universe_constraints -> constraints
+val to_constraints : Sorts.Graph.t -> universe_constraints -> constraints
 
 (** [eq_constr_univs_infer u a b] is [true, c] if [a] equals [b] modulo alpha, casts,
    application grouping, the universe constraints in [u] and additional constraints [c]. *)
-val eq_constr_univs_infer : UGraph.t -> 'a constraint_accumulator ->
+val eq_constr_univs_infer : Sorts.Graph.t -> 'a constraint_accumulator ->
   constr -> constr -> 'a -> 'a option
 
 (** [eq_constr_univs_infer_With kind1 kind2 univs m n] is a variant of
@@ -75,12 +76,12 @@ val eq_constr_univs_infer : UGraph.t -> 'a constraint_accumulator ->
 val eq_constr_univs_infer_with :
   (constr -> (constr,types) kind_of_term) ->
   (constr -> (constr,types) kind_of_term) ->
-  UGraph.t -> 'a constraint_accumulator -> constr -> constr -> 'a -> 'a option
+  Sorts.Graph.t -> 'a constraint_accumulator -> constr -> constr -> 'a -> 'a option
 
 (** [leq_constr_univs u a b] is [true, c] if [a] is convertible to [b]
     modulo alpha, casts, application grouping, the universe constraints
     in [u] and additional constraints [c]. *)
-val leq_constr_univs_infer : UGraph.t -> 'a constraint_accumulator ->
+val leq_constr_univs_infer : Sorts.Graph.t -> 'a constraint_accumulator ->
   constr -> constr -> 'a -> 'a option
 
 (** [eq_constr_universes a b] [true, c] if [a] equals [b] modulo alpha, casts,
@@ -99,10 +100,10 @@ val eq_constr_universes_proj : env -> constr -> constr -> bool universe_constrai
     the instantiated constraints. *)
 
 val fresh_instance_from_context : universe_context -> 
-  universe_instance constrained
+  sort_instance constrained
 
-val fresh_instance_from : universe_context -> universe_instance option ->
-  universe_instance in_universe_context_set
+val fresh_instance_from : universe_context -> sort_instance option ->
+  sort_instance in_universe_context_set
 
 val fresh_sort_in_family : env -> Sorts.family ->
   Sorts.t in_universe_context_set
@@ -113,7 +114,7 @@ val fresh_inductive_instance : env -> inductive ->
 val fresh_constructor_instance : env -> constructor ->
   pconstructor in_universe_context_set
 
-val fresh_global_instance : ?names:Univ.Instance.t -> env -> Globnames.global_reference -> 
+val fresh_global_instance : ?names:Sorts.Instance.t -> env -> Globnames.global_reference ->
   constr in_universe_context_set
 
 val fresh_global_or_constr_instance : env -> Globnames.global_reference_or_constr -> 
@@ -145,7 +146,7 @@ val extend_context : 'a in_universe_context_set -> universe_context_set ->
     (a global one if there is one) and transitively saturate
     the constraints w.r.t to the equalities. *)
 
-module UF : Unionfind.PartitionSig with type elt = universe_level
+(* module UF : Unionfind.PartitionSig with type elt = universe_level *)
 
 type universe_opt_subst = universe option universe_map
 
@@ -167,17 +168,11 @@ val normalize_univ_variable :
 val normalize_univ_variable_opt_subst : universe_opt_subst ref ->
   (universe_level -> universe)
 
-val normalize_univ_variable_subst : universe_subst ref ->
-  (universe_level -> universe)
-
 val normalize_universe_opt_subst : universe_opt_subst ref ->
   (universe -> universe)
 
 val normalize_sort_opt_subst : universe_opt_subst ref ->
   (Sorts.t -> Sorts.t)
-
-val normalize_universe_subst : universe_subst ref ->
-  (universe -> universe)
 
 (** Create a fresh global in the global environment, without side effects.
     BEWARE: this raises an ANOMALY on polymorphic constants/inductives: 
@@ -215,9 +210,9 @@ val nf_evars_and_universes_opt_subst : (existential -> constr option) ->
 val universes_of_constr : constr -> universe_set
 val restrict_universe_context : universe_context_set -> universe_set -> universe_context_set
 val simplify_universe_context : universe_context_set -> 
-  universe_context_set * universe_level_subst
+  universe_context_set * Sorts.level_subst
 
-val refresh_constraints : UGraph.t -> universe_context_set -> universe_context_set * UGraph.t
+val refresh_constraints : Sorts.Graph.t -> universe_context_set -> universe_context_set * Sorts.Graph.t
 
 (** Pretty-printing *)
 

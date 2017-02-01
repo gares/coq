@@ -125,14 +125,14 @@ type hints_path = global_reference hints_path_gen
 
 type hint_term =
   | IsGlobRef of global_reference
-  | IsConstr of constr * Univ.universe_context_set
+  | IsConstr of constr * Sorts.universe_context_set
 
 type 'a with_uid = {
   obj : 'a;
   uid : KerName.t;
 }
 
-type raw_hint = constr * types * Univ.universe_context_set
+type raw_hint = constr * types * Sorts.universe_context_set
 
 type hint = (raw_hint * clausenv) hint_ast with_uid
 
@@ -840,7 +840,7 @@ let pr_hint_term env sigma ctx = function
 let cache_context_set (_,c) =
   Global.push_context_set false c
 
-let input_context_set : Univ.ContextSet.t -> Libobject.obj =
+let input_context_set : Sorts.ContextSet.t -> Libobject.obj =
   let open Libobject in
     declare_object
     { (default_object "Global universe context") with
@@ -863,12 +863,12 @@ let fresh_global_or_constr env sigma poly cr =
     | IsConstr (c, ctx) -> false, (c, ctx)
   in
     if poly then (c, ctx)
-    else if Univ.ContextSet.is_empty ctx then (c, ctx)
+    else if Sorts.ContextSet.is_empty ctx then (c, ctx)
     else begin
       if isgr then
         warn_polymorphic_hint (pr_hint_term env sigma ctx cr);
       Lib.add_anonymous_leaf (input_context_set ctx);
-      (c, Univ.ContextSet.empty)
+      (c, Sorts.ContextSet.empty)
     end
 
 let make_resolves env sigma flags info poly ?name cr =
@@ -894,7 +894,7 @@ let make_resolve_hyp env sigma decl =
   try
     [make_apply_entry env sigma (true, true, false) empty_hint_info false
        ~name:(PathHints [VarRef hname])
-       (c, NamedDecl.get_type decl, Univ.ContextSet.empty)]
+       (c, NamedDecl.get_type decl, Sorts.ContextSet.empty)]
   with
     | Failure _ -> []
     | e when Logic.catchable_exception e -> anomaly (Pp.str "make_resolve_hyp")
@@ -1243,11 +1243,11 @@ let prepare_hint check (poly,local) env init (sigma,c) =
       mkNamedLambda id t (iter (replace_term evar (mkVar id) c)) in
   let c' = iter c in
     if check then Pretyping.check_evars (Global.env()) Evd.empty sigma c';
-    let diff = Univ.ContextSet.diff (Evd.universe_context_set sigma) (Evd.universe_context_set init) in
+    let diff = Sorts.ContextSet.diff (Evd.universe_context_set sigma) (Evd.universe_context_set init) in
     if poly then IsConstr (c', diff)
     else if local then IsConstr (c', diff)
     else (Lib.add_anonymous_leaf (input_context_set diff);
-	  IsConstr (c', Univ.ContextSet.empty))
+	  IsConstr (c', Sorts.ContextSet.empty))
 
 let interp_hints poly =
   fun h ->
@@ -1325,14 +1325,14 @@ let expand_constructor_hints env sigma lems =
     | Ind (ind,u) ->
 	List.init (nconstructors ind) 
 		  (fun i ->
-		   let ctx = Univ.ContextSet.diff (Evd.universe_context_set evd)
+		   let ctx = Sorts.ContextSet.diff (Evd.universe_context_set evd)
 						  (Evd.universe_context_set sigma) in
-		   not (Univ.ContextSet.is_empty ctx),
+		   not (Sorts.ContextSet.is_empty ctx),
 		   IsConstr (mkConstructU ((ind,i+1),u),ctx))
     | _ ->
        [match prepare_hint false (false,true) env sigma (evd,lem) with
 	| IsConstr (c, ctx) ->
-	   not (Univ.ContextSet.is_empty ctx), IsConstr (c, ctx)
+	   not (Sorts.ContextSet.is_empty ctx), IsConstr (c, ctx)
 	| IsGlobRef _ -> assert false (* Impossible return value *) ]) lems
 (* builds a hint database from a constr signature *)
 (* typically used with (lid, ltyp) = pf_hyps_types <some goal> *)

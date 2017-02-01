@@ -62,7 +62,7 @@ val inline_private_constants_in_constr :
 val inline_private_constants_in_definition_entry :
   Environ.env -> private_constants Entries.definition_entry -> private_constants Entries.definition_entry
 
-val universes_of_private : private_constants -> Univ.universe_context_set list
+val universes_of_private : private_constants -> Sorts.universe_context_set list
 
 val is_curmod_library : safe_environment -> bool
 
@@ -78,12 +78,12 @@ val is_joined_environment : safe_environment -> bool
 
 val push_named_assum :
   (Id.t * Term.types * bool (* polymorphic *))
-    Univ.in_universe_context_set -> safe_transformer0
+    Sorts.in_universe_context_set -> safe_transformer0
 
 (** Returns the full universe context necessary to typecheck the definition
   (futures are forced) *)
 val push_named_def :
-  Id.t * private_constants Entries.definition_entry -> Univ.universe_context_set safe_transformer
+  Id.t * private_constants Entries.definition_entry -> Sorts.universe_context_set safe_transformer
 
 (** Insertion of global axioms or definitions *)
 
@@ -119,13 +119,13 @@ val add_modtype :
 (** Adding universe constraints *)
 
 val push_context_set :
-  bool -> Univ.universe_context_set -> safe_transformer0
+  bool -> Sorts.universe_context_set -> safe_transformer0
 
 val push_context :
-  bool -> Univ.universe_context -> safe_transformer0
+  bool -> Sorts.universe_context -> safe_transformer0
 
 val add_constraints :
-  Univ.constraints -> safe_transformer0
+  Sorts.constraints -> safe_transformer0
 
 (* (\** Generator of universes *\) *)
 (* val next_universe : int safe_transformer *)
@@ -176,7 +176,7 @@ val export :
     module_path * compiled_library * native_library
 
 (* Constraints are non empty iff the file is a vi2vo *)
-val import : compiled_library -> Univ.universe_context_set -> vodigest ->
+val import : compiled_library -> Sorts.universe_context_set -> vodigest ->
   module_path safe_transformer
 
 (** {6 Safe typing judgments } *)

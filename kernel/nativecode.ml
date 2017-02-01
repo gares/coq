@@ -64,11 +64,11 @@ type gname =
 let eq_gname gn1 gn2 =
   match gn1, gn2 with
   | Gind (s1, ind1), Gind (s2, ind2) ->
-     String.equal s1 s2 && Univ.eq_puniverses eq_ind ind1 ind2
+     String.equal s1 s2 && Sorts.eq_polymorphic eq_ind ind1 ind2
   | Gconstruct (s1, c1), Gconstruct (s2, c2) ->
-      String.equal s1 s2 && Univ.eq_puniverses eq_constructor c1 c2
+      String.equal s1 s2 && Sorts.eq_polymorphic eq_constructor c1 c2
   | Gconstant (s1, c1), Gconstant (s2, c2) ->
-      String.equal s1 s2 && Univ.eq_puniverses Constant.equal c1 c2
+      String.equal s1 s2 && Sorts.eq_polymorphic Constant.equal c1 c2
   | Gcase (None, i1), Gcase (None, i2) -> Int.equal i1 i2
   | Gcase (Some l1, i1), Gcase (Some l2, i2) -> Int.equal i1 i2 && Label.equal l1 l2
   | Gpred (None, i1), Gpred (None, i2) -> Int.equal i1 i2
@@ -93,11 +93,11 @@ open Hashset.Combine
 
 let gname_hash gn = match gn with
 | Gind (s, (ind,u)) ->
-   combinesmall 1 (combine3 (String.hash s) (ind_hash ind) (Univ.Instance.hash u))
+   combinesmall 1 (combine3 (String.hash s) (ind_hash ind) (Sorts.Instance.hash u))
 | Gconstruct (s, (c,u)) ->
-   combinesmall 2 (combine3 (String.hash s) (constructor_hash c) (Univ.Instance.hash u))
+   combinesmall 2 (combine3 (String.hash s) (constructor_hash c) (Sorts.Instance.hash u))
 | Gconstant (s, (c,u)) ->
-   combinesmall 3 (combine3 (String.hash s) (Constant.hash c) (Univ.Instance.hash u))
+   combinesmall 3 (combine3 (String.hash s) (Constant.hash c) (Sorts.Instance.hash u))
 | Gcase (l, i) -> combinesmall 4 (combine (Option.hash Label.hash l) (Int.hash i))
 | Gpred (l, i) -> combinesmall 5 (combine (Option.hash Label.hash l) (Int.hash i))
 | Gfixtype (l, i) -> combinesmall 6 (combine (Option.hash Label.hash l) (Int.hash i))
@@ -1044,7 +1044,7 @@ let ml_of_instance instance u =
        mkMLapp (MLprimitive MLarrayget) [|univ; MLint i|]
     | None -> let i = push_symbol (SymbLevel l) in get_level_code i
   in
-  let u = Univ.Instance.to_array u in
+  let u = Sorts.Instance.to_array u in
   if Array.is_empty u then [||]
   else let u = Array.map ml_of_level u in
        [|MLapp (MLprimitive MLmagic, [|MLarray u|])|]
@@ -1296,12 +1296,12 @@ let ml_of_instance instance u =
      (match v with
      | UintVal i -> MLapp(MLprimitive Mk_uint, [|MLuint i|])
      | UintDigits (prefix,cn,ds) ->
-	let c = MLglobal (Gconstruct (prefix, (cn, Univ.Instance.empty))) in
+	let c = MLglobal (Gconstruct (prefix, (cn, Sorts.Instance.empty))) in
 	let ds = Array.map (ml_of_lam env l) ds in
 	let i31 = MLapp (MLprimitive Mk_I31_accu, [|c|]) in
 	MLapp(i31, ds)
      | UintDecomp (prefix,cn,t) ->
-	let c = MLglobal (Gconstruct (prefix, (cn, Univ.Instance.empty))) in
+	let c = MLglobal (Gconstruct (prefix, (cn, Sorts.Instance.empty))) in
 	let t = ml_of_lam env l t in
 	MLapp (MLprimitive Decomp_uint, [|c;t|]))
   | Lval v ->
@@ -1760,11 +1760,11 @@ let pp_mllam fmt l =
     | MLmul -> Format.fprintf fmt "( * )"
     | MLmagic -> Format.fprintf fmt "Obj.magic"
     | MLarrayget -> Format.fprintf fmt "Array.get"
-    | Mk_empty_instance -> Format.fprintf fmt "Univ.Instance.empty"
+    | Mk_empty_instance -> Format.fprintf fmt "Sorts.Instance.empty"
     | Coq_primitive (op,None) ->
        Format.fprintf fmt "no_check_%s" (Primitives.to_string op)
     | Coq_primitive (op, Some (prefix,kn)) ->
-       let u = Univ.Instance.empty in
+       let u = Sorts.Instance.empty in
         Format.fprintf fmt "%s %a" (Primitives.to_string op)
 		       pp_mllam (MLglobal (Gconstant (prefix,(kn,u))))
   in
@@ -1872,8 +1872,8 @@ let compile_constant env sigma prefix ~interactive con cb =
   match cb.const_proj with
   | None ->
      let u =
-       if cb.const_polymorphic then Univ.UContext.instance cb.const_universes
-       else Univ.Instance.empty
+       if cb.const_polymorphic then Sorts.UContext.instance cb.const_universes
+       else Sorts.Instance.empty
      in
     begin match cb.const_body with
     | Def t ->
@@ -1888,7 +1888,7 @@ let compile_constant env sigma prefix ~interactive con cb =
       in
       let l = con_label con in
       let auxdefs,code =
-	if Univ.Instance.is_empty u then compile_with_fv env sigma None [] (Some l) code
+	if Sorts.Instance.is_empty u then compile_with_fv env sigma None [] (Some l) code
 	else
 	  let univ = fresh_univ () in
 	  let (auxdefs,code) = compile_with_fv env sigma (Some univ) [] (Some l) code in
@@ -1903,7 +1903,7 @@ let compile_constant env sigma prefix ~interactive con cb =
     | _ -> 
         let i = push_symbol (SymbConst con) in
 	let args =
-	  if Univ.Instance.is_empty u then [|get_const_code i; MLarray [||]|]
+	  if Sorts.Instance.is_empty u then [|get_const_code i; MLarray [||]|]
 	  else [|get_const_code i|]
 	in
 	(*
@@ -1914,7 +1914,7 @@ let compile_constant env sigma prefix ~interactive con cb =
 	  else Linked prefix
     end
   | Some pb ->
-      let u = Univ.Instance.empty in
+      let u = Sorts.Instance.empty in
       let mind = pb.proj_ind in
       let ind = (mind,0) in
       let mib = lookup_mind mind env in
@@ -1976,7 +1976,7 @@ let compile_mind prefix ~interactive mb mind stack =
     let name = Gind ("", ((mind, i), u)) in
     let accu =
       let args =
-	if Univ.Instance.is_empty u then
+	if Sorts.Instance.is_empty u then
 	  [|get_ind_code j; MLarray [||]|]
 	else [|get_ind_code j|]
       in

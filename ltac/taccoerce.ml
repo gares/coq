@@ -251,7 +251,7 @@ let coerce_to_evaluable_ref env v =
     | IndRef _ | ConstructRef _ -> fail ()
   else
     match Value.to_constr v with
-    | Some c when isConst c -> EvalConstRef (Univ.out_punivs (destConst c))
+    | Some c when isConst c -> EvalConstRef (Sorts.out_polymorphic (destConst c))
     | Some c when isVar c -> EvalVarRef (destVar c)
     | _ -> fail ()
   in if Tacred.is_evaluable env ev then ev else fail ()

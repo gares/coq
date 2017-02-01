@@ -15,6 +15,7 @@ open Libnames
 open Globnames
 open Nameops
 open Univ
+open Sorts
 open Environ
 open Printer
 open Term
@@ -207,20 +208,20 @@ let ppuni_level u = pp (Level.pr u)
 let ppuniverse u = pp (str"[" ++ Universe.pr u ++ str"]")
 
 let prlev = Universes.pr_with_global_universes
-let ppuniverse_set l = pp (LSet.pr prlev l)
+let ppuniverse_set l = pp (USet.pr prlev l)
 let ppuniverse_instance l = pp (Instance.pr prlev l)
-let ppuniverse_context l = pp (pr_universe_context prlev l)
-let ppuniverse_context_set l = pp (pr_universe_context_set prlev l)
+let ppuniverse_context l = pp (UContext.pr prlev l)
+let ppuniverse_context_set l = pp (ContextSet.pr prlev l)
 let ppuniverse_subst l = pp (Univ.pr_universe_subst l)
 let ppuniverse_opt_subst l = pp (Universes.pr_universe_opt_subst l)
 let ppuniverse_level_subst l = pp (Univ.pr_universe_level_subst l)
 let ppevar_universe_context l = pp (Evd.pr_evar_universe_context l)
-let ppconstraints c = pp (pr_constraints Level.pr c)
+let ppconstraints c = pp (Constraint.pr Level.pr c)
 let ppuniverseconstraints c = pp (Universes.Constraints.pr c)
 let ppuniverse_context_future c = 
   let ctx = Future.force c in
     ppuniverse_context ctx
-let ppuniverses u = pp (UGraph.pr_universes Level.pr u)
+let ppuniverses u = pp (Sorts.Graph.pr Level.pr u)
 let ppnamedcontextval e =
   pp (pr_named_context (Global.env ()) Evd.empty (named_context_of_val e))
 

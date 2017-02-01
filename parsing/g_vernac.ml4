@@ -226,7 +226,7 @@ GEXTEND Gram
     [ [ i = identref; l = OPT [ "@{" ; l = LIST0 identref; "}" -> l ] -> (i,l) ] ]
   ;
   univ_constraint:
-    [ [ l = universe_level; ord = [ "<" -> Univ.Lt | "=" -> Univ.Eq | "<=" -> Univ.Le ];
+    [ [ l = universe_level; ord = [ "<" -> Sorts.Lt | "=" -> Sorts.Eq | "<=" -> Sorts.Le ];
 	r = universe_level -> (l, ord, r) ] ]
   ;
   finite_token:

@@ -227,13 +227,13 @@ let subst_vars subst c = substn_vars 1 subst c
 open Constr
 
 let subst_univs_fn_puniverses fn =
-  let f = Univ.Instance.subst_fn fn in
+  let f = Sorts.Instance.apply_subst fn in
     fun ((c, u) as x) -> let u' = f u in if u' == u then x else (c, u')
 
 let subst_univs_fn_constr f c =
   let changed = ref false in
-  let fs = Sorts.subst_univs_sort f in
-  let fi = Univ.Instance.subst_fn (Univ.level_subst_of f) in
+  let fs = Sorts.subst_sorts f in
+  let fi = Sorts.Instance.apply_subst (Univ.univ_level_subst_of f) in
   let rec aux t = 
     match kind t with
     | Sort s ->
@@ -258,9 +258,9 @@ let subst_univs_fn_constr f c =
     if !changed then c' else c
 
 let subst_univs_constr subst c =
-  if Univ.is_empty_subst subst then c
+  if Univ.is_empty_univ_subst subst then c
   else 
-    let f = Univ.make_subst subst in
+    let f = Univ.make_univ_subst subst in
       subst_univs_fn_constr f c
 
 let subst_univs_constr = 
@@ -270,32 +270,32 @@ let subst_univs_constr =
   else subst_univs_constr
 
 let subst_univs_level_constr subst c =
-  if Univ.is_empty_level_subst subst then c
+  if Univ.is_empty_univ_level_subst subst then c
   else 
-    let f = Univ.Instance.subst_fn (Univ.subst_univs_level_level subst) in
+    let f = Sorts.Instance.apply_subst (Univ.subst_univs_level_level subst) in
     let changed = ref false in
     let rec aux t = 
       match kind t with
       | Const (c, u) -> 
-	if Univ.Instance.is_empty u then t
+	if Sorts.Instance.is_empty u then t
 	else 
           let u' = f u in 
 	    if u' == u then t
 	    else (changed := true; mkConstU (c, u'))
       | Ind (i, u) ->
-	if Univ.Instance.is_empty u then t
+	if Sorts.Instance.is_empty u then t
 	else 
 	  let u' = f u in 
 	    if u' == u then t
 	    else (changed := true; mkIndU (i, u'))
       | Construct (c, u) ->
-	if Univ.Instance.is_empty u then t
+	if Sorts.Instance.is_empty u then t
 	else 
           let u' = f u in 
 	    if u' == u then t
 	    else (changed := true; mkConstructU (c, u'))
       | Sort s ->
-         let s' = Sorts.subst_univs_level_sort subst s in
+         let s' = Sorts.level_subst_sorts subst s in
          if s' == s then t else
            (changed := true; mkSort s')
       | _ -> Constr.map aux t
@@ -307,26 +307,26 @@ let subst_univs_level_context s =
   Context.Rel.map (subst_univs_level_constr s)
       
 let subst_instance_constr subst c =
-  if Univ.Instance.is_empty subst then c
+  if Sorts.Instance.is_empty subst then c
   else
-    let f u = Univ.subst_instance_instance subst u in
+    let f u = Sorts.subst_instance_instance subst u in
     let changed = ref false in
     let rec aux t = 
       match kind t with
       | Const (c, u) -> 
-	if Univ.Instance.is_empty u then t
+	if Sorts.Instance.is_empty u then t
 	else 
           let u' = f u in 
 	    if u' == u then t
 	    else (changed := true; mkConstU (c, u'))
       | Ind (i, u) ->
-	if Univ.Instance.is_empty u then t
+	if Sorts.Instance.is_empty u then t
 	else 
 	  let u' = f u in 
 	    if u' == u then t
 	    else (changed := true; mkIndU (i, u'))
       | Construct (c, u) ->
-	if Univ.Instance.is_empty u then t
+	if Sorts.Instance.is_empty u then t
 	else 
           let u' = f u in 
 	    if u' == u then t
@@ -344,7 +344,7 @@ let subst_instance_constr subst c =
 (* let subst_instance_constr inst c = Profile.profile2 substkey subst_instance_constr inst c;; *)
 
 let subst_instance_context s ctx = 
-  if Univ.Instance.is_empty s then ctx
+  if Sorts.Instance.is_empty s then ctx
   else Context.Rel.map (fun x -> subst_instance_constr s x) ctx
 
 type id_key = constant tableKey

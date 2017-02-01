@@ -29,7 +29,7 @@ val require_library_from_dirpath : (DirPath.t * string) list -> bool option -> u
 type seg_sum
 type seg_lib
 type seg_univ = (* cst, all_cst, finished? *)
-  Univ.universe_context_set Future.computation array * Univ.universe_context_set * bool
+  Sorts.universe_context_set Future.computation array * Sorts.universe_context_set * bool
 type seg_discharge = Opaqueproof.cooking_info list array
 type seg_proofs = Term.constr Future.computation array
 

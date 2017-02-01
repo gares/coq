@@ -18,7 +18,7 @@ exception NotConvertibleVect of int
 type 'a kernel_conversion_function = env -> 'a -> 'a -> unit
 type 'a extended_conversion_function = 
   ?l2r:bool -> ?reds:Names.transparent_state -> env ->
-  ?evars:(evar_closures * UGraph.t) ->
+  ?evars:(evar_closures * Sorts.Graph.t) ->
   'a -> 'a -> unit
 
 type conv_pb = CONV | CUMUL
@@ -27,27 +27,27 @@ type 'a universe_compare =
   { (* Might raise NotConvertible or UnivInconsistency *)
     compare : env -> conv_pb -> sorts -> sorts -> 'a -> 'a;
     compare_instances: flex:bool -> 
-		       Univ.Instance.t -> Univ.Instance.t -> 'a -> 'a;
+		       Sorts.Instance.t -> Sorts.Instance.t -> 'a -> 'a;
   } 
 
 type 'a universe_state = 'a * 'a universe_compare
 
 type ('a,'b) generic_conversion_function = env -> 'b universe_state -> 'a -> 'a -> 'b
 
-type 'a infer_conversion_function = env -> UGraph.t -> 'a -> 'a -> Univ.constraints
+type 'a infer_conversion_function = env -> Sorts.Graph.t -> 'a -> 'a -> Sorts.constraints
 
 val sort_cmp_universes : env -> conv_pb -> sorts -> sorts ->
   'a * 'a universe_compare -> 'a * 'a universe_compare
 
 (* [flex] should be true for constants, false for inductive types and
 constructors. *)
-val convert_instances : flex:bool -> Univ.Instance.t -> Univ.Instance.t ->
+val convert_instances : flex:bool -> Sorts.Instance.t -> Sorts.Instance.t ->
   'a * 'a universe_compare -> 'a * 'a universe_compare
 
 (** These two never raise UnivInconsistency, inferred_universes
     just gathers the constraints. *)
-val checked_universes : UGraph.t universe_compare
-val inferred_universes : (UGraph.t * Univ.Constraint.t) universe_compare
+val checked_universes : Sorts.Graph.t universe_compare
+val inferred_universes : (Sorts.Graph.t * Sorts.Constraint.t) universe_compare
 
 (** These two functions can only raise NotConvertible *)
 val conv : constr extended_conversion_function

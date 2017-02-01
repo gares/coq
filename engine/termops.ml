@@ -48,8 +48,8 @@ let pr_fix pr_constr ((t,i),(lna,tl,bl)) =
          str"}")
 
 let pr_puniverses p u = 
-  if Univ.Instance.is_empty u then p 
-  else p ++ str"(*" ++ Univ.Instance.pr Universes.pr_with_global_universes u ++ str"*)"
+  if Sorts.Instance.is_empty u then p
+  else p ++ str"(*" ++ Sorts.Instance.pr Universes.pr_with_global_universes u ++ str"*)"
 
 let rec pr_constr c = match kind_of_term c with
   | Rel n -> str "#"++int n
@@ -1095,4 +1095,4 @@ let coq_unit_judge =
 	(* In case the constants id/ID are not defined *)
 	make_judge (mkLambda (na1,mkProp,mkLambda(na2,mkRel 1,mkRel 1)))
                  (mkProd (na1,mkProp,mkArrow (mkRel 1) (mkRel 2))), 
-       Univ.ContextSet.empty
+       Sorts.ContextSet.empty

@@ -7,7 +7,7 @@
 (************************************************************************)
 
 open Names
-open Univ
+open Sorts
 open Term
 open Mod_subst
 
@@ -16,8 +16,8 @@ type work_list = (Instance.t * Id.t array) Cmap.t *
 
 type cooking_info = { 
   modlist : work_list; 
-  abstract : Context.Named.t * Univ.universe_level_subst * Univ.UContext.t } 
-type proofterm = (constr * Univ.universe_context_set) Future.computation
+  abstract : Context.Named.t * Univ.universe_level_subst * UContext.t }
+type proofterm = (constr * universe_context_set) Future.computation
 type opaque =
   | Indirect of substitution list * DirPath.t * int (* subst, lib, index *)
   | Direct of cooking_info list * proofterm
@@ -103,7 +103,7 @@ let force_constraints (prfs,odp) = function
       if DirPath.equal dp odp
       then snd (Future.force (snd (Int.Map.find i prfs)))
       else match !get_univ dp i with
-        | None -> Univ.ContextSet.empty
+        | None -> ContextSet.empty
         | Some u -> Future.force u
 
 let get_constraints (prfs,odp) = function
@@ -126,7 +126,7 @@ let get_proof (prfs,odp) = function
 module FMap = Future.UUIDMap
 
 let a_constr = Future.from_val (Term.mkRel 1)
-let a_univ = Future.from_val Univ.ContextSet.empty
+let a_univ = Future.from_val ContextSet.empty
 let a_discharge : cooking_info list = []
 
 let dump (otab,_) =

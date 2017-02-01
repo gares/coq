@@ -8,7 +8,7 @@
 
 open Names
 open Term
-open Univ
+open Sorts
 open Evd
 open Environ
 

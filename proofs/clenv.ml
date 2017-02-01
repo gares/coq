@@ -57,8 +57,8 @@ let clenv_type clenv = meta_instance clenv.evd clenv.templtyp
 
 let refresh_undefined_univs clenv =
   match kind_of_term clenv.templval.rebus with
-  | Var _ -> clenv, Univ.empty_level_subst
-  | App (f, args) when isVar f -> clenv, Univ.empty_level_subst
+  | Var _ -> clenv, Univ.empty_univ_level_subst
+  | App (f, args) when isVar f -> clenv, Univ.empty_univ_level_subst
   | _ ->  
     let evd', subst = Evd.refresh_undefined_universes clenv.evd in
     let map_freelisted f = { f with rebus = subst_univs_level_constr subst f.rebus } in

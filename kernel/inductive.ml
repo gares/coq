@@ -65,13 +65,6 @@ let full_constructor_instantiate ((mind,_),u,(mib,_),params) t =
   let inst_ind = constructor_instantiate mind u mib t in
    instantiate_params true inst_ind u params mib.mind_params_ctxt
 
-(* The max of an array of universes *)
-
-let cumulate_constructor_univ u u' = Universe.sup u u'
-
-let max_inductive_sort =
-  Array.fold_left cumulate_constructor_univ Universe.type0m
-
 (************************************************************************)
 
 (* Type of case predicates *)

@@ -218,7 +218,7 @@ and traverse_inductive (curr, data, ax2ty) mind obj =
      let arities_ctx =
        let global_env = Global.env () in
        Array.fold_left (fun accu oib ->
-          let pspecif = Univ.in_punivs (mib, oib) in
+          let pspecif = Sorts.in_monomorphic (mib, oib) in
           let ind_type = Preinductive.type_of_inductive global_env pspecif in
           let ind_name = Name oib.mind_typename in
           Context.Rel.add (Context.Rel.Declaration.LocalAssum (ind_name, ind_type)) accu)

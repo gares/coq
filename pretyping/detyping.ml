@@ -436,8 +436,8 @@ let detype_level sigma l =
   GType (Some (dl, Pp.string_of_ppcmds (Evd.pr_evd_level sigma l)))
 
 let detype_instance sigma l = 
-  if Univ.Instance.is_empty l then None
-  else Some (List.map (detype_level sigma) (Array.to_list (Univ.Instance.to_array l)))
+  if Sorts.Instance.is_empty l then None
+  else Some (List.map (detype_level sigma) (Array.to_list (Sorts.Instance.to_array l)))
 
 let rec detype flags avoid env sigma t =
   match kind_of_term (collapse_appl t) with

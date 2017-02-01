@@ -121,8 +121,8 @@ type safe_environment =
     revstruct : structure_body;
     modlabels : Label.Set.t;
     objlabels : Label.Set.t;
-    univ : Univ.ContextSet.t;
-    future_cst : Univ.ContextSet.t Future.computation list;
+    univ : Sorts.ContextSet.t;
+    future_cst : Sorts.ContextSet.t Future.computation list;
     engagement : engagement option;
     required : vodigest DPMap.t;
     loads : (module_path * module_body) list;
@@ -151,7 +151,7 @@ let empty_environment =
     modlabels = Label.Set.empty;
     objlabels = Label.Set.empty;
     future_cst = [];
-    univ = Univ.ContextSet.empty;
+    univ = Sorts.ContextSet.empty;
     engagement = None;
     required = DPMap.empty;
     loads = [];
@@ -245,19 +245,19 @@ let universes_of_private eff =
             | `Nothing -> acc
             | `Opaque (_, ctx) -> ctx :: acc in
           if cb.const_polymorphic then acc
-          else (Univ.ContextSet.of_context cb.const_universes) :: acc)
+          else (Sorts.ContextSet.of_context cb.const_universes) :: acc)
         acc l
      | Entries.SEsubproof (c, cb, e) ->
 	if cb.const_polymorphic then acc
-	else Univ.ContextSet.of_context cb.const_universes :: acc)
+	else Sorts.ContextSet.of_context cb.const_universes :: acc)
    [] eff
 
 let env_of_safe_env senv = senv.env
 let env_of_senv = env_of_safe_env
 
 type constraints_addition =
-  | Now of bool * Univ.ContextSet.t
-  | Later of Univ.ContextSet.t Future.computation
+  | Now of bool * Sorts.ContextSet.t
+  | Later of Sorts.ContextSet.t Future.computation
 
 let add_constraints cst senv =
   match cst with
@@ -266,13 +266,13 @@ let add_constraints cst senv =
   | Now (poly,cst) ->
   { senv with
     env = Environ.push_context_set ~strict:(not poly) cst senv.env;
-    univ = Univ.ContextSet.union cst senv.univ }
+    univ = Sorts.ContextSet.union cst senv.univ }
 
 let add_constraints_list cst senv =
   List.fold_left (fun acc c -> add_constraints c acc) senv cst
 
 let push_context_set poly ctx = add_constraints (Now (poly,ctx))
-let push_context poly ctx = add_constraints (Now (poly,Univ.ContextSet.of_context ctx))
+let push_context poly ctx = add_constraints (Now (poly,Sorts.ContextSet.of_context ctx))
 
 let is_curmod_library senv =
   match senv.modvariant with LIBRARY -> true | _ -> false
@@ -375,12 +375,12 @@ let safe_push_named d env =
 let push_named_def (id,de) senv =
   let c,typ,univs = Term_typing.translate_local_def senv.revstruct senv.env id de in
   let poly = de.Entries.const_entry_polymorphic in
-  let univs = Univ.ContextSet.of_context univs in
+  let univs = Sorts.ContextSet.of_context univs in
   let c, univs = match c with
     | Def c -> Mod_subst.force_constr c, univs
     | OpaqueDef o ->
         Opaqueproof.force_proof (Environ.opaque_tables senv.env) o,
-        Univ.ContextSet.union univs 
+        Sorts.ContextSet.union univs
 	(Opaqueproof.force_constraints (Environ.opaque_tables senv.env) o)
     | _ -> assert false in
   let senv' = push_context_set poly univs senv in
@@ -411,9 +411,9 @@ let labels_of_mib mib =
 
 let globalize_constant_universes env cb =
   if cb.const_polymorphic then
-    [Now (true, Univ.ContextSet.empty)]
+    [Now (true, Sorts.ContextSet.empty)]
   else
-    let cstrs = Univ.ContextSet.of_context cb.const_universes in
+    let cstrs = Sorts.ContextSet.of_context cb.const_universes in
       Now (false, cstrs) ::  
 	(match cb.const_body with
 	| (Undef _ | Def _) -> []
@@ -427,9 +427,9 @@ let globalize_constant_universes env cb =
       
 let globalize_mind_universes mb =
   if mb.mind_polymorphic then
-    [Now (true, Univ.ContextSet.empty)]
+    [Now (true, Sorts.ContextSet.empty)]
   else
-    [Now (false, Univ.ContextSet.of_context mb.mind_universes)]
+    [Now (false, Sorts.ContextSet.of_context mb.mind_universes)]
 
 let constraints_of_sfb env sfb = 
   match sfb with
@@ -677,8 +677,8 @@ let propagate_senv newdef newenv newresolver senv oldsenv =
     modlabels = Label.Set.add (fst newdef) oldsenv.modlabels;
     univ =
       List.fold_left (fun acc cst ->
-        Univ.ContextSet.union acc (Future.force cst))
-      (Univ.ContextSet.union senv.univ oldsenv.univ)
+        Sorts.ContextSet.union acc (Future.force cst))
+      (Sorts.ContextSet.union senv.univ oldsenv.univ)
       now_cst;
     future_cst = later_cst @ oldsenv.future_cst;
     (* engagement is propagated to the upper level *)
@@ -701,7 +701,7 @@ let end_module l restype senv =
   let senv'=
     propagate_loads { senv with
       env = newenv;
-      univ = Univ.ContextSet.union senv.univ mb.mod_constraints} in
+      univ = Sorts.ContextSet.union senv.univ mb.mod_constraints} in
   let newenv = Environ.push_context_set ~strict:true mb.mod_constraints senv'.env in
   let newenv = Modops.add_module mb newenv in
   let newresolver =
@@ -753,7 +753,7 @@ let add_include me is_module inl senv =
       let cst_sub = Subtyping.check_subtypes senv.env mb mtb in
       let senv =
 	add_constraints
-	  (Now (false, Univ.ContextSet.add_constraints cst_sub Univ.ContextSet.empty))
+	  (Now (false, Sorts.ContextSet.add_constraints cst_sub Sorts.ContextSet.empty))
 	  senv in
       let mpsup_delta =
 	Modops.inline_delta_resolver senv.env inl mp_sup mbid mtb mb.mod_delta
@@ -765,7 +765,7 @@ let add_include me is_module inl senv =
   in
   let resolver,str,senv =
     let struc = NoFunctor (List.rev senv.revstruct) in
-    let mtb = build_mtb mp_sup struc Univ.ContextSet.empty senv.modresolver in
+    let mtb = build_mtb mp_sup struc Sorts.ContextSet.empty senv.modresolver in
     compute_sign sign mtb resolver senv
   in
   let senv = update_resolver (Mod_subst.add_delta_resolver resolver) senv
@@ -859,7 +859,7 @@ let import lib cst vodigest senv =
   let mp = MPfile lib.comp_name in
   let mb = lib.comp_mod in
   let env = Environ.push_context_set ~strict:true
-				     (Univ.ContextSet.union mb.mod_constraints cst)
+				     (Sorts.ContextSet.union mb.mod_constraints cst)
 				     senv.env
   in
   mp,
@@ -916,7 +916,7 @@ let register_inline kn senv =
 
 let add_constraints c =
   add_constraints
-    (Now (false, Univ.ContextSet.add_constraints c Univ.ContextSet.empty))
+    (Now (false, Sorts.ContextSet.add_constraints c Sorts.ContextSet.empty))
 
 
 (* NB: The next old comment probably refers to [propagate_loads] above.

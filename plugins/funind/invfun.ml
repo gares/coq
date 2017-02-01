@@ -874,7 +874,7 @@ let derive_correctness make_scheme functional_induction (funs: pconstant list) (
 	(Indrec.build_mutual_induction_scheme (Global.env ()) !evd
 	   (Array.to_list
 	      (Array.mapi
-		 (fun i _ -> ((kn,i),u(* Univ.Instance.empty *)),true,InType)
+		 (fun i _ -> ((kn,i),u(* Sorts.Instance.empty *)),true,InType)
 		 mib.Declarations.mind_packets
 	      )
 	   )

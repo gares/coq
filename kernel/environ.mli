@@ -9,7 +9,7 @@
 open Names
 open Term
 open Declarations
-open Univ
+open Sorts
 
 (** Unsafe environments. We define here a datatype for environments.
    Since typing is not yet defined, it is not possible to check the
@@ -40,7 +40,7 @@ val eq_named_context_val : named_context_val -> named_context_val -> bool
 
 val empty_env : env
 
-val universes     : env -> UGraph.t
+val universes     : env -> Sorts.Graph.t
 val rel_context   : env -> Context.Rel.t
 val named_context : env -> Context.Named.t
 val named_context_val : env -> named_context_val
@@ -155,12 +155,12 @@ exception NotEvaluableConst of const_evaluation_result
 val constant_value : env -> constant puniverses -> constr constrained
 val constant_type : env -> constant puniverses -> constant_type constrained
 
-val constant_opt_value : env -> constant puniverses -> (constr * Univ.constraints) option
+val constant_opt_value : env -> constant puniverses -> (constr * constraints) option
 val constant_value_and_type : env -> constant puniverses -> 
-  constr option * constant_type * Univ.constraints
+  constr option * constant_type * constraints
 (** The universe context associated to the constant, empty if not 
     polymorphic *)
-val constant_context : env -> constant -> Univ.universe_context
+val constant_context : env -> constant -> universe_context
 
 (* These functions should be called under the invariant that [env] 
    already contains the constraints corresponding to the constant 
@@ -206,13 +206,13 @@ val lookup_modtype : module_path -> env -> module_type_body
 (** Add universe constraints to the environment.
     @raises UniverseInconsistency
 *)
-val add_constraints : Univ.constraints -> env -> env
+val add_constraints : constraints -> env -> env
 
 (** Check constraints are satifiable in the environment. *)
-val check_constraints : Univ.constraints -> env -> bool
-val push_context : ?strict:bool -> Univ.universe_context -> env -> env
-val push_context_set : ?strict:bool -> Univ.universe_context_set -> env -> env
-val push_constraints_to_env : 'a Univ.constrained -> env -> env
+val check_constraints : constraints -> env -> bool
+val push_context : ?strict:bool -> universe_context -> env -> env
+val push_context_set : ?strict:bool -> universe_context_set -> env -> env
+val push_constraints_to_env : 'a constrained -> env -> env
 
 val set_engagement : engagement -> env -> env
 val set_typing_flags : typing_flags -> env -> env

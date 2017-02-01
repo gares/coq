@@ -97,7 +97,7 @@ type library_t = {
   library_deps : (compilation_unit_name * Safe_typing.vodigest) array;
   library_imports : compilation_unit_name array;
   library_digests : Safe_typing.vodigest;
-  library_extra_univs : Univ.universe_context_set;
+  library_extra_univs : Sorts.universe_context_set;
 }
 
 type library_summary = {
@@ -362,7 +362,7 @@ type 'a table_status =
 let opaque_tables =
   ref (LibraryMap.empty : (Term.constr table_status) LibraryMap.t)
 let univ_tables =
-  ref (LibraryMap.empty : (Univ.universe_context_set table_status) LibraryMap.t)
+  ref (LibraryMap.empty : (Sorts.universe_context_set table_status) LibraryMap.t)
 
 let add_opaque_table dp st =
   opaque_tables := LibraryMap.add dp st !opaque_tables
@@ -408,7 +408,7 @@ let () =
 type seg_sum = summary_disk
 type seg_lib = library_disk
 type seg_univ = (* true = vivo, false = vi *)
-  Univ.universe_context_set Future.computation array * Univ.universe_context_set * bool
+  Sorts.universe_context_set Future.computation array * Sorts.universe_context_set * bool
 type seg_discharge = Opaqueproof.cooking_info list array
 type seg_proofs = Term.constr Future.computation array
 
@@ -441,13 +441,13 @@ let intern_from_file f =
   add_opaque_table lsd.md_name (ToFetch del_opaque);
   let open Safe_typing in
   match univs with
-  | None -> mk_library lsd lmd (Dvo_or_vi digest_lmd) Univ.ContextSet.empty
+  | None -> mk_library lsd lmd (Dvo_or_vi digest_lmd) Sorts.ContextSet.empty
   | Some (utab,uall,true) ->
       add_univ_table lsd.md_name (Fetched utab);
       mk_library lsd lmd (Dvivo (digest_lmd,digest_u)) uall
   | Some (utab,_,false) ->
       add_univ_table lsd.md_name (Fetched utab);
-      mk_library lsd lmd (Dvo_or_vi digest_lmd) Univ.ContextSet.empty
+      mk_library lsd lmd (Dvo_or_vi digest_lmd) Sorts.ContextSet.empty
 
 module DPMap = Map.Make(DirPath)
 
@@ -725,7 +725,7 @@ let save_library_to ?todo dir f otab =
             with Not_found -> assert b; { r with uuid = -1 }, b)
           tasks in
         Some (tasks,rcbackup),
-        Some (univ_table,Univ.ContextSet.empty,false),
+        Some (univ_table,Sorts.ContextSet.empty,false),
         Some disch_table in
   let except =
     Future.UUIDSet.fold (fun uuid acc ->

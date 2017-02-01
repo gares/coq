@@ -1520,14 +1520,14 @@ end = struct (* {{{ *)
           Future.from_val (Option.get (Global.body_of_constant_body c)) in
         let uc =
           Future.chain
-            ~greedy:true ~pure:true uc Univ.hcons_universe_context_set in
+            ~greedy:true ~pure:true uc Sorts.ContextSet.hcons in
         let pr = Future.chain ~greedy:true ~pure:true pr discharge in
         let pr = Future.chain ~greedy:true ~pure:true pr Constr.hcons in
         Future.sink pr;
         let extra = Future.join uc in
         u.(bucket) <- uc;
         p.(bucket) <- pr;
-        u, Univ.ContextSet.union cst extra, false
+        u, Sorts.ContextSet.union cst extra, false
   
   let check_task name l i =
     match check_task_aux "" name l i with

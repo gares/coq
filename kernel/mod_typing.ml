@@ -21,7 +21,7 @@ open Modops
 open Mod_subst
 
 type 'alg translation =
-  module_signature * 'alg * delta_resolver * Univ.ContextSet.t
+  module_signature * 'alg * delta_resolver * Sorts.ContextSet.t
 
 let rec mp_from_mexpr = function
   | MEident mp -> mp
@@ -52,7 +52,7 @@ let rec rebuild_mp mp l =
   | []-> mp
   | i::r -> rebuild_mp (MPdot(mp,Label.of_id i)) r
 
-let (+++) = Univ.ContextSet.union
+let (+++) = Sorts.ContextSet.union
 
 let rec check_with_def env struc (idl,(c,ctx)) mp equiv =
   let lab,idl = match idl with
@@ -75,7 +75,7 @@ let rec check_with_def env struc (idl,(c,ctx)) mp equiv =
       let uctx = Declareops.universes_of_constant (opaque_tables env) cb in
       let uctx = (* Context of the spec *)
 	if cb.const_polymorphic then
-	  Univ.instantiate_univ_context uctx
+	  Sorts.instantiate_univ_context uctx
 	else uctx
       in
       let c', univs, ctx' = 
@@ -92,19 +92,19 @@ let rec check_with_def env struc (idl,(c,ctx)) mp equiv =
 	    | Def cs ->
 	       let c' = Mod_subst.force_constr cs in
 	         c, Reduction.infer_conv env' (Environ.universes env') c c'
-	  in c', ctx, Univ.ContextSet.add_constraints cst (Univ.ContextSet.of_context ctx)
+	  in c', ctx, Sorts.ContextSet.add_constraints cst (Sorts.ContextSet.of_context ctx)
 	else
-	  let cus, ccst = Univ.UContext.dest uctx in
-	  let newus, cst = Univ.UContext.dest ctx in
+	  let cus, ccst = Sorts.UContext.dest uctx in
+	  let newus, cst = Sorts.UContext.dest ctx in
 	  let () =
-	    if not (Univ.Instance.length cus == Univ.Instance.length newus) then
+	    if not (Sorts.Instance.length cus == Sorts.Instance.length newus) then
 	      error_incorrect_with_constraint lab
 	  in
-	  let inst = Univ.Instance.append cus newus in
-	  let csti = Univ.enforce_eq_instances cus newus cst in
-	  let csta = Univ.Constraint.union csti ccst in
-	  let env' = Environ.push_context ~strict:false (Univ.UContext.make (inst, csta)) env in
-	  let () = if not (UGraph.check_constraints cst (Environ.universes env')) then
+	  let inst = Sorts.Instance.append cus newus in
+	  let csti = Sorts.enforce_eq_instances cus newus cst in
+	  let csta = Sorts.Constraint.union csti ccst in
+	  let env' = Environ.push_context ~strict:false (Sorts.UContext.make (inst, csta)) env in
+	  let () = if not (Sorts.Graph.check_constraints cst (Environ.universes env')) then
 		     error_incorrect_with_constraint lab
 	  in
 	  let cst = match cb.const_body with
@@ -120,13 +120,13 @@ let rec check_with_def env struc (idl,(c,ctx)) mp equiv =
 	       let cst' = Reduction.infer_conv env' (Environ.universes env') c c' in
 	        cst'
 	  in
-	    if not (Univ.Constraint.is_empty cst) then
+	    if not (Sorts.Constraint.is_empty cst) then
 	      error_incorrect_with_constraint lab;
-	    let subst, ctx = Univ.abstract_universes true ctx in
-	      Vars.subst_univs_level_constr subst c, ctx, Univ.ContextSet.empty
+	    let subst, ctx = Sorts.abstract_sorts true ctx in
+	      Vars.subst_univs_level_constr subst c, ctx, Sorts.ContextSet.empty
       in
       let def = Def (Mod_subst.from_val c') in
-(*      let ctx' = Univ.UContext.make (newus, cst) in *)
+(*      let ctx' = Sorts.UContext.make (newus, cst) in *)
       let univs =
         if cb.const_polymorphic then Some cb.const_universes
         else None
@@ -184,7 +184,7 @@ let rec check_with_mod env struc (idl,mp1) mp equiv =
             try
               let mtb_old = module_type_of_module old in
               let chk_cst = Subtyping.check_subtypes env' mtb_mp1 mtb_old in
-              Univ.ContextSet.add_constraints chk_cst old.mod_constraints
+              Sorts.ContextSet.add_constraints chk_cst old.mod_constraints
 	    with Failure _ ->
               (* TODO: where can a Failure come from ??? *)
               error_incorrect_with_constraint lab
@@ -234,7 +234,7 @@ let rec check_with_mod env struc (idl,mp1) mp equiv =
       | Algebraic (NoFunctor (MEident mp0)) ->
 	let mpnew = rebuild_mp mp0 idl in
 	check_modpath_equiv env' mpnew mp;
-	before@(lab,spec)::after, equiv, Univ.ContextSet.empty
+	before@(lab,spec)::after, equiv, Sorts.ContextSet.empty
       | _ -> error_generative_module_expected lab
       end
   with
@@ -245,7 +245,7 @@ let check_with env mp (sign,alg,reso,cst) = function
   |WithDef(idl,c) ->
     let struc = destr_nofunctor sign in
     let struc',c',cst' = check_with_def env struc (idl,c) mp reso in
-    let wd' = WithDef (idl,(c',Univ.ContextSet.to_context cst')) in
+    let wd' = WithDef (idl,(c',Sorts.ContextSet.to_context cst')) in
     NoFunctor struc', MEwith (alg,wd'), reso, cst+++cst'
   |WithMod(idl,mp1) as wd ->
     let struc = destr_nofunctor sign in
@@ -262,7 +262,7 @@ let translate_apply env inl (sign,alg,reso,cst1) mp1 mkalg =
   let body = subst_signature subst fbody_b in
   let alg' = mkalg alg mp1 in
   let reso' = subst_codom_delta_resolver subst reso in
-  body,alg',reso', Univ.ContextSet.add_constraints cst2 cst1
+  body,alg',reso', Sorts.ContextSet.add_constraints cst2 cst1
 
 (** Translation of a module struct entry :
     - We translate to a module when a [module_path] is given,
@@ -279,7 +279,7 @@ let rec translate_mse env mpo inl = function
       |Some mp -> strengthen_and_subst_mb (lookup_module mp1 env) mp false
       |None -> lookup_modtype mp1 env
     in
-    mb.mod_type, me, mb.mod_delta, Univ.ContextSet.empty
+    mb.mod_type, me, mb.mod_delta, Sorts.ContextSet.empty
   |MEapply (fe,mp1) ->
     translate_apply env inl (translate_mse env mpo inl fe) mp1 mk_alg_app
   |MEwith(me, with_decl) ->
@@ -326,7 +326,7 @@ let finalize_module env mp (sign,alg,reso,cst) restype = match restype with
     mk_mod mp impl sign cst reso
   |Some (params_mte,inl) ->
     let res_mtb = translate_modtype env mp inl params_mte in
-    let auto_mtb = mk_modtype mp sign Univ.ContextSet.empty reso in
+    let auto_mtb = mk_modtype mp sign Sorts.ContextSet.empty reso in
     let cst' = Subtyping.check_subtypes env auto_mtb res_mtb in
     let impl = match alg with Some e -> Algebraic e | None -> Struct sign in
     { res_mtb with
@@ -336,7 +336,7 @@ let finalize_module env mp (sign,alg,reso,cst) restype = match restype with
           cst' from subtyping,
           constraints from module type. *)
       mod_constraints =
-        Univ.ContextSet.add_constraints cst' (cst +++ res_mtb.mod_constraints) }
+        Sorts.ContextSet.add_constraints cst' (cst +++ res_mtb.mod_constraints) }
 
 let translate_module env mp inl = function
   |MType (params,ty) ->
@@ -374,7 +374,7 @@ let rec translate_mse_inclmod env mp inl = function
   |MEident mp1 ->
     let mb = strengthen_and_subst_mb (lookup_module mp1 env) mp true in
     let sign = clean_bounded_mod_expr mb.mod_type in
-    sign,(),mb.mod_delta,Univ.ContextSet.empty
+    sign,(),mb.mod_delta,Sorts.ContextSet.empty
   |MEapply (fe,arg) ->
     let ftrans = translate_mse_inclmod env mp inl fe in
     translate_apply env inl ftrans arg (fun _ _ -> ())

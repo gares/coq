@@ -6,10 +6,7 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
-open Univ
 open Declarations
 open Environ
 
-val check_subtypes : env -> module_type_body -> module_type_body -> constraints
-
-
+val check_subtypes : env -> module_type_body -> module_type_body -> Sorts.constraints

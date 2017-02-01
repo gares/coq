@@ -128,7 +128,7 @@ let interp_definition pl bl p red_option c ctypopt =
         in
 	if not (try List.for_all chk imps2 with Not_found -> false)
 	then warn_implicits_in_term ();
-        let vars = Univ.LSet.union (Universes.universes_of_constr body) 
+        let vars = Univ.USet.union (Universes.universes_of_constr body)
           (Universes.universes_of_constr typ) in
         let ctx = Evd.restrict_universe_context !evdref vars in
 	let pl, uctx = Evd.universe_context ?names:pl ctx in
@@ -203,7 +203,7 @@ let do_definition ident k pl bl red_option c ctypopt hook =
       let env = Global.env () in
       let (c,ctx), sideff = Future.force ce.const_entry_body in
       assert(Safe_typing.empty_private_constants = sideff);
-      assert(Univ.ContextSet.is_empty ctx);
+      assert(Sorts.ContextSet.is_empty ctx);
       let typ = match ce.const_entry_type with 
 	| Some t -> t
 	| None -> Retyping.get_type_of env evd c
@@ -237,7 +237,7 @@ match local with
   let r = VarRef ident in
   let () = Typeclasses.declare_instance None true r in
   let () = if is_coe then Class.try_add_new_coercion r ~local:true false in
-  (r,Univ.Instance.empty,true)
+  (r,Sorts.Instance.empty,true)
 
 | Global | Local | Discharge ->
   let local = get_locality ident ~kind:"axiom" local in
@@ -246,7 +246,7 @@ match local with
     | DefaultInline -> Some (Flags.get_inline_level())
     | InlineAt i -> Some i
   in
-  let ctx = Univ.ContextSet.to_context ctx in
+  let ctx = Sorts.ContextSet.to_context ctx in
   let decl = (ParameterEntry (None,p,(c,ctx),inl), IsAssumption kind) in
   let kn = declare_constant ident ~local decl in
   let gr = ConstRef kn in
@@ -256,8 +256,8 @@ match local with
   let () = Typeclasses.declare_instance None false gr in
   let () = if is_coe then Class.try_add_new_coercion gr local p in
   let inst = 
-    if p (* polymorphic *) then Univ.UContext.instance ctx 
-    else Univ.Instance.empty
+    if p (* polymorphic *) then Sorts.UContext.instance ctx
+    else Sorts.Instance.empty
   in
     (gr,inst,Lib.is_modtype_strict ())
 
@@ -270,7 +270,7 @@ let declare_assumptions idl is_coe k (c,ctx) pl imps impl_is_on nl =
     List.fold_left (fun (refs,status,ctx) id ->
       let ref',u',status' =
 	declare_assumption is_coe k (c,ctx) pl imps impl_is_on nl id in
-      (ref',u')::refs, status' && status, Univ.ContextSet.empty)
+      (ref',u')::refs, status' && status, Sorts.ContextSet.empty)
       ([],true,ctx) idl
   in
   List.rev refs, status
@@ -313,7 +313,7 @@ let do_assumptions_unbound_univs (_, poly, _ as kind) nl l =
     in
     (subst'@subst, status' && status,
      (* The universe constraints are declared with the first declaration only. *)
-     Univ.ContextSet.empty)) ([],true,ctx) l)
+     Sorts.ContextSet.empty)) ([],true,ctx) l)
 
 let do_assumptions_bound_univs coe kind nl id pl c =
   let env = Global.env () in
@@ -325,7 +325,7 @@ let do_assumptions_bound_univs coe kind nl id pl c =
   let vars = Universes.universes_of_constr ty in
   let evd = Evd.restrict_universe_context !evdref vars in
   let pl, uctx = Evd.universe_context ?names:pl evd in
-  let uctx = Univ.ContextSet.of_context uctx in
+  let uctx = Sorts.ContextSet.of_context uctx in
   let (_, _, st) = declare_assumption coe kind (ty, uctx) pl impls false nl id in
   st
 

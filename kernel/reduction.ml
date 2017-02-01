@@ -103,7 +103,7 @@ type 'a kernel_conversion_function = env -> 'a -> 'a -> unit
 (* functions of this type can be called from outside the kernel *)
 type 'a extended_conversion_function =
   ?l2r:bool -> ?reds:Names.transparent_state -> env ->
-  ?evars:(evar_closures * UGraph.t) ->
+  ?evars:(evar_closures * Sorts.Graph.t) ->
   'a -> 'a -> unit
 
 exception NotConvertible
@@ -128,14 +128,14 @@ let is_cumul = function CUMUL -> true | CONV -> false
 type 'a universe_compare = 
   { (* Might raise NotConvertible *)
     compare : env -> conv_pb -> sorts -> sorts -> 'a -> 'a;
-    compare_instances: flex:bool -> Univ.Instance.t -> Univ.Instance.t -> 'a -> 'a;
+    compare_instances: flex:bool -> Sorts.Instance.t -> Sorts.Instance.t -> 'a -> 'a;
   } 
 
 type 'a universe_state = 'a * 'a universe_compare
 
 type ('a,'b) generic_conversion_function = env -> 'b universe_state -> 'a -> 'a -> 'b
 
-type 'a infer_conversion_function = env -> UGraph.t -> 'a -> 'a -> Univ.constraints
+type 'a infer_conversion_function = env -> Sorts.Graph.t -> 'a -> 'a -> Sorts.constraints
 
 let sort_cmp_universes env pb s0 s1 (u, check) =
   (check.compare env pb s0 s1 u, check)
@@ -149,7 +149,7 @@ let conv_table_key infos k1 k2 cuniv =
   if k1 == k2 then cuniv else
   match k1, k2 with
   | ConstKey (cst, u), ConstKey (cst', u') when Constant.equal cst cst' ->
-    if Univ.Instance.equal u u' then cuniv
+    if Sorts.Instance.equal u u' then cuniv
     else 
       let flex = evaluable_constant cst (info_env infos) 
 	&& RedFlags.red_set (info_flags infos) (RedFlags.fCONST cst)
@@ -302,11 +302,11 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
       (try
 	 let cuniv = conv_table_key infos fl1 fl2 cuniv in
 	   convert_stacks l2r infos lft1 lft2 v1 v2 cuniv
-       with NotConvertible | Univ.UniverseInconsistency _ ->
+       with NotConvertible | Sorts.UniverseInconsistency _ ->
            (* else the oracle tells which constant is to be expanded *)
 	 let oracle = CClosure.oracle_of_infos infos in
          let (app1,app2) =
-           if Conv_oracle.oracle_order Univ.out_punivs oracle l2r fl1 fl2 then
+           if Conv_oracle.oracle_order Sorts.out_polymorphic oracle l2r fl1 fl2 then
 	     match unfold_reference infos fl1 with
              | Some def1 -> ((lft1, whd def1 v1), appr2)
              | None ->
@@ -545,10 +545,10 @@ let clos_gen_conv trans cv_pb l2r evars env univs t1 t2 =
 
 
 let check_eq univs u u' = 
-  if not (Sorts.check_eq univs u u') then raise NotConvertible
+  if not (Sorts.Graph.check_eq univs u u') then raise NotConvertible
 
 let check_leq univs u u' = 
-  if not (Sorts.check_leq univs u u') then raise NotConvertible
+  if not (Sorts.Graph.check_leq univs u u') then raise NotConvertible
 
 let check_sort_cmp_universes env pb s0 s1 univs =
   if not (type_in_type env) then
@@ -560,7 +560,7 @@ let checked_sort_cmp_universes env pb s0 s1 univs =
   check_sort_cmp_universes env pb s0 s1 univs; univs
 
 let check_convert_instances ~flex u u' univs =
-  if UGraph.check_eq_instances univs u u' then univs
+  if Sorts.Graph.check_eq_instances univs u u' then univs
   else raise NotConvertible
 
 let checked_universes =
@@ -568,12 +568,12 @@ let checked_universes =
     compare_instances = check_convert_instances }
 
 let infer_eq (univs, cstrs as cuniv) u u' =
-  if Sorts.check_eq univs u u' then cuniv
+  if Sorts.Graph.check_eq univs u u' then cuniv
   else
     univs, (Sorts.enforce_eq u u' cstrs)
 
 let infer_leq (univs, cstrs as cuniv) u u' =
-  if Sorts.check_leq univs u u' then cuniv
+  if Sorts.Graph.check_leq univs u u' then cuniv
   else
     univs, (Sorts.enforce_leq u u' cstrs)
 
@@ -585,9 +585,9 @@ let infer_cmp_universes env pb s0 s1 univs =
   else univs
 
 let infer_convert_instances ~flex u u' (univs,cstrs) =
-  (univs, Univ.enforce_eq_instances u u' cstrs)
+  (univs, Sorts.enforce_eq_instances u u' cstrs)
 
-let inferred_universes : (UGraph.t * Univ.Constraint.t) universe_compare = 
+let inferred_universes : (Sorts.Graph.t * Sorts.Constraint.t) universe_compare =
   { compare = infer_cmp_universes;
     compare_instances = infer_convert_instances }
 
@@ -625,7 +625,7 @@ let infer_conv_universes cv_pb l2r evars reds env univs t1 t2 =
   in
     if b then cstrs
     else
-      let univs = ((univs, Univ.Constraint.empty), inferred_universes) in
+      let univs = ((univs, Sorts.Constraint.empty), inferred_universes) in
       let ((_,cstrs), _) = clos_gen_conv reds cv_pb l2r evars env univs t1 t2 in
 	cstrs
 

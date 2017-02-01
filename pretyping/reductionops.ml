@@ -12,7 +12,7 @@ open Names
 open Term
 open Vars
 open Termops
-open Univ
+open Sorts
 open Evd
 open Environ
 open Context.Rel.Declaration
@@ -322,9 +322,9 @@ struct
     let open Pp in
       match c with
       | Cst_const (c, u) ->
-	if Univ.Instance.is_empty u then Constant.print c
+	if Sorts.Instance.is_empty u then Constant.print c
 	else str"(" ++ Constant.print c ++ str ", " ++ 
-	  Univ.Instance.pr Univ.Level.pr u ++ str")"
+	  Sorts.Instance.pr Univ.Level.pr u ++ str")"
       | Cst_proj p ->
 	str".(" ++ Constant.print (Projection.constant p) ++ str")"
 
@@ -351,7 +351,7 @@ struct
     let equal_cst_member x lft1 y lft2 =
       match x, y with
       | Cst_const (c1,u1), Cst_const (c2, u2) ->
-	Constant.equal c1 c2 && Univ.Instance.equal u1 u2
+	Constant.equal c1 c2 && Sorts.Instance.equal u1 u2
       | Cst_proj p1, Cst_proj p2 ->
 	Constant.equal (Projection.constant p1) (Projection.constant p2)
       | _, _ -> false
@@ -683,10 +683,10 @@ let magicaly_constant_of_fixbody env reference bd = function
         begin match csts with
         | Some csts ->
           let subst = Universes.Constraints.fold (fun (l,d,r) acc ->
-            Univ.LMap.add (Option.get (Sorts.level l)) (Option.get (Sorts.level r)) acc)
-            csts Univ.LMap.empty
+            Univ.UMap.add (Option.get (Sorts.level l)) (Option.get (Sorts.level r)) acc)
+            csts Univ.UMap.empty
           in
-          let inst = Instance.subst_fn (fun u -> Univ.LMap.find u subst) u in
+          let inst = Instance.apply_subst (fun u -> Univ.UMap.find u subst) u in
           mkConstU (cst,inst)
         | None -> bd
         end
@@ -1256,7 +1256,7 @@ let check_conv ?(pb=Reduction.CUMUL) ?(ts=full_transparent_state) env sigma x y 
   in
     try f ~reds:ts env ~evars:(Evarutil.safe_evar_closures sigma, Evd.universes sigma) x y; true
     with Reduction.NotConvertible -> false
-    | Univ.UniverseInconsistency _ -> false
+    | UniverseInconsistency _ -> false
     | e when is_anomaly e -> report_anomaly e
 
 let sigma_compare_sorts env pb s0 s1 sigma =
@@ -1267,7 +1267,7 @@ let sigma_compare_sorts env pb s0 s1 sigma =
 let sigma_compare_instances ~flex i0 i1 sigma =
   try Evd.set_eq_instances ~flex sigma i0 i1
   with Evd.UniversesDiffer
-     | Univ.UniverseInconsistency _ ->
+     | UniverseInconsistency _ ->
 	raise Reduction.NotConvertible
 
 let sigma_univ_state = 
@@ -1279,7 +1279,7 @@ let infer_conv_gen conv_fun ?(catch_incon=true) ?(pb=Reduction.CUMUL)
   try
     let fold cstr sigma =
       try Some (Evd.add_universe_constraints sigma cstr)
-      with Univ.UniverseInconsistency _ | Evd.UniversesDiffer -> None
+      with UniverseInconsistency _ | Evd.UniversesDiffer -> None
     in
     let b, sigma = 
       let ans =
@@ -1300,7 +1300,7 @@ let infer_conv_gen conv_fun ?(catch_incon=true) ?(pb=Reduction.CUMUL)
 	  sigma', true
   with
   | Reduction.NotConvertible -> sigma, false
-  | Univ.UniverseInconsistency _ when catch_incon -> sigma, false
+  | UniverseInconsistency _ when catch_incon -> sigma, false
   | e when is_anomaly e -> report_anomaly e
 
 let infer_conv = infer_conv_gen (fun pb ~l2r sigma ->

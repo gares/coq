@@ -267,7 +267,7 @@ let declare_projections indsp ?(kind=StructureComponent) binder_name coers field
   let u = Declareops.inductive_instance mib in
   let paramdecls = Preinductive.inductive_paramdecls (mib, u) in
   let poly = mib.mind_polymorphic in
-  let ctx = Univ.instantiate_univ_context mib.mind_universes in
+  let ctx = Sorts.instantiate_univ_context mib.mind_universes in
   let indu = indsp, u in
   let r = mkIndU (indsp,u) in
   let rp = applist (r, Context.Rel.to_extended_list 0 paramdecls) in
@@ -328,7 +328,7 @@ let declare_projections indsp ?(kind=StructureComponent) binder_name coers field
 		    const_entry_type = Some projtyp;
 		    const_entry_polymorphic = poly;
 		    const_entry_universes =
-		      if poly then ctx else Univ.UContext.empty;
+		      if poly then ctx else Sorts.UContext.empty;
 		    const_entry_opaque = false;
 		    const_entry_inline_code = false;
 		    const_entry_feedback = None } in
@@ -445,7 +445,7 @@ let declare_class finite def poly ctx id idbuild paramimpls params arity
       let cst = Declare.declare_constant (snd id)
 	(DefinitionEntry class_entry, IsDefinition Definition)
       in
-      let cstu = (cst, if poly then Univ.UContext.instance ctx else Univ.Instance.empty) in
+      let cstu = (cst, if poly then Sorts.UContext.instance ctx else Sorts.Instance.empty) in
       let inst_type = appvectc (mkConstU cstu)
 			       (Termops.rel_vect 0 (List.length params)) in
       let proj_type =
@@ -454,7 +454,7 @@ let declare_class finite def poly ctx id idbuild paramimpls params arity
 	it_mkLambda_or_LetIn (mkLambda (Name binder_name, inst_type, mkRel 1)) params in
       let proj_entry =
 	Declare.definition_entry ~types:proj_type ~poly
-	    ~univs:(if poly then ctx else Univ.UContext.empty) proj_body
+	    ~univs:(if poly then ctx else Sorts.UContext.empty) proj_body
       in
       let proj_cst = Declare.declare_constant proj_name
         (DefinitionEntry proj_entry, IsDefinition Definition)
@@ -518,7 +518,7 @@ let add_inductive_class ind =
   let mind, oneind = Global.lookup_inductive ind in
   let k =
     let ctx = oneind.mind_arity_ctxt in
-    let inst = Univ.UContext.instance mind.mind_universes in
+    let inst = Sorts.UContext.instance mind.mind_universes in
     let ty = Preinductive.type_of_inductive
       (push_rel_context ctx (Global.env ()))
       ((mind,oneind),inst)

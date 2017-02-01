@@ -517,7 +517,7 @@ let print_constant with_values sep sp =
   let val_0 = Global.body_of_constant_body cb in
   let typ = Declareops.type_of_constant cb in
   let typ = ungeneralized_type_of_constant_type typ in
-  let univs = Univ.instantiate_univ_context 
+  let univs = Sorts.instantiate_univ_context
     (Global.universes_of_constant_body cb)
   in
   let ctx =

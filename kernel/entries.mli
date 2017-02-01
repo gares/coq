@@ -50,12 +50,12 @@ type mutual_inductive_entry = {
   mind_entry_params : (Id.t * local_entry) list;
   mind_entry_inds : one_inductive_entry list;
   mind_entry_polymorphic : bool; 
-  mind_entry_universes : Univ.universe_context;
+  mind_entry_universes : Sorts.universe_context;
   mind_entry_private : bool option;
 }
 
 (** {6 Constants (Definition/Axiom) } *)
-type 'a proof_output = constr Univ.in_universe_context_set * 'a
+type 'a proof_output = constr Sorts.in_universe_context_set * 'a
 type 'a const_entry_body = 'a proof_output Future.computation
 
 type 'a definition_entry = {
@@ -66,14 +66,14 @@ type 'a definition_entry = {
   const_entry_feedback : Stateid.t option;
   const_entry_type        : types option;
   const_entry_polymorphic : bool;
-  const_entry_universes   : Univ.universe_context;
+  const_entry_universes   : Sorts.universe_context;
   const_entry_opaque      : bool;
   const_entry_inline_code : bool }
 
 type inline = int option (* inlining level, None for no inlining *)
 
 type parameter_entry = 
-    Context.Named.t option * bool * types Univ.in_universe_context * inline 
+    Context.Named.t option * bool * types Sorts.in_universe_context * inline
 
 type projection_entry = {
   proj_entry_ind : mutual_inductive;
@@ -103,7 +103,7 @@ type seff_env =
   [ `Nothing
   (* The proof term and its universes.
      Same as the constant_body's but not in an ephemeron *)
-  | `Opaque of Constr.t * Univ.universe_context_set ]
+  | `Opaque of Constr.t * Sorts.universe_context_set ]
 
 type side_eff =
   | SEsubproof of constant * Declarations.constant_body * seff_env

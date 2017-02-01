@@ -9,7 +9,7 @@
 open CErrors
 open Util
 open Names
-open Univ
+open Sorts
 open Term
 open Vars
 open Declarations
@@ -38,14 +38,14 @@ let find_inductive env c =
   let (t, l) = decompose_app (whd_all env c) in
   match kind_of_term t with
     | Ind ind
-        when (fst (lookup_mind_specif env (out_punivs ind))).mind_finite <> Decl_kinds.CoFinite -> (ind, l)
+        when (fst (lookup_mind_specif env (out_polymorphic ind))).mind_finite <> Decl_kinds.CoFinite -> (ind, l)
     | _ -> raise Not_found
 
 let find_coinductive env c =
   let (t, l) = decompose_app (whd_all env c) in
   match kind_of_term t with
     | Ind ind
-        when (fst (lookup_mind_specif env (out_punivs ind))).mind_finite == Decl_kinds.CoFinite -> (ind, l)
+        when (fst (lookup_mind_specif env (out_polymorphic ind))).mind_finite == Decl_kinds.CoFinite -> (ind, l)
     | _ -> raise Not_found
 
 let inductive_params (mib,_) = mib.mind_nparams
@@ -55,8 +55,8 @@ let inductive_paramdecls (mib,u) =
 
 let instantiate_inductive_constraints mib u =
   if mib.mind_polymorphic then
-    Univ.subst_instance_constraints u (Univ.UContext.constraints mib.mind_universes)
-  else Univ.Constraint.empty
+    subst_instance_constraints u (UContext.constraints mib.mind_universes)
+  else Constraint.empty
 
 (* Build the substitution that replaces Rels by the appropriate *)
 (* inductives *)
@@ -103,15 +103,15 @@ Remark: Set (predicative) is encoded as Type(0)
 (* to [x]. *)
 let cons_subst u su subst =
   try
-    Univ.LMap.add u (Univ.sup (Univ.LMap.find u subst) su) subst
-  with Not_found -> Univ.LMap.add u su subst
+    Univ.UMap.add u (Univ.sup (Univ.UMap.find u subst) su) subst
+  with Not_found -> Univ.UMap.add u su subst
 
 (* remember_subst updates the mapping [u |-> x] by [u |-> sup x u] *)
 (* if it is presents and returns the substitution unchanged if not.*)
 let remember_subst u subst =
   try
-    let su = Universe.make u in
-    Univ.LMap.add u (Univ.sup (Univ.LMap.find u subst) su) subst
+    let su = Univ.Universe.make u in
+    Univ.UMap.add u (Univ.sup (Univ.UMap.find u subst) su) subst
   with Not_found -> subst
 
 (* Bind expected levels of parameters to actual levels *)
@@ -145,12 +145,12 @@ let make_subst env =
     | [], _, _ ->
         assert false
   in
-  make Univ.LMap.empty
+  make Univ.UMap.empty
 
 let instantiate_universes env ctx ar argsorts =
   let args = Array.to_list argsorts in
   let subst = make_subst env (ctx,ar.template_param_levels,args) in
-  let level = Sorts.subst_univs_sort (Univ.make_subst subst) ar.template_level in
+  let level = Sorts.subst_sorts (Univ.make_univ_subst subst) ar.template_level in
     (ctx, level)
 
 

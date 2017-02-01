@@ -28,7 +28,7 @@ open Proofview.Notations
 
 module RelDecl = Context.Rel.Declaration
 
-let out_punivs = Univ.out_punivs
+let out_punivs = Sorts.out_polymorphic
 
 (**********************************************************************)
 (* Generic synthesis of boolean equality *)
@@ -161,7 +161,7 @@ let build_beq_scheme mode kn =
                 (RelDecl.get_type decl)  a) eq_input lnamesparrec
  in
  let make_one_eq cur =
-  let u = Univ.Instance.empty in
+  let u = Sorts.Instance.empty in
   let ind = (kn,cur),u (* FIXME *) in
   (* current inductive we are working on *)
   let cur_packet = mib.mind_packets.(snd (fst ind)) in
@@ -296,7 +296,7 @@ let build_beq_scheme mode kn =
         types = Array.make nb_ind mkSet and
         cores = Array.make nb_ind mkSet in
     let eff = ref Safe_typing.empty_private_constants in
-    let u = Univ.Instance.empty in
+    let u = Sorts.Instance.empty in
     for i=0 to (nb_ind-1) do
         names.(i) <- Name (Id.of_string (rec_name i));
 	types.(i) <- mkArrow (mkFullInd ((kn,i),u) 0)
@@ -549,7 +549,7 @@ let compute_bl_goal ind lnamesparrec nparrec =
     in
       let n = Id.of_string "x" and
           m = Id.of_string "y" in
-      let u = Univ.Instance.empty in
+      let u = Sorts.Instance.empty in
      create_input (
         mkNamedProd n (mkFullInd (ind,u) nparrec) (
           mkNamedProd m (mkFullInd (ind,u) (nparrec+1)) (
@@ -651,7 +651,7 @@ let make_bl_scheme mode mind =
   let ctx = Evd.make_evar_universe_context (Global.env ()) None in
   let side_eff = side_effect_of_mode mode in
   let (ans, _, ctx) = Pfedit.build_by_tactic ~side_eff (Global.env()) ctx bl_goal
-    (compute_bl_tact mode (!bl_scheme_kind_aux()) (ind, Univ.Instance.empty) lnamesparrec nparrec)
+    (compute_bl_tact mode (!bl_scheme_kind_aux()) (ind, Sorts.Instance.empty) lnamesparrec nparrec)
   in
   ([|ans|], ctx), eff
 
@@ -692,7 +692,7 @@ let compute_lb_goal ind lnamesparrec nparrec =
     in
       let n = Id.of_string "x" and
           m = Id.of_string "y" in
-      let u = Univ.Instance.empty in
+      let u = Sorts.Instance.empty in
       create_input (
         mkNamedProd n (mkFullInd (ind,u) nparrec) (
           mkNamedProd m (mkFullInd (ind,u) (nparrec+1)) (
@@ -940,7 +940,7 @@ let make_eq_decidability mode mind =
   let ind = (mind,0) in
   let nparams = mib.mind_nparams in
   let nparrec = mib.mind_nparams_rec in
-  let u = Univ.Instance.empty in
+  let u = Sorts.Instance.empty in
   let ctx = Evd.make_evar_universe_context (Global.env ()) None in
   let lnonparrec,lnamesparrec =
     context_chop (nparams-nparrec) mib.mind_params_ctxt in

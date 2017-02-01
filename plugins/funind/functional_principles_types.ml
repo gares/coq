@@ -249,7 +249,7 @@ let change_property_sort evd toSort princ princName =
     (get_name decl,
      let args,ty = decompose_prod (get_type decl) in
      let s = destSort ty in
-       Global.add_constraints (Sorts.enforce_leq toSort s Univ.Constraint.empty);
+       Global.add_constraints (Sorts.enforce_leq toSort s Sorts.Constraint.empty);
        compose_prod args (mkSort toSort)
     )
   in
@@ -659,7 +659,7 @@ let build_case_scheme fa =
   in
   let (ind, sf) =
 	 let ind = first_fun_kn,funs_indexes in
-	   (ind,Univ.Instance.empty)(*FIXME*),prop_sort
+	   (ind,Sorts.Instance.empty)(*FIXME*),prop_sort
   in
   let sigma = Sigma.Unsafe.of_evar_map sigma in
   let Sigma (scheme, sigma, _) = 

@@ -44,7 +44,7 @@ let map_option_typ = function None -> `None | Some x -> `Some x
 
 (* Insertion of constants and parameters in environment. *)
 
-let mk_pure_proof c = (c, Univ.ContextSet.empty), []
+let mk_pure_proof c = (c, Sorts.ContextSet.empty), []
 
 let equal_eff e1 e2 =
   let open Entries in
@@ -95,22 +95,22 @@ let inline_side_effects env body ctx side_eff =
               let b_ty = Typeops.type_of_constant_type env cb.const_type in
               let t = sub c 1 (Vars.lift 1 t) in
 	        mkLetIn (cname c, b, b_ty, t),
-		Univ.ContextSet.union ctx
-		  (Univ.ContextSet.of_context cb.const_universes)
+		Sorts.ContextSet.union ctx
+		  (Sorts.ContextSet.of_context cb.const_universes)
 	    else 
 	      let univs = cb.const_universes in
-		sub_body c (Univ.UContext.instance univs) b 1 (Vars.lift 1 t), ctx
+		sub_body c (Sorts.UContext.instance univs) b 1 (Vars.lift 1 t), ctx
       | OpaqueDef _, `Opaque (b,_) -> 
 	  let poly = cb.const_polymorphic in
 	    if not poly then
               let b_ty = Typeops.type_of_constant_type env cb.const_type in
               let t = sub c 1 (Vars.lift 1 t) in
 	        mkApp (mkLambda (cname c, b_ty, t), [|b|]),
-		Univ.ContextSet.union ctx
-		  (Univ.ContextSet.of_context cb.const_universes)
+		Sorts.ContextSet.union ctx
+		  (Sorts.ContextSet.of_context cb.const_universes)
 	    else
 	      let univs = cb.const_universes in
-		sub_body c (Univ.UContext.instance univs) b 1 (Vars.lift 1 t), ctx
+		sub_body c (Sorts.UContext.instance univs) b 1 (Vars.lift 1 t), ctx
       | _ -> assert false
     in
     let t, ctx = List.fold_right fix_body cbl (t,ctx) in
@@ -179,7 +179,7 @@ let infer_declaration ~trust env kn dcl =
       let env = push_context ~strict:(not poly) uctx env in
       let j = infer env t in
       let abstract = poly && not (Option.is_empty kn) in
-      let usubst, univs = Univ.abstract_universes abstract uctx in
+      let usubst, univs = Sorts.abstract_sorts abstract uctx in
       let c = Typeops.assumption_of_judgment env j in
       let t = hcons_constr (Vars.subst_univs_level_constr usubst c) in
 	Undef nl, RegularArity t, None, poly, univs, false, ctx
@@ -201,7 +201,7 @@ let infer_declaration ~trust env kn dcl =
             let j = infer env' body in
             unzip ectx j in
           let j = hcons_j j in
-	  let subst = Univ.LMap.empty in
+	  let subst = Univ.UMap.empty in
           let _typ = constrain_type env' j c.const_entry_polymorphic subst
 	    (`SomeWJ (typ,tyj)) in
           feedback_completion_typecheck feedback_id;
@@ -215,18 +215,18 @@ let infer_declaration ~trust env kn dcl =
       let { const_entry_type = typ; const_entry_opaque = opaque } = c in
       let { const_entry_body = body; const_entry_feedback = feedback_id } = c in
       let (body, ctx), side_eff = Future.join body in
-      let univsctx = Univ.ContextSet.of_context c.const_entry_universes in
+      let univsctx = Sorts.ContextSet.of_context c.const_entry_universes in
       let body, ctx, _ = inline_side_effects env body
-        (Univ.ContextSet.union univsctx ctx) side_eff in
+        (Sorts.ContextSet.union univsctx ctx) side_eff in
       let env = push_context_set ~strict:(not c.const_entry_polymorphic) ctx env in
       let abstract = c.const_entry_polymorphic && not (Option.is_empty kn) in
       let usubst, univs =
-	Univ.abstract_universes abstract (Univ.ContextSet.to_context ctx) in      
+	Sorts.abstract_sorts abstract (Sorts.ContextSet.to_context ctx) in
       let j = infer env body in
       let typ = constrain_type env j c.const_entry_polymorphic usubst (map_option_typ typ) in
       let def = hcons_constr (Vars.subst_univs_level_constr usubst j.uj_val) in
       let def = 
-	if opaque then OpaqueDef (Opaqueproof.create (Future.from_val (def, Univ.ContextSet.empty)))
+	if opaque then OpaqueDef (Opaqueproof.create (Future.from_val (def, Sorts.ContextSet.empty)))
 	else Def (Mod_subst.from_val def) 
       in
 	feedback_completion_typecheck feedback_id;
@@ -380,7 +380,7 @@ let constant_entry_of_side_effect cb u =
   let pt =
     match cb.const_body, u with
     | OpaqueDef _, `Opaque (b, c) -> b, c
-    | Def b, `Nothing -> Mod_subst.force_constr b, Univ.ContextSet.empty
+    | Def b, `Nothing -> Mod_subst.force_constr b, Sorts.ContextSet.empty
     | _ -> assert false in
   DefinitionEntry {
     const_entry_body = Future.from_val (pt, []);
@@ -505,4 +505,4 @@ let inline_entry_side_effects env ce = { ce with
 }
 
 let inline_side_effects env body side_eff =
-  pi1 (inline_side_effects env body Univ.ContextSet.empty side_eff)
+  pi1 (inline_side_effects env body Sorts.ContextSet.empty side_eff)

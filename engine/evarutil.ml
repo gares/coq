@@ -94,13 +94,13 @@ let rec whd_evar sigma c =
     | Sort s ->
        let s' = Evd.normalize_sort sigma s in
        if s' == s then c else mkSort s'
-    | Const (c', u) when not (Univ.Instance.is_empty u) -> 
+    | Const (c', u) when not (Sorts.Instance.is_empty u) ->
       let u' = Evd.normalize_universe_instance sigma u in
 	if u' == u then c else mkConstU (c', u')
-    | Ind (i, u) when not (Univ.Instance.is_empty u) -> 
+    | Ind (i, u) when not (Sorts.Instance.is_empty u) ->
       let u' = Evd.normalize_universe_instance sigma u in
 	if u' == u then c else mkIndU (i, u')
-    | Construct (co, u) when not (Univ.Instance.is_empty u) ->
+    | Construct (co, u) when not (Sorts.Instance.is_empty u) ->
       let u' = Evd.normalize_universe_instance sigma u in
 	if u' == u then c else mkConstructU (co, u')
     | _ -> c
@@ -130,7 +130,7 @@ let e_nf_evars_and_universes evdref =
 let nf_evar_map_universes evm =
   let evm = Evd.nf_constraints evm in
   let subst = Evd.universe_subst evm in
-    if Univ.LMap.is_empty subst then evm, nf_evar evm
+    if Univ.UMap.is_empty subst then evm, nf_evar evm
     else
       let f = nf_evars_universes evm in
 	Evd.raw_map (fun _ -> map_evar_info f) evm, f
@@ -772,7 +772,7 @@ let eq_constr_univs_test sigma1 sigma2 t u =
   let open Evd in
   let fold cstr sigma =
     try Some (add_universe_constraints sigma cstr)
-    with Univ.UniverseInconsistency _ | UniversesDiffer -> None
+    with Sorts.UniverseInconsistency _ | UniversesDiffer -> None
   in
   let ans =
     Universes.eq_constr_univs_infer_with

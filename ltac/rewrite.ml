@@ -966,7 +966,7 @@ let fold_match ?(force=false) env sigma c =
 let unfold_match env sigma sk app =
   match kind_of_term app with
   | App (f', args) when eq_constant (fst (destConst f')) sk ->
-      let v = Environ.constant_value_in (Global.env ()) (sk,Univ.Instance.empty)(*FIXME*) in
+      let v = Environ.constant_value_in (Global.env ()) (sk,Sorts.Instance.empty)(*FIXME*) in
 	Reductionops.whd_beta sigma (mkApp (v, args))
   | _ -> app
 

@@ -19,7 +19,7 @@ val env : unit -> Environ.env
 
 val env_is_initial : unit -> bool
 
-val universes : unit -> UGraph.t
+val universes : unit -> Sorts.Graph.t
 val named_context_val : unit -> Environ.named_context_val
 val named_context : unit -> Context.Named.t
 
@@ -31,8 +31,8 @@ val set_typing_flags : Declarations.typing_flags -> unit
 
 (** Variables, Local definitions, constants, inductive types *)
 
-val push_named_assum : (Id.t * Constr.types * bool) Univ.in_universe_context_set -> unit
-val push_named_def   : (Id.t * Safe_typing.private_constants Entries.definition_entry) -> Univ.universe_context_set
+val push_named_assum : (Id.t * Constr.types * bool) Sorts.in_universe_context_set -> unit
+val push_named_def   : (Id.t * Safe_typing.private_constants Entries.definition_entry) -> Sorts.universe_context_set
 
 val add_constant :
   DirPath.t -> Id.t -> Safe_typing.global_declaration ->
@@ -41,10 +41,10 @@ val add_mind :
   DirPath.t -> Id.t -> Entries.mutual_inductive_entry -> mutual_inductive
 
 (** Extra universe constraints *)
-val add_constraints : Univ.constraints -> unit
+val add_constraints : Sorts.constraints -> unit
 
-val push_context : bool -> Univ.universe_context -> unit
-val push_context_set : bool -> Univ.universe_context_set -> unit
+val push_context : bool -> Sorts.universe_context -> unit
+val push_context_set : bool -> Sorts.universe_context_set -> unit
 
 (** Non-interactive modules and module types *)
 
@@ -92,13 +92,13 @@ val opaque_tables : unit -> Opaqueproof.opaquetab
 val body_of_constant : constant -> Term.constr option
 val body_of_constant_body : Declarations.constant_body -> Term.constr option
 val constraints_of_constant_body :
-  Declarations.constant_body -> Univ.constraints
+  Declarations.constant_body -> Sorts.constraints
 val universes_of_constant_body :
-  Declarations.constant_body -> Univ.universe_context
+  Declarations.constant_body -> Sorts.universe_context
 
 (** Global universe name <-> level mapping *)
 type universe_names = 
-  (Decl_kinds.polymorphic * Univ.universe_level) Idmap.t * Id.t Univ.LMap.t
+  (Decl_kinds.polymorphic * Univ.universe_level) Idmap.t * Id.t Univ.UMap.t
 
 val global_universe_names : unit -> universe_names
 val set_global_universe_names : universe_names -> unit
@@ -109,7 +109,7 @@ val start_library : DirPath.t -> module_path
 val export : ?except:Future.UUIDSet.t -> DirPath.t ->
   module_path * Safe_typing.compiled_library * Safe_typing.native_library
 val import :
-  Safe_typing.compiled_library -> Univ.universe_context_set -> Safe_typing.vodigest ->
+  Safe_typing.compiled_library -> Sorts.universe_context_set -> Safe_typing.vodigest ->
   module_path
 
 (** {6 Misc } *)
@@ -127,7 +127,7 @@ val is_template_polymorphic : Globnames.global_reference -> bool
 val is_type_in_type : Globnames.global_reference -> bool
 
 val type_of_global_in_context : Environ.env -> 
-  Globnames.global_reference -> Constr.types Univ.in_universe_context
+  Globnames.global_reference -> Constr.types Sorts.in_universe_context
 (** Returns the type of the constant in its global or local universe
     context. The type should not be used without pushing it's universe
     context in the environmnent of usage. For non-universe-polymorphic
@@ -145,7 +145,7 @@ val type_of_global_unsafe : Globnames.global_reference -> Constr.types
     [Evarutil.new_global] and [Retyping.get_type_of]. *)
 
 (** Returns the universe context of the global reference (whatever its polymorphic status is). *)
-val universes_of_global : Globnames.global_reference -> Univ.universe_context
+val universes_of_global : Globnames.global_reference -> Sorts.universe_context
 
 (** {6 Retroknowledge } *)
 
@@ -162,6 +162,6 @@ val set_strategy : Names.constant Names.tableKey -> Conv_oracle.level -> unit
 
 val current_dirpath : unit -> Names.dir_path
 
-val with_global : (Environ.env -> Names.dir_path -> 'a Univ.in_universe_context_set) -> 'a
+val with_global : (Environ.env -> Names.dir_path -> 'a Sorts.in_universe_context_set) -> 'a
 
 val global_env_summary_name : string

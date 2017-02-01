@@ -185,8 +185,8 @@ let explain_reference_variables id c =
 
 let pr_puniverses f env (c,u) = 
   f env c ++ 
-  (if Flags.is_universe_polymorphism () && not (Univ.Instance.is_empty u) then
-    str"(*" ++ Univ.Instance.pr Universes.pr_with_global_universes u ++ str"*)"
+  (if Flags.is_universe_polymorphism () && not (Sorts.Instance.is_empty u) then
+    str"(*" ++ Sorts.Instance.pr Universes.pr_with_global_universes u ++ str"*)"
   else mt())
 
 let explain_elim_arity env sigma ind sorts c pj okinds =
@@ -308,7 +308,7 @@ let explain_unification_error env sigma p1 p2 = function
      | UnifUnivInconsistency p ->
         if !Constrextern.print_universes then
 	  [str "universe inconsistency: " ++
-          Univ.explain_universe_inconsistency Universes.pr_with_global_universes p]
+          Sorts.explain_inconsistency Universes.pr_with_global_universes p]
 	else
           [str "universe inconsistency"]
      | CannotSolveConstraint ((pb,env,t,u),e) ->
@@ -672,7 +672,7 @@ let explain_non_linear_unification env sigma m t =
 
 let explain_unsatisfied_constraints env sigma cst =
   strbrk "Unsatisfied constraints: " ++ 
-    Univ.pr_constraints (Evd.pr_evd_level sigma) cst ++ 
+    Sorts.Constraint.pr (Evd.pr_evd_level sigma) cst ++
     spc () ++ str "(maybe a bugged tactic)."
 
 let explain_type_error env sigma err =
@@ -872,7 +872,7 @@ let explain_not_match_error = function
     str"polymorphic universe instances do not match"
   | IncompatibleUniverses incon ->
     str"the universe constraints are inconsistent: " ++
-      Univ.explain_universe_inconsistency Universes.pr_with_global_universes incon
+      Sorts.explain_inconsistency Universes.pr_with_global_universes incon
   | IncompatiblePolymorphism (env, t1, t2) ->
     str "conversion of polymorphic values generates additional constraints: " ++
       quote (Printer.safe_pr_lconstr_env env Evd.empty t1) ++ spc () ++
@@ -880,7 +880,7 @@ let explain_not_match_error = function
       quote (Printer.safe_pr_lconstr_env env Evd.empty t2)
   | IncompatibleConstraints cst ->
     str " the expected (polymorphic) constraints do not imply " ++
-      quote (Univ.pr_constraints (Evd.pr_evd_level Evd.empty) cst)
+      quote (Sorts.Constraint.pr (Evd.pr_evd_level Evd.empty) cst)
 
 let explain_signature_mismatch l spec why =
   str "Signature components for label " ++ pr_label l ++

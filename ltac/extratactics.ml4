@@ -265,7 +265,7 @@ let add_rewrite_hint bases ort t lcsr =
 	else (** This is a global universe context that shouldn't be
 	       refreshed at every use of the hint, declare it globally. *)
 	  (Declare.declare_universe_context false ctx;
-           Univ.ContextSet.empty)
+           Sorts.ContextSet.empty)
     in
       Constrexpr_ops.constr_loc ce, (c, ctx), ort, Option.map (in_gen (rawwit wit_ltac)) t in
   let eqs = List.map f lcsr in
@@ -1061,7 +1061,7 @@ END
 let decompose l c =
   Proofview.Goal.enter { enter = begin fun gl ->
     let to_ind c =
-      if isInd c then Univ.out_punivs (destInd c)
+      if isInd c then Sorts.out_polymorphic (destInd c)
       else error "not an inductive type"
     in
     let l = List.map to_ind l in

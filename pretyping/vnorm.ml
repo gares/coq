@@ -174,7 +174,7 @@ and nf_whd env whd typ =
   | Vatom_stk(Aind ((mi,i) as ind), stk) ->
      let mib = Environ.lookup_mind mi env in
      let nb_univs =
-       if mib.mind_polymorphic then Univ.UContext.size mib.mind_universes
+       if mib.mind_polymorphic then Sorts.UContext.size mib.mind_universes
        else 0
      in
      let mk u =
@@ -187,13 +187,13 @@ and nf_whd env whd typ =
 
 and nf_univ_args ~nb_univs mk env stk =
   let u =
-    if Int.equal nb_univs 0 then Univ.Instance.empty
+    if Int.equal nb_univs 0 then Sorts.Instance.empty
     else match stk with
     | Zapp args :: _ ->
        let inst =
 	 Array.init nb_univs (fun i -> Vm.uni_lvl_val (arg args i))
        in
-       Univ.Instance.of_array inst
+       Sorts.Instance.of_array inst
     | _ -> assert false
   in
   let (t,ty) = mk u in
@@ -204,7 +204,7 @@ and constr_type_of_idkey env (idkey : Vars.id_key) stk =
   | ConstKey cst ->
      let cbody = Environ.lookup_constant cst env in
      let nb_univs =
-       if cbody.const_polymorphic then Univ.UContext.size cbody.const_universes
+       if cbody.const_polymorphic then Sorts.UContext.size cbody.const_universes
        else 0
      in
      let mk u =

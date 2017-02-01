@@ -49,7 +49,7 @@ let set_typeclass_transparency c local b =
 let _ =
   Hook.set Typeclasses.add_instance_hint_hook
     (fun inst path local info poly ->
-     let inst' = match inst with IsConstr c -> Hints.IsConstr (c, Univ.ContextSet.empty)
+     let inst' = match inst with IsConstr c -> Hints.IsConstr (c, Sorts.ContextSet.empty)
        | IsGlobal gr -> Hints.IsGlobRef gr
      in
      let info =
@@ -118,7 +118,7 @@ let instance_hook k info global imps ?hook cst =
 let declare_instance_constant k info global imps ?hook id pl poly evm term termtype =
   let kind = IsDefinition Instance in
   let evm = 
-    let levels = Univ.LSet.union (Universes.universes_of_constr termtype) 
+    let levels = Univ.USet.union (Universes.universes_of_constr termtype)
 				 (Universes.universes_of_constr term) in
     Evd.restrict_universe_context evm levels 
   in
@@ -382,9 +382,9 @@ let context poly l =
   let uctx = ref (Evd.universe_context_set !evars) in
   let fn status (id, b, t) =
     if Lib.is_modtype () && not (Lib.sections_are_opened ()) then
-      let ctx = Univ.ContextSet.to_context !uctx in
+      let ctx = Sorts.ContextSet.to_context !uctx in
       (* Declare the universe context once *)
-      let () = uctx := Univ.ContextSet.empty in
+      let () = uctx := Sorts.ContextSet.empty in
       let decl = (ParameterEntry (None,poly,(t,ctx),None), IsAssumption Logical) in
       let cst = Declare.declare_constant ~internal:Declare.InternalTacticRequest id decl in
 	match class_of_constr t with
@@ -405,6 +405,6 @@ let context poly l =
         pi3 (Command.declare_assumption false decl (t, !uctx) [] [] impl
           Vernacexpr.NoInline (Loc.ghost, id))
       in
-      let () = uctx := Univ.ContextSet.empty in
+      let () = uctx := Sorts.ContextSet.empty in
 	status && nstatus
   in List.fold_left fn true (List.rev ctx)

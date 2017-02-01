@@ -1326,7 +1326,7 @@ let inject_if_homogenous_dependent_pair ty =
     let new_eq_args = [|pf_unsafe_type_of gl ar1.(3);ar1.(3);ar2.(3)|] in
     let inj2 = Coqlib.coq_constant "inj_pair2_eq_dec is missing"
       ["Logic";"Eqdep_dec"] "inj_pair2_eq_dec" in
-    let c, eff = find_scheme (!eq_dec_scheme_kind_name()) (Univ.out_punivs ind) in
+    let c, eff = find_scheme (!eq_dec_scheme_kind_name()) (Sorts.out_polymorphic ind) in
     (* cut with the good equality and prove the requested goal *)
     tclTHENLIST
       [Proofview.tclEFFECTS eff;

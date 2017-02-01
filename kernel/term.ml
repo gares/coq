@@ -60,7 +60,7 @@ type ('constr, 'types) prec_declaration =
   ('constr, 'types) Constr.prec_declaration
 type ('constr, 'types) pfixpoint = ('constr, 'types) Constr.pfixpoint
 type ('constr, 'types) pcofixpoint = ('constr, 'types) Constr.pcofixpoint
-type 'a puniverses = 'a Univ.puniverses
+type 'a puniverses = 'a Constr.puniverses
 
 (** Simply type aliases *)
 type pconstant = constant puniverses

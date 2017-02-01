@@ -240,7 +240,7 @@ let unfold_red kn =
 type table_key = constant puniverses tableKey
 
 let eq_pconstant_key (c,u) (c',u') =
-  eq_constant_key c c' && Univ.Instance.equal u u'
+  eq_constant_key c c' && Sorts.Instance.equal u u'
 
 module IdKeyHash =
 struct

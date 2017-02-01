@@ -58,7 +58,7 @@ let find_reference sl s =
   let dp = Names.DirPath.make (List.rev_map Id.of_string sl) in
   locate (make_qualid dp (Id.of_string s))
 
-let declare_fun f_id kind ?(ctx=Univ.UContext.empty) value =
+let declare_fun f_id kind ?(ctx=Sorts.UContext.empty) value =
   let ce = definition_entry ~univs:ctx value (*FIXME *) in
     ConstRef(declare_constant f_id (DefinitionEntry ce, kind));;
 

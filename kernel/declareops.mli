@@ -8,7 +8,6 @@
 
 open Declarations
 open Mod_subst
-open Univ
 open Entries
 
 (** Operations concerning types in [Declarations] :
@@ -34,15 +33,15 @@ val body_of_constant :
   Opaqueproof.opaquetab -> constant_body -> Term.constr option
 val type_of_constant : constant_body -> constant_type
 val constraints_of_constant :
-  Opaqueproof.opaquetab -> constant_body -> Univ.constraints
+  Opaqueproof.opaquetab -> constant_body -> Sorts.constraints
 val universes_of_constant :
-  Opaqueproof.opaquetab -> constant_body -> Univ.universe_context
+  Opaqueproof.opaquetab -> constant_body -> Sorts.universe_context
 
 (** Return the universe context, in case the definition is polymorphic, otherwise
     the context is empty. *)
 
 val universes_of_polymorphic_constant :
-  Opaqueproof.opaquetab -> constant_body -> Univ.universe_context
+  Opaqueproof.opaquetab -> constant_body -> Sorts.universe_context
 
 val is_opaque : constant_body -> bool
 
@@ -66,8 +65,8 @@ val subst_wf_paths : substitution -> wf_paths -> wf_paths
 
 val subst_mind_body : substitution -> mutual_inductive_body -> mutual_inductive_body
 
-val inductive_instance : mutual_inductive_body -> universe_instance
-val inductive_context : mutual_inductive_body -> universe_context
+val inductive_instance : mutual_inductive_body -> Sorts.sort_instance
+val inductive_context : mutual_inductive_body -> Sorts.universe_context
 
 (** {6 Kernel flags} *)
 

@@ -45,7 +45,7 @@ type globals = {
   env_modtypes : module_type_body MPmap.t}
 
 type stratification = {
-  env_universes : UGraph.t;
+  env_universes : Sorts.Graph.t;
   env_engagement : engagement
 }
 
@@ -96,7 +96,7 @@ let empty_env = {
   env_rel_val = [];
   env_nb_rel = 0;
   env_stratification = {
-    env_universes = UGraph.initial_universes;
+    env_universes = Sorts.Graph.initial;
     env_engagement = PredicativeSet };
   env_typing_flags = Declareops.safe_flags;
   env_conv_oracle = Conv_oracle.empty;

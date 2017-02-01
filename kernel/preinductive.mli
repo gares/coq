@@ -8,7 +8,7 @@
 
 open Names
 open Term
-open Univ
+open Sorts
 open Declarations
 open Environ
 
@@ -42,7 +42,7 @@ val instantiate_universes : env -> Context.Rel.t ->
 exception SingletonInductiveBecomesProp of Id.t
 
 val instantiate_inductive_constraints : 
-  mutual_inductive_body -> universe_instance -> constraints
+  mutual_inductive_body -> sort_instance -> constraints
 
 val constrained_type_of_inductive : env -> mind_specif puniverses -> types constrained
 val constrained_type_of_inductive_knowing_parameters : 

@@ -54,11 +54,11 @@ let wrap_vernac_error with_header (exn, info) strm =
     (EvaluatedError (strm, None), info)
 
 let process_vernac_interp_error with_header exn = match fst exn with
-  | Univ.UniverseInconsistency i ->
+  | Sorts.UniverseInconsistency i ->
     let msg =
       if !Constrextern.print_universes then
 	str "." ++ spc() ++ 
-	  Univ.explain_universe_inconsistency Universes.pr_with_global_universes i
+	  Sorts.explain_inconsistency Universes.pr_with_global_universes i
       else
 	mt() in
     wrap_vernac_error with_header exn (str "Universe inconsistency" ++ msg ++ str ".")

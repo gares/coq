@@ -2,7 +2,6 @@ Names
 Uint31
 Univ
 Graphgen
-UGraph
 Esubst
 Sorts
 Evar

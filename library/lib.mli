@@ -162,7 +162,7 @@ val xml_close_section : (Names.Id.t -> unit) Hook.t
 (** {6 Section management for discharge } *)
 type variable_info = Context.Named.Declaration.t * Decl_kinds.binding_kind
 type variable_context = variable_info list 
-type abstr_info = variable_context * Univ.universe_level_subst * Univ.UContext.t
+type abstr_info = variable_context * Univ.universe_level_subst * Sorts.UContext.t
 
 val instance_from_variable_context : variable_context -> Names.Id.t array
 val named_of_variable_context : variable_context -> Context.Named.t
@@ -171,11 +171,11 @@ val section_segment_of_constant : Names.constant -> abstr_info
 val section_segment_of_mutual_inductive: Names.mutual_inductive -> abstr_info
 val variable_section_segment_of_reference : Globnames.global_reference -> variable_context
                                                                                                      
-val section_instance : Globnames.global_reference -> Univ.universe_instance * Names.Id.t array
+val section_instance : Globnames.global_reference -> Sorts.sort_instance * Names.Id.t array
 val is_in_section : Globnames.global_reference -> bool
 
-val add_section_variable : Names.Id.t -> Decl_kinds.binding_kind -> Decl_kinds.polymorphic -> Univ.universe_context_set -> unit
-val add_section_context : Univ.universe_context_set -> unit
+val add_section_variable : Names.Id.t -> Decl_kinds.binding_kind -> Decl_kinds.polymorphic -> Sorts.universe_context_set -> unit
+val add_section_context : Sorts.universe_context_set -> unit
 val add_section_constant : Decl_kinds.polymorphic ->
   Names.constant -> Context.Named.t -> unit
 val add_section_kn : Decl_kinds.polymorphic ->

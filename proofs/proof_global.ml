@@ -313,9 +313,9 @@ let get_open_goals () =
     List.length shelf
 
 let constrain_variables init uctx =
-  let levels = Univ.Instance.levels (Univ.UContext.instance init) in
+  let levels = Sorts.Instance.to_set (Sorts.UContext.instance init) in
   let cstrs = UState.constrain_variables levels uctx in
-  Univ.ContextSet.add_constraints cstrs (UState.context_set uctx)
+  Sorts.ContextSet.add_constraints cstrs (UState.context_set uctx)
 
 let close_proof ~keep_body_ucst_separate ?feedback_id ~now fpl =
   let { pid; section_vars; strength; proof; terminator; universe_binders } =
@@ -351,19 +351,19 @@ let close_proof ~keep_body_ucst_separate ?feedback_id ~now fpl =
           (* For vi2vo compilation proofs are computed now but we need to
            * complement the univ constraints of the typ with the ones of
            * the body.  So we keep the two sets distinct. *)
-	  let used_univs = Univ.LSet.union used_univs_body used_univs_typ in
+	  let used_univs = Univ.USet.union used_univs_body used_univs_typ in
           let ctx_body = restrict_universe_context ctx used_univs in
           (initunivs, typ), ((body, ctx_body), eff)
         else
-          let initunivs = Univ.UContext.empty in
+          let initunivs = Sorts.UContext.empty in
           let ctx = constrain_variables initunivs universes in
           (* Since the proof is computed now, we can simply have 1 set of
            * constraints in which we merge the ones for the body and the ones
            * for the typ *)
-          let used_univs = Univ.LSet.union used_univs_body used_univs_typ in
+          let used_univs = Univ.USet.union used_univs_body used_univs_typ in
           let ctx = restrict_universe_context ctx used_univs in
-          let univs = Univ.ContextSet.to_context ctx in
-          (univs, typ), ((body, Univ.ContextSet.empty), eff)
+          let univs = Sorts.ContextSet.to_context ctx in
+          (univs, typ), ((body, Sorts.ContextSet.empty), eff)
       in 
        fun t p -> Future.split2 (Future.chain ~pure:true p (make_body t))
     else

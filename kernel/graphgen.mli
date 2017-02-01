@@ -6,6 +6,9 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
+type constraint_type = Lt | Le | Eq
+exception AlreadyDeclared
+
 module type GraphIn =
   sig
     module Level : sig
@@ -35,13 +38,13 @@ module type GraphIn =
       val pr : t -> Pp.std_ppcmds
     end
 
-    module LSet : CSig.SetS with type elt = Level.t
-    module LMap : CMap.ExtS with type key = Level.t and module Set := LSet
+    module USet : CSig.SetS with type elt = Level.t
+    module UMap : CMap.ExtS with type key = Level.t and module Set := USet
 
-    type constraint_type = Lt | Le | Eq
     type level_constraint = Level.t * constraint_type * Level.t
+    type constraints
 
-    module Constraints : Set.S with type elt = level_constraint
+    val add_constraint : level_constraint -> constraints -> constraints
 
     type explanation = (constraint_type * Level.t) list
     val error_inconsistency : constraint_type -> Level.t -> Level.t -> explanation option -> 'a
@@ -63,15 +66,12 @@ module type GraphS =
 
     val sort_universes : t -> t
 
-    exception AlreadyDeclared
     val add_level : Level.t -> bool -> t -> t
 
     val check_constraint : t -> level_constraint -> bool
-    val check_constraints : Constraints.t -> t -> bool
 
-    val constraints_of_universes : t -> Constraints.t
+    val constraints_of_universes : t -> constraints -> constraints
 
-    val merge_constraints : Constraints.t -> t -> t
     val enforce_constraint : level_constraint -> t -> t
 
     val pr : (Level.t -> Pp.std_ppcmds) -> t -> Pp.std_ppcmds

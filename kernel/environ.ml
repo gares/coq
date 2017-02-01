@@ -174,11 +174,11 @@ let map_universes f env =
 	 { s with env_universes = f s.env_universes } }
 				     
 let add_constraints c env =
-  if Univ.Constraint.is_empty c then env
-  else map_universes (UGraph.merge_constraints c) env
+  if Sorts.Constraint.is_empty c then env
+  else map_universes (Sorts.Graph.merge_constraints c) env
 
 let check_constraints c env =
-  UGraph.check_constraints c env.env_stratification.env_universes
+  Sorts.Graph.check_constraints c env.env_stratification.env_universes
 
 let push_constraints_to_env (_,univs) env =
   add_constraints univs env
@@ -186,19 +186,19 @@ let push_constraints_to_env (_,univs) env =
 let add_universes strict ctx g =
   let g = Array.fold_left
 	    (* Be lenient, module typing reintroduces universes and constraints due to includes *)
-	    (fun g v -> try UGraph.add_universe v strict g with UGraph.AlreadyDeclared -> g)
-	    g (Univ.Instance.to_array (Univ.UContext.instance ctx))
+	    (fun g v -> try Sorts.Graph.add_universe v strict g with Sorts.Graph.AlreadyDeclared -> g)
+	    g (Sorts.Instance.to_array (Sorts.UContext.instance ctx))
   in
-    UGraph.merge_constraints (Univ.UContext.constraints ctx) g
+    Sorts.Graph.merge_constraints (Sorts.UContext.constraints ctx) g
 			   
 let push_context ?(strict=false) ctx env =
   map_universes (add_universes strict ctx) env
 
 let add_universes_set strict ctx g =
-  let g = Univ.LSet.fold
-	    (fun v g -> try UGraph.add_universe v strict g with UGraph.AlreadyDeclared -> g)
-	    (Univ.ContextSet.levels ctx) g
-  in UGraph.merge_constraints (Univ.ContextSet.constraints ctx) g
+  let g = Univ.USet.fold
+	    (fun v g -> try Sorts.Graph.add_universe v strict g with Sorts.Graph.AlreadyDeclared -> g)
+	    (Sorts.ContextSet.levels ctx) g
+  in Sorts.Graph.merge_constraints (Sorts.ContextSet.constraints ctx) g
 
 let push_context_set ?(strict=false) ctx env =
   map_universes (add_universes_set strict ctx) env
@@ -229,7 +229,7 @@ let add_constant kn cb env =
 
 let constraints_of cb u =
   let univs = cb.const_universes in
-    Univ.subst_instance_constraints u (Univ.UContext.constraints univs)
+    Sorts.subst_instance_constraints u (Sorts.UContext.constraints univs)
 
 let map_regular_arity f = function
   | RegularArity a as ar -> 
@@ -243,12 +243,12 @@ let constant_type env (kn,u) =
     if cb.const_polymorphic then
       let csts = constraints_of cb u in
 	(map_regular_arity (subst_instance_constr u) cb.const_type, csts)
-    else cb.const_type, Univ.Constraint.empty
+    else cb.const_type, Sorts.Constraint.empty
 
 let constant_context env kn =
   let cb = lookup_constant kn env in
     if cb.const_polymorphic then cb.const_universes
-    else Univ.UContext.empty
+    else Sorts.UContext.empty
 
 type const_evaluation_result = NoBody | Opaque | IsProj
 
@@ -262,7 +262,7 @@ let constant_value env (kn,u) =
 	if cb.const_polymorphic then
 	  let csts = constraints_of cb u in
 	    (subst_instance_constr u (Mod_subst.force_constr l_body), csts)
-	else Mod_subst.force_constr l_body, Univ.Constraint.empty
+	else Mod_subst.force_constr l_body, Sorts.Constraint.empty
       | OpaqueDef _ -> raise (NotEvaluableConst Opaque)
       | Undef _ -> raise (NotEvaluableConst NoBody)
     else raise (NotEvaluableConst IsProj)
@@ -286,7 +286,7 @@ let constant_value_and_type env (kn, u) =
 	| Def l_body -> Some (Mod_subst.force_constr l_body)
 	| OpaqueDef _ -> None
 	| Undef _ -> None
-      in b', cb.const_type, Univ.Constraint.empty
+      in b', cb.const_type, Sorts.Constraint.empty
 
 (* These functions should be called under the invariant that [env] 
    already contains the constraints corresponding to the constant 
@@ -324,7 +324,7 @@ let polymorphic_constant cst env =
   (lookup_constant cst env).const_polymorphic
 
 let polymorphic_pconstant (cst,u) env =
-  if Univ.Instance.is_empty u then false
+  if Sorts.Instance.is_empty u then false
   else polymorphic_constant cst env
 
 let type_in_type_constant cst env =
@@ -336,7 +336,7 @@ let template_polymorphic_constant cst env =
   | RegularArity _ -> false
 
 let template_polymorphic_pconstant (cst,u) env =
-  if not (Univ.Instance.is_empty u) then false
+  if not (Sorts.Instance.is_empty u) then false
   else template_polymorphic_constant cst env
 
 let lookup_projection cst env =
@@ -356,7 +356,7 @@ let polymorphic_ind (mind,i) env =
   (lookup_mind mind env).mind_polymorphic
 
 let polymorphic_pind (ind,u) env =
-  if Univ.Instance.is_empty u then false
+  if Sorts.Instance.is_empty u then false
   else polymorphic_ind ind env
 
 let type_in_type_ind (mind,i) env =
@@ -368,7 +368,7 @@ let template_polymorphic_ind (mind,i) env =
   | RegularArity _ -> false
 
 let template_polymorphic_pind (ind,u) env =
-  if not (Univ.Instance.is_empty u) then false
+  if not (Sorts.Instance.is_empty u) then false
   else template_polymorphic_ind ind env
   
 let add_mind_key kn mind_key env =
@@ -593,7 +593,7 @@ let dispatch =
   let int31_op n op prim kn =
     { empty_reactive_info with
       vm_compiling = Some (Cbytegen.op_compilation n op kn);
-      native_compiling = Some (Nativelambda.compile_prim prim (Univ.out_punivs kn));
+      native_compiling = Some (Nativelambda.compile_prim prim (Sorts.out_polymorphic kn));
     }
   in
 

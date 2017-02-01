@@ -313,7 +313,7 @@ let subst_con sub cst =
   with No_subst -> fst cst, mkConstU cst
 
 let subst_con_kn sub con =
-  subst_con sub (con,Univ.Instance.empty)
+  subst_con sub (con,Sorts.Instance.empty)
 
 let subst_pcon sub (con,u as pcon) = 
   try let con', can = subst_con0 sub pcon in 
@@ -326,7 +326,7 @@ let subst_pcon_term sub (con,u as pcon) =
   with No_subst -> pcon, mkConstU pcon
 
 let subst_constant sub con =
-  try fst (subst_con0 sub (con,Univ.Instance.empty))
+  try fst (subst_con0 sub (con,Sorts.Instance.empty))
   with No_subst -> con
 
 (* Here the semantics is completely unclear.
@@ -345,7 +345,7 @@ let rec map_kn f f' c =
       | Proj (p,t) -> 
           let p' = 
 	    try
-	      Projection.map (fun kn -> fst (f' (kn,Univ.Instance.empty))) p
+	      Projection.map (fun kn -> fst (f' (kn,Sorts.Instance.empty))) p
 	    with No_subst -> p
 	  in
 	  let t' = func t in

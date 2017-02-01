@@ -577,12 +577,12 @@ let make_resolve_hyp env sigma st flags only_classes pri decl =
 	      in
 	      make_resolves env sigma ~name:(PathHints path)
                   (true,false,Flags.is_verbose()) info false
-                 (IsConstr (c,Univ.ContextSet.empty)))
+                 (IsConstr (c,Sorts.ContextSet.empty)))
                hints)
         else []
       in
         (hints @ List.map_filter
-         (fun f -> try Some (f (c, cty, Univ.ContextSet.empty))
+         (fun f -> try Some (f (c, cty, Sorts.ContextSet.empty))
            with Failure _ | UserError _ -> None)
          [make_exact_entry ~name env sigma pri false;
           make_apply_entry ~name env sigma flags pri false])
@@ -1608,5 +1608,5 @@ let autoapply c i gl =
   let cty = pf_unsafe_type_of gl c in
   let ce = mk_clenv_from gl (c,cty) in
   let tac = { enter = fun gl -> (unify_e_resolve false flags).enter gl
-    ((c,cty,Univ.ContextSet.empty),0,ce) } in
+    ((c,cty,Sorts.ContextSet.empty),0,ce) } in
   Proofview.V82.of_tactic (Proofview.Goal.nf_enter tac) gl

@@ -23,7 +23,7 @@ open Proofview.Notations
 type rew_rule = { rew_lemma: constr;
 		  rew_type: types;
 		  rew_pat: constr;
-		  rew_ctx: Univ.universe_context_set;
+		  rew_ctx: Sorts.universe_context_set;
 		  rew_l2r: bool;
 		  rew_tac: Genarg.glob_generic_argument option }
 
@@ -86,7 +86,7 @@ let print_rewrite_hintdb bas =
 	       Pputils.pr_glb_generic (Global.env()) tac) (mt ()) h.rew_tac)
 	   (find_rewrites bas))
 
-type raw_rew_rule = Loc.t * constr Univ.in_universe_context_set * bool * Genarg.raw_generic_argument option
+type raw_rew_rule = Loc.t * constr Sorts.in_universe_context_set * bool * Genarg.raw_generic_argument option
 
 (* Applies all the rules of one base *)
 let one_base general_rewrite_maybe_in tac_main bas =

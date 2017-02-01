@@ -23,7 +23,7 @@ open Decl_kinds
 
 type section_variable_entry =
   | SectionLocalDef of Safe_typing.private_constants definition_entry
-  | SectionLocalAssum of types Univ.in_universe_context_set * polymorphic * bool (** Implicit status *)
+  | SectionLocalAssum of types Sorts.in_universe_context_set * polymorphic * bool (** Implicit status *)
 
 type variable_declaration = DirPath.t * section_variable_entry * logical_kind
 
@@ -42,7 +42,7 @@ type internal_flag =
 (* Defaut definition entries, transparent with no secctx or proj information *)
 val definition_entry : ?fix_exn:Future.fix_exn ->
   ?opaque:bool -> ?inline:bool -> ?types:types ->
-  ?poly:polymorphic -> ?univs:Univ.universe_context ->
+  ?poly:polymorphic -> ?univs:Sorts.universe_context ->
   ?eff:Safe_typing.private_constants -> constr -> Safe_typing.private_constants definition_entry
 
 (** [declare_constant id cd] declares a global declaration
@@ -57,7 +57,7 @@ val declare_constant :
 val declare_definition : 
   ?internal:internal_flag -> ?opaque:bool -> ?kind:definition_object_kind ->
   ?local:bool -> ?poly:polymorphic -> Id.t -> ?types:constr -> 
-  constr Univ.in_universe_context_set -> constant
+  constr Sorts.in_universe_context_set -> constant
 
 (** Since transparent constants' side effects are globally declared, we
  *  need that *)
@@ -89,9 +89,9 @@ val exists_name : Id.t -> bool
 
 (** Global universe contexts, names and constraints *)
 
-val declare_universe_context : polymorphic -> Univ.universe_context_set -> unit
+val declare_universe_context : polymorphic -> Sorts.universe_context_set -> unit
 
 val do_universe : polymorphic -> Id.t Loc.located list -> unit
 val do_constraint : polymorphic ->
-  (Misctypes.glob_level * Univ.constraint_type * Misctypes.glob_level) list ->
+  (Misctypes.glob_level * Sorts.constraint_type * Misctypes.glob_level) list ->
   unit

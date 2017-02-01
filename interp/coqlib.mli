@@ -112,10 +112,10 @@ val build_sigma_set : coq_sigma_data delayed
 val build_sigma_type : coq_sigma_data delayed
 val build_sigma : coq_sigma_data delayed
 
-(* val build_sigma_type_in : Environ.env -> coq_sigma_data Univ.in_universe_context_set *)
-(* val build_sigma_in : Environ.env -> coq_sigma_data Univ.in_universe_context_set *)
-(* val build_prod_in : Environ.env -> coq_sigma_data Univ.in_universe_context_set *)
-(* val build_coq_eq_data_in : Environ.env -> coq_eq_data Univ.in_universe_context_set *)
+(* val build_sigma_type_in : Environ.env -> coq_sigma_data Sorts.in_universe_context_set *)
+(* val build_sigma_in : Environ.env -> coq_sigma_data Sorts.in_universe_context_set *)
+(* val build_prod_in : Environ.env -> coq_sigma_data Sorts.in_universe_context_set *)
+(* val build_coq_eq_data_in : Environ.env -> coq_eq_data Sorts.in_universe_context_set *)
 
 (** Non-dependent pairs in Set from Datatypes *)
 val build_prod : coq_sigma_data delayed

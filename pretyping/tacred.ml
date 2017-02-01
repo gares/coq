@@ -102,9 +102,9 @@ let isEvalRef env c = match kind_of_term c with
 
 let destEvalRefU c = match kind_of_term c with
   | Const (cst,u) ->  EvalConst cst, u
-  | Var id  -> (EvalVar id, Univ.Instance.empty)
-  | Rel n -> (EvalRel n, Univ.Instance.empty)
-  | Evar ev -> (EvalEvar ev, Univ.Instance.empty)
+  | Var id  -> (EvalVar id, Sorts.Instance.empty)
+  | Rel n -> (EvalRel n, Sorts.Instance.empty)
+  | Evar ev -> (EvalEvar ev, Sorts.Instance.empty)
   | _ -> anomaly (Pp.str "Not an unfoldable reference")
 
 let unsafe_reference_opt_value env sigma eval =
@@ -529,9 +529,9 @@ let match_eval_ref env constr =
   match kind_of_term constr with
   | Const (sp, u) when is_evaluable env (EvalConstRef sp) ->
       Some (EvalConst sp, u)
-  | Var id when is_evaluable env (EvalVarRef id) -> Some (EvalVar id, Univ.Instance.empty)
-  | Rel i -> Some (EvalRel i, Univ.Instance.empty)
-  | Evar ev -> Some (EvalEvar ev, Univ.Instance.empty)
+  | Var id when is_evaluable env (EvalVarRef id) -> Some (EvalVar id, Sorts.Instance.empty)
+  | Rel i -> Some (EvalRel i, Sorts.Instance.empty)
+  | Evar ev -> Some (EvalEvar ev, Sorts.Instance.empty)
   | _ -> None
 
 let match_eval_ref_value env sigma constr = 
@@ -1030,7 +1030,7 @@ let contextually byhead occs f env sigma t =
 let match_constr_evaluable_ref sigma c evref = 
   match kind_of_term c, evref with
   | Const (c,u), EvalConstRef c' when eq_constant c c' -> Some u
-  | Var id, EvalVarRef id' when id_eq id id' -> Some Univ.Instance.empty
+  | Var id, EvalVarRef id' when id_eq id id' -> Some Sorts.Instance.empty
   | _, _ -> None
 
 let substlin env sigma evalref n (nowhere_except_in,locs) c =

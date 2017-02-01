@@ -46,9 +46,9 @@ type signature_mismatch_error =
   | NotEqualInductiveAliases
   | NoTypeConstraintExpected
   | IncompatibleInstances
-  | IncompatibleUniverses of Univ.univ_inconsistency
+  | IncompatibleUniverses of Sorts.univ_inconsistency
   | IncompatiblePolymorphism of env * types * types
-  | IncompatibleConstraints of Univ.constraints
+  | IncompatibleConstraints of Sorts.constraints
 
 type module_typing_error =
   | SignatureMismatch of
@@ -329,10 +329,10 @@ let strengthen_const mp_from l cb resolver =
     let con = constant_of_delta_kn resolver kn in
     let u = 
       if cb.const_polymorphic then
-	let u = Univ.UContext.instance cb.const_universes in
-	let s = Univ.make_instance_subst u in
-	  Univ.subst_univs_level_instance s u
-      else Univ.Instance.empty
+	let u = Sorts.UContext.instance cb.const_universes in
+	let s = Sorts.Instance.make_subst u in
+	  Sorts.Instance.apply_subst (Sorts.level_subst_fn s) u
+      else Sorts.Instance.empty
     in
       { cb with
 	const_body = Def (Mod_subst.from_val (mkConstU (con,u)));

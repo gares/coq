@@ -64,7 +64,7 @@ type constant_def =
   | Def of constr Mod_subst.substituted   (** or a transparent global definition *)
   | OpaqueDef of Opaqueproof.opaque       (** or an opaque global definition *)
 
-type constant_universes = Univ.universe_context
+type constant_universes = Sorts.universe_context
 
 (** The [typing_flags] are instructions to the type-checker which
     modify its behaviour. The typing flags used in the type-checking
@@ -191,7 +191,7 @@ type mutual_inductive_body = {
 
     mind_polymorphic : bool; (** Is it polymorphic or not *)
 
-    mind_universes : Univ.universe_context; (** Local universe variables and constraints *)
+    mind_universes : Sorts.universe_context; (** Local universe variables and constraints *)
 
     mind_private : bool option; (** allow pattern-matching: Some true ok, Some false blocked *)
 
@@ -214,7 +214,7 @@ type ('ty,'a) functorize =
 
 type with_declaration =
   | WithMod of Id.t list * module_path
-  | WithDef of Id.t list * constr Univ.in_universe_context
+  | WithDef of Id.t list * constr Sorts.in_universe_context
 
 type module_alg_expr =
   | MEident of module_path
@@ -256,7 +256,7 @@ and module_body =
     mod_expr : module_implementation; (** implementation *)
     mod_type : module_signature; (** expanded type *)
     mod_type_alg : module_expression option; (** algebraic type *)
-    mod_constraints : Univ.ContextSet.t; (**
+    mod_constraints : Sorts.ContextSet.t; (**
       set of all universes constraints in the module  *)
     mod_delta : Mod_subst.delta_resolver; (**
       quotiented set of equivalent constants and inductive names *)

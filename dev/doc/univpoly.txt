@@ -6,7 +6,7 @@ projections introduces a few changes to the API of Coq. First and
 foremost, the term language changes, as global references now carry a
 universe level substitution:
 
-type 'a puniverses = 'a * Univ.Instance.t
+type 'a puniverses = 'a * Sorts.Instance.t
 type pconstant = constant puniverses
 type pinductive = inductive puniverses
 type pconstructor = constructor puniverses
@@ -34,8 +34,8 @@ universes etc.. Structures are hashconsed (with a hack to take care
 of the fact that deserialization breaks sharing). 
 
   Definitions (constants, inductives) now carry around not only 
-constraints but also the universes they introduced (a Univ.UContext.t).
-There is another kind of contexts [Univ.ContextSet.t], the latter has 
+constraints but also the universes they introduced (a Sorts.UContext.t).
+There is another kind of contexts [Sorts.ContextSet.t], the latter has
 a set of universes, while the former has serialized the levels in an
 array, and is used for polymorphic objects. Both have "reified" 
 constraints depending on global and local universes. 
@@ -132,7 +132,7 @@ them does not mean that the term are actually equal. This is used in
 unification but probably not necessary to the average programmer. 
 
 Another issue for ML programmers is that tables of constrs now usually
-need to take a [constr Univ.in_universe_context_set] instead, and
+need to take a [constr Sorts.in_universe_context_set] instead, and
 properly refresh the universes context when using the constr, e.g. using 
 Clenv.refresh_undefined_univs clenv or: 
 
@@ -144,7 +144,7 @@ val fresh_universe_context_set_instance : universe_context_set ->
 The substitution should be applied to the constr(s) under consideration, 
 and the context_set merged with the current evar_map with:
 
-val merge_context_set : rigid -> evar_map -> Univ.universe_context_set -> evar_map
+val merge_context_set : rigid -> evar_map -> Sorts.universe_context_set -> evar_map
 
 The [rigid] flag here should be [Evd.univ_flexible] most of the
 time. This means the universe levels of polymorphic objects in the

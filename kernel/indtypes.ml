@@ -356,7 +356,7 @@ let typecheck_inductive env mie =
       in
       let full_polymorphic () = 
         let is_natural =
-          if type_in_type env || Sorts.check_leq (universes env') infu def_level
+          if type_in_type env || Sorts.Graph.check_leq (universes env') infu def_level
           then if not (Sorts.is_prop def_level)
                then NoSquash
                else (* Prop has additional conditions on constructor shapes*)
@@ -393,7 +393,7 @@ let typecheck_inductive env mie =
             | NeverUnit | CondUnit _ -> Sorts.sup Sorts.set infu
             | AlwaysUnit -> infu
           in
-          let b = type_in_type env || Sorts.check_leq (universes env') infu s in
+          let b = type_in_type env || Sorts.Graph.check_leq (universes env') infu s in
           if not b then
             anomaly ~label:"check_inductive"
                     (Pp.str"Incorrect universe " ++
@@ -876,7 +876,7 @@ let build_inductive env p prv ctx env_ar paramsctxt kn isrecord isfinite inds nm
   let hyps = used_section_variables env inds in
   let nparamargs = Context.Rel.nhyps paramsctxt in
   let nparamsctxt = Context.Rel.length paramsctxt in
-  let subst, ctx = Univ.abstract_universes p ctx in
+  let subst, ctx = Sorts.abstract_sorts p ctx in
   let paramsctxt = Vars.subst_univs_level_context subst paramsctxt in
   let env_ar = 
     let ctx = Environ.rel_context env_ar in 
@@ -904,7 +904,7 @@ let build_inductive env p prv ctx env_ar paramsctxt kn isrecord isfinite inds nm
       | RegularArity (squash,ar,defs) ->
         let ar = RegularArity
 	  { mind_user_arity = Vars.subst_univs_level_constr subst ar; 
-            mind_sort = Sorts.subst_univs_level_sort subst defs; } in
+            mind_sort = Sorts.level_subst_sorts subst defs; } in
           ar, squash in
     (* Assigning VM tags to constructors *)
     let nconst, nblock = ref 0, ref 0 in
@@ -947,8 +947,8 @@ let build_inductive env p prv ctx env_ar paramsctxt kn isrecord isfinite inds nm
       (** The elimination criterion ensures that all projections can be defined. *)
       let u = 
 	if p then 
-	  subst_univs_level_instance subst (Univ.UContext.instance ctx)
-	else Univ.Instance.empty 
+	  Sorts.Instance.apply_subst (Sorts.level_subst_fn subst) (Sorts.UContext.instance ctx)
+	else Sorts.Instance.empty
       in
       let indsp = ((kn, 0), u) in
       let rctx, indty = decompose_prod_assum (subst1 (mkIndU indsp) pkt.mind_nf_lc.(0)) in

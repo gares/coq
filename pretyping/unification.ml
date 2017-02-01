@@ -565,11 +565,11 @@ let constr_cmp pb sigma flags t u =
   match cstrs with
   | Some cstrs ->
       begin try Evd.add_universe_constraints sigma cstrs, true
-      with Univ.UniverseInconsistency _ -> sigma, false
+      with Sorts.UniverseInconsistency _ -> sigma, false
       | Evd.UniversesDiffer -> 
 	if is_rigid_head flags t then 
 	  try Evd.add_universe_constraints sigma (force_eqs cstrs), true
-	  with Univ.UniverseInconsistency _ -> sigma, false
+	  with Sorts.UniverseInconsistency _ -> sigma, false
 	else sigma, false
       end
   | None ->

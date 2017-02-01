@@ -45,7 +45,7 @@ type coe_info_typ = {
   coe_value : constr;
   coe_type : types;
   coe_local : bool;
-  coe_context : Univ.universe_context_set;
+  coe_context : Sorts.universe_context_set;
   coe_is_identity : bool;
   coe_is_projection : bool;
   coe_param : int }
@@ -194,13 +194,13 @@ let coercion_exists coe = CoeTypMap.mem coe !coercion_tab
 let find_class_type sigma t =
   let t', args = Reductionops.whd_betaiotazeta_stack sigma t in
   match kind_of_term t' with
-    | Var id -> CL_SECVAR id, Univ.Instance.empty, args
+    | Var id -> CL_SECVAR id, Sorts.Instance.empty, args
     | Const (sp,u) -> CL_CONST sp, u, args
     | Proj (p, c) when not (Projection.unfolded p) ->
-      CL_PROJ (Projection.constant p), Univ.Instance.empty, c :: args
+      CL_PROJ (Projection.constant p), Sorts.Instance.empty, c :: args
     | Ind (ind_sp,u) -> CL_IND ind_sp, u, args
-    | Prod (_,_,_) -> CL_FUN, Univ.Instance.empty, []
-    | Sort _ -> CL_SORT, Univ.Instance.empty, []
+    | Prod (_,_,_) -> CL_FUN, Sorts.Instance.empty, []
+    | Sort _ -> CL_SORT, Sorts.Instance.empty, []
     |  _ -> raise Not_found
 
 

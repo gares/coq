@@ -144,10 +144,10 @@ let ic_unsafe c = (*FIXME remove *)
 
 let decl_constant na ctx c =
   let vars = Universes.universes_of_constr c in
-  let ctx = Universes.restrict_universe_context (Univ.ContextSet.of_context ctx) vars in
+  let ctx = Universes.restrict_universe_context (Sorts.ContextSet.of_context ctx) vars in
   mkConst(declare_constant (Id.of_string na) 
 	    (DefinitionEntry (definition_entry ~opaque:true
-				~univs:(Univ.ContextSet.to_context ctx) c),
+				~univs:(Sorts.ContextSet.to_context ctx) c),
 	     IsProof Lemma))
 
 (* Calling a global tactic *)

@@ -81,10 +81,10 @@ let process_inductive (sechyps,abs_ctx) modlist mib =
   let nparams = mib.mind_nparams in
   let subst, univs = 
     if mib.mind_polymorphic then 
-      let inst = Univ.UContext.instance mib.mind_universes in
-      let cstrs = Univ.UContext.constraints mib.mind_universes in
-	inst, Univ.UContext.make (inst, Univ.subst_instance_constraints inst cstrs)
-    else Univ.Instance.empty, mib.mind_universes
+      let inst = Sorts.UContext.instance mib.mind_universes in
+      let cstrs = Sorts.UContext.constraints mib.mind_universes in
+	inst, Sorts.UContext.make (inst, Sorts.subst_instance_constraints inst cstrs)
+    else Sorts.Instance.empty, mib.mind_universes
   in
   let inds =
     Array.map_to_list
@@ -103,8 +103,8 @@ let process_inductive (sechyps,abs_ctx) modlist mib =
       mib.mind_packets in
   let sechyps' = Context.Named.map (expmod_constr modlist) sechyps in
   let (params',inds') = abstract_inductive sechyps' nparams inds in
-  let abs_ctx = Univ.instantiate_univ_context abs_ctx in
-  let univs = Univ.UContext.union abs_ctx univs in
+  let abs_ctx = Sorts.instantiate_univ_context abs_ctx in
+  let univs = Sorts.UContext.union abs_ctx univs in
   let record = match mib.mind_record with
     | Some (Some (id, _, _)) -> Some (Some id)
     | Some None -> Some None

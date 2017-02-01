@@ -46,7 +46,7 @@ let hcons_template_arity ar =
 
 let instantiate cb c =
   if cb.const_polymorphic then 
-    Vars.subst_instance_constr (Univ.UContext.instance cb.const_universes) c
+    Vars.subst_instance_constr (Sorts.UContext.instance cb.const_universes) c
   else c
 
 let body_of_constant otab cb = match cb.const_body with
@@ -61,28 +61,28 @@ let type_of_constant cb =
       if t' == t then x else RegularArity t'
   | TemplateArity _ as x -> x
 
-let constraints_of_constant otab cb = Univ.Constraint.union 
-  (Univ.UContext.constraints cb.const_universes)
+let constraints_of_constant otab cb = Sorts.Constraint.union
+  (Sorts.UContext.constraints cb.const_universes)
   (match cb.const_body with
-  | Undef _ -> Univ.empty_constraint
-  | Def c -> Univ.empty_constraint
+  | Undef _ -> Sorts.Constraint.empty
+  | Def c -> Sorts.Constraint.empty
   | OpaqueDef o ->
-      Univ.ContextSet.constraints (Opaqueproof.force_constraints otab o))
+      Sorts.ContextSet.constraints (Opaqueproof.force_constraints otab o))
 
 let universes_of_constant otab cb = 
   match cb.const_body with
   | Undef _ | Def _ -> cb.const_universes
   | OpaqueDef o -> 
       let body_uctxs = Opaqueproof.force_constraints otab o in
-      assert(not cb.const_polymorphic || Univ.ContextSet.is_empty body_uctxs);
-      let uctxs = Univ.ContextSet.of_context cb.const_universes in
-      Univ.ContextSet.to_context (Univ.ContextSet.union body_uctxs uctxs) 
+      assert(not cb.const_polymorphic || Sorts.ContextSet.is_empty body_uctxs);
+      let uctxs = Sorts.ContextSet.of_context cb.const_universes in
+      Sorts.ContextSet.to_context (Sorts.ContextSet.union body_uctxs uctxs)
 
 let universes_of_polymorphic_constant otab cb = 
   if cb.const_polymorphic then 
     let univs = universes_of_constant otab cb in
-      Univ.instantiate_univ_context univs
-  else Univ.UContext.empty
+      Sorts.instantiate_univ_context univs
+  else Sorts.UContext.empty
 
 let constant_has_body cb = match cb.const_body with
   | Undef _ -> false
@@ -170,7 +170,7 @@ let hcons_const_body cb =
   { cb with
     const_body = hcons_const_def cb.const_body;
     const_type = hcons_const_type cb.const_type;
-    const_universes = Univ.hcons_universe_context cb.const_universes }
+    const_universes = Sorts.UContext.hcons cb.const_universes }
 
 (** {6 Inductive types } *)
 
@@ -267,13 +267,13 @@ let subst_mind_body sub mib =
 
 let inductive_instance mib =
   if mib.mind_polymorphic then
-    Univ.UContext.instance mib.mind_universes
-  else Univ.Instance.empty
+    Sorts.UContext.instance mib.mind_universes
+  else Sorts.Instance.empty
 
 let inductive_context mib =
   if mib.mind_polymorphic then 
-    Univ.instantiate_univ_context mib.mind_universes 
-  else Univ.UContext.empty
+    Sorts.instantiate_univ_context mib.mind_universes
+  else Sorts.UContext.empty
 
 (** {6 Hash-consing of inductive declarations } *)
 
@@ -305,7 +305,7 @@ let hcons_mind mib =
   { mib with
     mind_packets = Array.smartmap hcons_mind_packet mib.mind_packets;
     mind_params_ctxt = hcons_rel_context mib.mind_params_ctxt;
-    mind_universes = Univ.hcons_universe_context mib.mind_universes }
+    mind_universes = Sorts.UContext.hcons mib.mind_universes }
 
 (** {6 Stm machinery } *)
 
@@ -374,7 +374,7 @@ and hcons_module_body mb =
   let expr' = hcons_module_implementation mb.mod_expr in
   let type' = hcons_module_signature mb.mod_type in
   let type_alg' = mb.mod_type_alg in
-  let constraints' = Univ.hcons_universe_context_set mb.mod_constraints in
+  let constraints' = Sorts.ContextSet.hcons mb.mod_constraints in
   let delta' = mb.mod_delta in
   let retroknowledge' = mb.mod_retroknowledge in
 
