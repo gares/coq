@@ -11,7 +11,7 @@ open CErrors
 open Util
 open Names
 
-module Level =
+module TLevel =
   struct
     module Raw = struct
       type t =
@@ -128,11 +128,11 @@ module Level =
     let pr u = str (to_string u)
   end
 
-type truncation_level = Level.t
+type truncation_level = TLevel.t
 
 module TMap =
   struct
-    module M = HMap.Make (Level)
+    module M = HMap.Make (TLevel)
     include M
 
     let union l r =
@@ -156,7 +156,7 @@ module TMap =
 
     let pr f m =
       h 0 (prlist_with_sep fnl (fun (u, v) ->
-                             Level.pr u ++ f v) (bindings m))
+                             TLevel.pr u ++ f v) (bindings m))
   end
 
 type 'a truncation_map = 'a TMap.t
@@ -169,7 +169,7 @@ module TSet =
       Hashcons.Make(
           struct
             type t = TMap.Set.t
-            type u = Level.t -> Level.t
+            type u = TLevel.t -> TLevel.t
             let hashcons huc s =
 	      fold (fun x -> add (huc x)) s empty
             let eq s s' =
@@ -178,7 +178,7 @@ module TSet =
           end)
 
     let hcons =
-      Hashcons.simple_hcons Hset.generate Hset.hcons Level.hcons
+      Hashcons.simple_hcons Hset.generate Hset.hcons TLevel.hcons
 
     let pr prl s =
       str"{" ++ prlist_with_sep spc prl (elements s) ++ str"}"
@@ -188,7 +188,7 @@ type truncation_set = TSet.t
 
 module Truncation =
   struct
-    module M = Hashlist.Make(Level)
+    module M = Hashlist.Make(TLevel)
     type t = M.t
     open M
 
@@ -205,17 +205,17 @@ module Truncation =
         let hx = hash x and hy = hash y in
         let c = Int.compare hx hy in
         if c == 0 then
-          M.compare Level.compare x y
+          M.compare TLevel.compare x y
         else c
 
-    let of_level (l : Level.t) : t = M.tip l
+    let of_level (l : TLevel.t) : t = M.tip l
 
     let pr x =
       match x with
-      | Cons (u, _, Nil) -> Level.pr u
+      | Cons (u, _, Nil) -> TLevel.pr u
       | _ ->
          str "max(" ++ hov 0
-                           (prlist_with_sep pr_comma Level.pr (to_list x)) ++
+                           (prlist_with_sep pr_comma TLevel.pr (to_list x)) ++
            str")"
 
     let pr_with f x =
@@ -241,30 +241,30 @@ module Truncation =
 
     let level_rem u v min =
       match level v with
-      | Some u' -> if Level.equal u u' then min else v
+      | Some u' -> if TLevel.equal u u' then min else v
       | None -> remove u v
 
-    let hset = of_level Level.hset
-    let hinf = of_level Level.hinf
+    let hset = of_level TLevel.hset
+    let hinf = of_level TLevel.hinf
 
     let is_hset x = equal hset x
     let is_hinf x = equal hinf x
 
     let super _ = hinf
 
-    (* Add l to x which does not contain hset/hinf, keeping it sorted w.r.t. Level.compare *)
+    (* Add l to x which does not contain hset/hinf, keeping it sorted w.r.t. TLevel.compare *)
     let rec add_level_name l x =
       match x with
       | Nil -> of_level l
       | Cons (l', _, x') ->
-         let c = Level.compare l l' in
+         let c = TLevel.compare l l' in
          if c == 0 then x
          else if c < 0 then cons l x
          else cons l' (add_level_name l x')
 
     let add_level l x =
-      if Level.is_hset l then x
-      else if Level.is_hinf l || is_hinf x then hinf
+      if TLevel.is_hset l then x
+      else if TLevel.is_hinf l || is_hinf x then hinf
       else if is_hset x then of_level l
       else add_level_name l x
 
@@ -286,7 +286,7 @@ type truncation = Truncation.t
 
 (** Substitution *)
 
-type truncation_level_subst = Level.t truncation_map
+type truncation_level_subst = TLevel.t truncation_map
 
 type truncation_subst = truncation truncation_map
 
@@ -318,7 +318,7 @@ let subst_truncs_level_truncation_fn subst u =
   if u == u' then u
   else Truncation.sort u'
 
-type truncation_level_subst_fn = Level.t -> Level.t
+type truncation_level_subst_fn = TLevel.t -> TLevel.t
 type truncation_subst_fn = truncation_level -> truncation
 
 let make_trunc_subst subst = fun l -> TMap.find l subst
@@ -341,4 +341,4 @@ let pr_truncation_subst =
   TMap.pr (fun u -> str" := " ++ Truncation.pr u ++ spc ())
 
 let pr_truncation_level_subst =
-  TMap.pr (fun u -> str" := " ++ Level.pr u ++ spc ())
+  TMap.pr (fun u -> str" := " ++ TLevel.pr u ++ spc ())

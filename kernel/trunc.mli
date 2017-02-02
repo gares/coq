@@ -8,7 +8,7 @@
 
 (** Identity complexity. *)
 
-module Level :
+module TLevel :
 sig
   type t
   (** Type of truncation levels. A truncation level is essentially a unique name
@@ -44,22 +44,22 @@ sig
   val var_index : t -> int option
 end
 
-type truncation_level = Level.t
+type truncation_level = TLevel.t
 
 module TSet :
 sig
-  include CSig.SetS with type elt = Level.t
+  include CSig.SetS with type elt = TLevel.t
 
   val hcons : t -> t
 
-  val pr : (Level.t -> Pp.std_ppcmds) -> t -> Pp.std_ppcmds
+  val pr : (TLevel.t -> Pp.std_ppcmds) -> t -> Pp.std_ppcmds
 end
 
 type truncation_set = TSet.t
 
 module TMap :
 sig
-  include CMap.ExtS with type key = Level.t and module Set := TSet
+  include CMap.ExtS with type key = TLevel.t and module Set := TSet
 
   val union : 'a t -> 'a t -> 'a t
   (** [union x y] favors the bindings in the first map. *)
@@ -93,29 +93,29 @@ sig
   val hcons : t -> t
   (** Hash-consing *)
 
-  val of_level : Level.t -> t
+  val of_level : TLevel.t -> t
   (** Create a truncation representing the given level. *)
 
   val pr : t -> Pp.std_ppcmds
   (** Pretty-printing *)
 
-  val pr_with : (Level.t -> Pp.std_ppcmds) -> t -> Pp.std_ppcmds
+  val pr_with : (TLevel.t -> Pp.std_ppcmds) -> t -> Pp.std_ppcmds
 
   val is_level : t -> bool
   (** Test if the truncation is a level or an algebraic truncation. *)
 
-  val level : t -> Level.t option
+  val level : t -> TLevel.t option
   (** Try to get a level out of a truncation, returns [None] if it
       is an algebraic truncation. *)
 
   val levels : t -> TSet.t
   (** Get the levels inside the truncation *)
 
-  val level_mem : Level.t -> t -> bool
+  val level_mem : TLevel.t -> t -> bool
   (** [level_mem l u]: does l appear in u?
       Not meaningful for l=hset since that's neutral for sup. *)
 
-  val level_rem : Level.t -> t -> t -> t
+  val level_rem : TLevel.t -> t -> t -> t
   (** [level_rem u v min] removes [u] from [v], resulting in [min]
       if [v] was exactly [u]. *)
 
@@ -128,10 +128,10 @@ sig
   val is_hset : t -> bool
   val is_hinf : t -> bool
 
-  val fold : (Level.t -> 'a -> 'a) -> t -> 'a -> 'a
+  val fold : (TLevel.t -> 'a -> 'a) -> t -> 'a -> 'a
 
-  val exists : (Level.t -> bool) -> t -> bool
-  val for_all : (Level.t -> bool) -> t -> bool
+  val exists : (TLevel.t -> bool) -> t -> bool
+  val for_all : (TLevel.t -> bool) -> t -> bool
 end
 
 type truncation = Truncation.t
