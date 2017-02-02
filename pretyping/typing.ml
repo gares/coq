@@ -138,7 +138,7 @@ let check_allowed_sort env sigma indf c p =
   let ind,params = dest_ind_family indf in
   let pj = Retyping.get_judgment_of env sigma p in
   let sort = sort_of_arity env sigma pj.uj_type in
-  let ksort = Sorts.family sort in
+  let ksort = Sorts.family_of_sort sort in
   let specif = Global.lookup_inductive (fst ind) in
   let sorts = elim_sorts env specif params in
   if not (Sorts.family_mem sort sorts) then

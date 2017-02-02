@@ -21,13 +21,18 @@ sig
   val is_hinf : t -> bool
   val is_litteral : t -> bool
 
+  val apart : t -> t -> bool
+
   val equal : t -> t -> bool
   (** Equality function *)
+
+  val leq : t -> t -> bool
 
   val compare : t -> t -> int
   (** Comparison function *)
 
   val hash : t -> int
+  val hcons : t -> t
 
   val of_path : Names.DirPath.t -> int -> t
   (** Create a new level from a unique identifier and an associated
@@ -53,6 +58,8 @@ sig
   val hcons : t -> t
 
   val pr : (TLevel.t -> Pp.std_ppcmds) -> t -> Pp.std_ppcmds
+
+  val of_array : TLevel.t array -> t
 end
 
 type truncation_set = TSet.t

@@ -85,6 +85,8 @@ module TLevel =
     let hash x = x.hash
 
     let equal x y = x == y
+
+    (* For hashconsing *)
     let eq = equal
 
     let compare u v =
@@ -100,6 +102,14 @@ module TLevel =
     let is_hset x = equal hset x
     let is_hinf x = equal hinf x
     let is_litteral x = is_hset x || is_hinf x
+
+    let leq x y =
+      equal x y || is_hset x
+
+    let apart x y =
+      match x.data, y.data with
+      | Raw.HSet, Raw.HInf | Raw.HInf, Raw.HSet -> true
+      | _ -> false
 
     let of_path d i = make (Raw.Level (i, DirPath.hcons d))
 
@@ -182,6 +192,9 @@ module TSet =
 
     let pr prl s =
       str"{" ++ prlist_with_sep spc prl (elements s) ++ str"}"
+
+    let of_array l =
+      Array.fold_left (fun acc x -> add x acc) empty l
   end
 
 type truncation_set = TSet.t

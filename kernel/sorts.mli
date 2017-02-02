@@ -24,7 +24,6 @@ val hash : sorts -> int
 val is_set : sorts -> bool
 val is_prop : sorts -> bool
 val is_small : sorts -> bool
-val family : sorts -> family
 val family_mem : sorts -> family -> bool
 
 val hcons : sorts -> sorts
@@ -41,8 +40,9 @@ val sup : sorts -> sorts -> sorts
 val super : sorts -> sorts
 
 val univ_of_sort : sorts -> Univ.universe
+val trunc_of_sort : sorts -> Trunc.truncation
 
-type level_printer = Univ.Level.t -> Pp.std_ppcmds
+type level_printer = (Univ.Level.t -> Pp.std_ppcmds) * (Trunc.TLevel.t -> Pp.std_ppcmds)
 
 (** {6 Constraints. } *)
 type constraint_type = Graphgen.constraint_type = Lt | Le | Eq
@@ -50,14 +50,18 @@ type constraint_type = Graphgen.constraint_type = Lt | Le | Eq
 val pr_constraint_type : constraint_type -> Pp.std_ppcmds
 
 type univ_constraint = Univ.Level.t * constraint_type * Univ.Level.t
+type trunc_constraint = Trunc.TLevel.t * constraint_type * Trunc.TLevel.t
+
 type sort_constraint =
   | UnivConstraint of univ_constraint
+  | TruncConstraint of trunc_constraint
 
 module Constraint :
 sig
   include Set.S with type elt = sort_constraint
 
   val add_univ : univ_constraint -> t -> t
+  val add_trunc : trunc_constraint -> t -> t
 
   val pr : level_printer -> t -> Pp.std_ppcmds
 end
@@ -87,11 +91,20 @@ type 'a constraint_function = 'a -> 'a -> constraints -> constraints
   constraints...
  *)
 type univ_explanation = (constraint_type * Univ.universe) list
-type univ_inconsistency = constraint_type * Univ.universe * Univ.universe * univ_explanation option
+type univ_inconsistency =
+  constraint_type * Univ.universe * Univ.universe * univ_explanation option
 
-exception UniverseInconsistency of univ_inconsistency
+type trunc_explanation = (constraint_type * Trunc.truncation) list
+type trunc_inconsistency =
+  constraint_type * Trunc.truncation * Trunc.truncation * trunc_explanation option
 
-val explain_inconsistency : level_printer -> univ_inconsistency -> Pp.std_ppcmds
+type sort_inconsistency =
+  | UnivInconsistency of univ_inconsistency
+  | TruncInconsistency of trunc_inconsistency
+
+exception SortInconsistency of sort_inconsistency
+
+val explain_inconsistency : level_printer -> sort_inconsistency -> Pp.std_ppcmds
 
 val enforce_eq : sorts constraint_function
 val enforce_leq : sorts constraint_function
@@ -99,21 +112,25 @@ val univ_enforce_eq : Univ.Universe.t constraint_function
 val univ_enforce_leq : Univ.Universe.t constraint_function
 val univ_enforce_eq_level : Univ.Level.t constraint_function
 val univ_enforce_leq_level : Univ.Level.t constraint_function
+val trunc_enforce_eq : Trunc.Truncation.t constraint_function
+val trunc_enforce_leq : Trunc.Truncation.t constraint_function
+val trunc_enforce_eq_level : Trunc.TLevel.t constraint_function
+val trunc_enforce_leq_level : Trunc.TLevel.t constraint_function
 
 (** {6 Substitution. } *)
 
-type level_subst = Univ.universe_level_subst
+type level_subst = Univ.universe_level_subst * Trunc.truncation_level_subst
 val pr_level_subst : level_subst -> Pp.std_ppcmds
 val empty_level_subst : level_subst
 val is_empty_level_subst : level_subst -> bool
 
-type sort_subst = Univ.universe_subst
+type sort_subst = Univ.universe_subst * Trunc.truncation_subst
 val pr_sort_subst : sort_subst -> Pp.std_ppcmds
 val empty_sort_subst : sort_subst
 val is_empty_sort_subst : sort_subst -> bool
 
-type level_subst_fn = Univ.universe_level_subst_fn
-type sort_subst_fn = Univ.universe_subst_fn
+type level_subst_fn = Univ.universe_level_subst_fn * Trunc.truncation_level_subst_fn
+type sort_subst_fn = Univ.universe_subst_fn * Trunc.truncation_subst_fn
 
 val level_subst_fn : level_subst -> level_subst_fn
 val sort_subst_fn : sort_subst -> sort_subst_fn
@@ -133,8 +150,8 @@ sig
   val empty : t
   val is_empty : t -> bool
 
-  val of_array : Univ.Level.t array -> t
-  val to_array : t -> Univ.Level.t array
+  val of_arrays : (Univ.Level.t array * Trunc.TLevel.t array) -> t
+  val to_arrays : t -> Univ.Level.t array * Trunc.TLevel.t array
 
   val append : t -> t -> t
   (** To concatenate two instances, used for discharge *)
@@ -142,7 +159,7 @@ sig
   val equal : t -> t -> bool
   (** Equality *)
 
-  val length : t -> int
+  val lengths : t -> int * int
   (** Instance length *)
 
   val hcons : t -> t
@@ -164,7 +181,7 @@ sig
   val pr : level_printer -> t -> Pp.std_ppcmds
   (** Pretty-printing, no comments *)
 
-  val to_set : t -> Univ.USet.t
+  val to_sets : t -> Univ.USet.t * Trunc.TSet.t
   (** The set of levels in the instance *)
 end
 
@@ -205,6 +222,7 @@ sig
 
   exception AlreadyDeclared (* = Graphgen.AlreadyDeclared *)
   val add_universe : Univ.Level.t -> bool -> t -> t
+  val add_truncation : Trunc.TLevel.t -> bool -> t -> t
 
   (** Merge of constraints in a universes graph.
       The function [merge_constraints] merges a set of constraints in a given
@@ -231,6 +249,8 @@ sig
 
   val univ_check_eq : Univ.Universe.t check_function
   val univ_check_leq : Univ.Universe.t check_function
+  val trunc_check_eq : Trunc.Truncation.t check_function
+  val trunc_check_leq : Trunc.Truncation.t check_function
   val check_eq : sorts check_function
   val check_leq : sorts check_function
 
@@ -259,7 +279,7 @@ sig
   val union : t -> t -> t
 
   (* the number of universes in the context *)
-  val size : t -> int
+  val sizes : t -> int * int
 
   val hcons : t -> t
 
@@ -276,14 +296,14 @@ val instantiate_univ_constraints : sort_instance -> universe_context -> constrai
 
 module ContextSet :
 sig
-  type t = Univ.universe_set constrained
+  type t = (Univ.universe_set * Trunc.truncation_set) constrained
 
   val empty : t
   val is_empty : t -> bool
 
-  val singleton : Univ.Level.t -> t
+  val singleton : Univ.Level.t -> Trunc.TLevel.t -> t
   val of_instance : Instance.t -> t
-  val of_set : Univ.universe_set -> t
+  val of_sets : (Univ.universe_set * Trunc.truncation_set) -> t
 
   val equal : t -> t -> bool
   val union : t -> t -> t
@@ -294,6 +314,7 @@ sig
 
   val diff : t -> t -> t
   val add_universe : Univ.Level.t -> t -> t
+  val add_truncation : Trunc.TLevel.t -> t -> t
   val add_constraints : constraints -> t -> t
   val add_instance : Instance.t -> t -> t
 
@@ -302,7 +323,9 @@ sig
   val of_context : universe_context -> t
 
   val constraints : t -> constraints
-  val levels : t -> Univ.universe_set
+
+  val univ_levels : t -> Univ.universe_set
+  val trunc_levels : t -> Trunc.truncation_set
 
   val hcons : t -> t
 
@@ -323,12 +346,15 @@ val abstract_sorts : bool -> universe_context -> level_subst * universe_context
 
 (** Incomplete *)
 
-val of_level : Univ.Level.t -> sorts
-val level : sorts -> Univ.Level.t option
-val levels : sorts -> Univ.USet.t
-val level_mem : Univ.Level.t -> sorts -> bool
+val of_levels : Univ.Level.t -> Trunc.TLevel.t -> sorts
 
-val is_variable : sorts -> bool
+val univ_level : sorts -> Univ.Level.t option
+val univ_levels : sorts -> Univ.USet.t
+val univ_level_mem : Univ.Level.t -> sorts -> bool
+
+val trunc_level : sorts -> Trunc.TLevel.t option
+val trunc_levels : sorts -> Trunc.TSet.t
+val trunc_level_mem : Trunc.TLevel.t -> sorts -> bool
 
 val pr : sorts -> Pp.std_ppcmds
 val pr_with : level_printer -> sorts -> Pp.std_ppcmds

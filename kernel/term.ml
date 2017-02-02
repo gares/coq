@@ -97,7 +97,7 @@ let prop_sort = Sorts.prop
 let type1_sort  = Sorts.type1
 let sorts_ord = Sorts.compare
 let is_prop_sort = Sorts.is_prop
-let family_of_sort = Sorts.family
+let family_of_sort = Sorts.family_of_sort
 let univ_of_sort = Sorts.univ_of_sort
 
 (** {6 Term constructors. } *)
