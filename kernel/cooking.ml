@@ -178,13 +178,27 @@ let cook_constr { Opaqueproof.modlist ; abstract } c =
   abstract_constant_body (expmod c) hyps
 
 let lift_univs cb subst =
-  if cb.const_polymorphic && not (Univ.UMap.is_empty subst) then
+  if cb.const_polymorphic && not (Sorts.is_empty_level_subst subst) then
     let inst = Sorts.UContext.instance cb.const_universes in
     let cstrs = Sorts.UContext.constraints cb.const_universes in
-    let len = Univ.UMap.cardinal subst in
-    let subst = 
-      Array.fold_left_i (fun i acc v -> Univ.UMap.add (Univ.Level.var i) (Univ.Level.var (i + len)) acc)
-	subst (Sorts.Instance.to_array inst)
+    let subst =
+      let usubst, tsubst = subst in
+      let uinst, tinst = Sorts.Instance.to_arrays inst in
+      let usubst =
+        let ulen = Univ.UMap.cardinal usubst in
+        Array.fold_left_i
+          (fun i acc v ->
+            Univ.UMap.add (Univ.Level.var i) (Univ.Level.var (i + ulen)) acc)
+	  usubst uinst
+      in
+      let tsubst =
+        let tlen = Trunc.TMap.cardinal tsubst in
+        Array.fold_left_i
+          (fun i acc v ->
+            Trunc.TMap.add (Trunc.TLevel.var i) (Trunc.TLevel.var (i + tlen)) acc)
+	  tsubst tinst
+      in
+      usubst, tsubst
     in
     let cstrs' = Sorts.level_subst_constraints subst cstrs in
       subst, Sorts.UContext.make (inst,cstrs')

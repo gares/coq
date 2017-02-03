@@ -99,9 +99,14 @@ val universes_of_constant_body :
 (** Global universe name <-> level mapping *)
 type universe_names = 
   (Decl_kinds.polymorphic * Univ.universe_level) Idmap.t * Id.t Univ.UMap.t
+type truncation_names =
+  (Decl_kinds.polymorphic * Trunc.truncation_level) Idmap.t * Id.t Trunc.TMap.t
 
 val global_universe_names : unit -> universe_names
 val set_global_universe_names : universe_names -> unit
+
+val global_truncation_names : unit -> truncation_names
+val set_global_truncation_names : truncation_names -> unit
 
 (** {6 Compiled libraries } *)
 

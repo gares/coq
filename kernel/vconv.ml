@@ -93,16 +93,19 @@ and conv_atom env pb k a1 stk1 a2 stk2 cu =
         if Environ.polymorphic_ind ind1 env
         then
           let mib = Environ.lookup_mind mi env in
-	  let ulen = Sorts.UContext.size mib.Declarations.mind_universes in
+	  let ulen, tlen = Sorts.UContext.sizes mib.Declarations.mind_universes in
+          ignore(assert false); (* FIXME do something with truncations *)
           match stk1 , stk2 with
 	  | [], [] -> assert (Int.equal ulen 0); cu
 	  | Zapp args1 :: stk1' , Zapp args2 :: stk2' ->
 	     assert (ulen <= nargs args1);
              assert (ulen <= nargs args2);
 	     let u1 = Array.init ulen (fun i -> uni_lvl_val (arg args1 i)) in
+             let t1 = assert false in (* FIXME do something with truncations *)
 	     let u2 = Array.init ulen (fun i -> uni_lvl_val (arg args2 i)) in
-	     let u1 = Sorts.Instance.of_array u1 in
-	     let u2 = Sorts.Instance.of_array u2 in
+             let t2 = assert false in (* FIXME do something with truncations *)
+	     let u1 = Sorts.Instance.of_arrays (u1,t1) in
+	     let u2 = Sorts.Instance.of_arrays (u2,t2) in
 	     let cu = convert_instances ~flex:false u1 u2 cu in
              conv_arguments env ~from:ulen k args1 args2
 			    (conv_stack env k stk1' stk2' cu)

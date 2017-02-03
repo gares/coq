@@ -105,7 +105,7 @@ type signature_mismatch_error =
   | NotEqualInductiveAliases
   | NoTypeConstraintExpected
   | IncompatibleInstances
-  | IncompatibleUniverses of Sorts.univ_inconsistency
+  | IncompatibleUniverses of Sorts.sort_inconsistency
   | IncompatiblePolymorphism of env * types * types
   | IncompatibleConstraints of Sorts.constraints
 

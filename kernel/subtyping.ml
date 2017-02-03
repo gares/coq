@@ -252,37 +252,38 @@ let check_constant cst env mp1 l info1 cb2 spec2 subst1 subst2 =
        Gamma |- A |> T, Gamma |- A' |> T' and Gamma |- A=A' then T <= T').
        Hence they don't have to be checked again *)
 
-    let t1,t2 =
-      if isArity t2 then
-        let (ctx2,s2) = destArity t2 in
-        if is_small s2 || Sorts.is_variable s2
-        then t1, t2
-        else
-          (* The type in the interface is inferred and is made of algebraic
-             universes *)
-          begin try
-              let (ctx1,s1) = dest_arity env t1 in
-              if is_small s1 || not (Sorts.is_variable s1)
-              then
-                 (* Both types are inferred, no need to recheck them:
-                 cheat and collapse the types to Prop
-                 or the type in the interface is inferred, it may be the case
-                 that the type in the implementation is smaller because
-                 the body is more reduced. We safely collapse the upper
-                 type to Prop *)
-                 mkArity (ctx1,prop_sort), mkArity (ctx2,prop_sort)
-              else
-                (* The type in the interface is inferred and the type in the
-                 implementation is not inferred or is inferred but from a
-                 more reduced body so that it is just a variable. Since
-                 constraints of the form "univ <= max(...)" are not
-                 expressible in the system of algebraic universes: we fail
-                 (the user has to use an explicit type in the interface *)
-                 error NoTypeConstraintExpected
-            with NotArity ->
-              error err end
-      else
-        (t1,t2) in
+    (* TODO FIXME optimize this again *)
+    (* let t1,t2 = *)
+    (*   if isArity t2 then *)
+    (*     let (ctx2,s2) = destArity t2 in *)
+    (*     if is_small s2 || Sorts.is_variable s2 *)
+    (*     then t1, t2 *)
+    (*     else *)
+    (*       (\* The type in the interface is inferred and is made of algebraic *)
+    (*          universes *\) *)
+    (*       begin try *)
+    (*           let (ctx1,s1) = dest_arity env t1 in *)
+    (*           if is_small s1 || not (Sorts.is_variable s1) *)
+    (*           then *)
+    (*              (\* Both types are inferred, no need to recheck them: *)
+    (*              cheat and collapse the types to Prop *)
+    (*              or the type in the interface is inferred, it may be the case *)
+    (*              that the type in the implementation is smaller because *)
+    (*              the body is more reduced. We safely collapse the upper *)
+    (*              type to Prop *\) *)
+    (*              mkArity (ctx1,prop_sort), mkArity (ctx2,prop_sort) *)
+    (*           else *)
+    (*             (\* The type in the interface is inferred and the type in the *)
+    (*              implementation is not inferred or is inferred but from a *)
+    (*              more reduced body so that it is just a variable. Since *)
+    (*              constraints of the form "univ <= max(...)" are not *)
+    (*              expressible in the system of algebraic universes: we fail *)
+    (*              (the user has to use an explicit type in the interface *\) *)
+    (*              error NoTypeConstraintExpected *)
+    (*         with NotArity -> *)
+    (*           error err end *)
+    (*   else *)
+    (*     (t1,t2) in *)
       check_conv err cst poly u infer_conv_leq env t1 t2
   in
   match info1 with
@@ -302,7 +303,7 @@ let check_constant cst env mp1 l info1 cb2 spec2 subst1 subst2 =
 	  let ctx2 = Sorts.instantiate_univ_context cb2.const_universes in
 	  let inst1, ctx1 = Sorts.UContext.dest ctx1 in
 	  let inst2, ctx2 = Sorts.UContext.dest ctx2 in
-	    if not (Sorts.Instance.length inst1 == Sorts.Instance.length inst2) then
+	    if not (Sorts.Instance.lengths inst1 = Sorts.Instance.lengths inst2) then
 	      error IncompatibleInstances
 	    else 
 	      let cstrs = Sorts.enforce_eq_instances inst1 inst2 cst in
@@ -319,7 +320,7 @@ let check_constant cst env mp1 l info1 cb2 spec2 subst1 subst2 =
 		    if Sorts.Graph.check_constraints ctx1 (Environ.universes env) then
 		      cstrs, env, inst2
 		    else error (IncompatibleConstraints ctx1)
-		with Sorts.UniverseInconsistency incon ->
+		with Sorts.SortInconsistency incon ->
 		  error (IncompatibleUniverses incon)
 	else
 	  cst, env, Sorts.Instance.empty

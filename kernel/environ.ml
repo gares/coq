@@ -184,10 +184,16 @@ let push_constraints_to_env (_,univs) env =
   add_constraints univs env
 
 let add_universes strict ctx g =
+  let ua, ta = Sorts.Instance.to_arrays (Sorts.UContext.instance ctx) in
   let g = Array.fold_left
 	    (* Be lenient, module typing reintroduces universes and constraints due to includes *)
 	    (fun g v -> try Sorts.Graph.add_universe v strict g with Sorts.Graph.AlreadyDeclared -> g)
-	    g (Sorts.Instance.to_array (Sorts.UContext.instance ctx))
+	    g ua
+  in
+  let g = Array.fold_left
+	    (* Be lenient, module typing reintroduces universes and constraints due to includes *)
+	    (fun g v -> try Sorts.Graph.add_truncation v strict g with Sorts.Graph.AlreadyDeclared -> g)
+	    g ta
   in
     Sorts.Graph.merge_constraints (Sorts.UContext.constraints ctx) g
 			   
@@ -197,8 +203,13 @@ let push_context ?(strict=false) ctx env =
 let add_universes_set strict ctx g =
   let g = Univ.USet.fold
 	    (fun v g -> try Sorts.Graph.add_universe v strict g with Sorts.Graph.AlreadyDeclared -> g)
-	    (Sorts.ContextSet.levels ctx) g
-  in Sorts.Graph.merge_constraints (Sorts.ContextSet.constraints ctx) g
+	    (Sorts.ContextSet.univ_levels ctx) g
+  in
+  let g = Trunc.TSet.fold
+	    (fun v g -> try Sorts.Graph.add_truncation v strict g with Sorts.Graph.AlreadyDeclared -> g)
+	    (Sorts.ContextSet.trunc_levels ctx) g
+  in
+  Sorts.Graph.merge_constraints (Sorts.ContextSet.constraints ctx) g
 
 let push_context_set ?(strict=false) ctx env =
   map_universes (add_universes_set strict ctx) env

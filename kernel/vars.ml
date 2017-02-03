@@ -233,7 +233,7 @@ let subst_univs_fn_puniverses fn =
 let subst_univs_fn_constr f c =
   let changed = ref false in
   let fs = Sorts.subst_sorts f in
-  let fi = Sorts.Instance.apply_subst (Univ.univ_level_subst_of f) in
+  let fi = Sorts.Instance.apply_subst (Sorts.level_subst_fn_of f) in
   let rec aux t = 
     match kind t with
     | Sort s ->
@@ -258,9 +258,9 @@ let subst_univs_fn_constr f c =
     if !changed then c' else c
 
 let subst_univs_constr subst c =
-  if Univ.is_empty_univ_subst subst then c
+  if Sorts.is_empty_sort_subst subst then c
   else 
-    let f = Univ.make_univ_subst subst in
+    let f = Sorts.sort_subst_fn subst in
       subst_univs_fn_constr f c
 
 let subst_univs_constr = 
@@ -270,9 +270,9 @@ let subst_univs_constr =
   else subst_univs_constr
 
 let subst_univs_level_constr subst c =
-  if Univ.is_empty_univ_level_subst subst then c
+  if Sorts.is_empty_level_subst subst then c
   else 
-    let f = Sorts.Instance.apply_subst (Univ.subst_univs_level_level subst) in
+    let f = Sorts.Instance.apply_subst (Sorts.level_subst_fn subst) in
     let changed = ref false in
     let rec aux t = 
       match kind t with

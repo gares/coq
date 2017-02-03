@@ -208,7 +208,9 @@ let ppuni_level u = pp (Level.pr u)
 let ppuniverse u = pp (str"[" ++ Universe.pr u ++ str"]")
 
 let prlev = Universes.pr_with_global_universes
-let ppuniverse_set l = pp (USet.pr prlev l)
+let prulev = fst prlev
+let prtlev = snd prlev
+let ppuniverse_set l = pp (USet.pr prulev l)
 let ppuniverse_instance l = pp (Instance.pr prlev l)
 let ppuniverse_context l = pp (UContext.pr prlev l)
 let ppuniverse_context_set l = pp (ContextSet.pr prlev l)
@@ -216,12 +218,12 @@ let ppuniverse_subst l = pp (Univ.pr_universe_subst l)
 let ppuniverse_opt_subst l = pp (Universes.pr_universe_opt_subst l)
 let ppuniverse_level_subst l = pp (Univ.pr_universe_level_subst l)
 let ppevar_universe_context l = pp (Evd.pr_evar_universe_context l)
-let ppconstraints c = pp (Constraint.pr Level.pr c)
+let ppconstraints c = pp (Constraint.pr prlev c)
 let ppuniverseconstraints c = pp (Universes.Constraints.pr c)
 let ppuniverse_context_future c = 
   let ctx = Future.force c in
     ppuniverse_context ctx
-let ppuniverses u = pp (Sorts.Graph.pr Level.pr u)
+let ppuniverses u = pp (Sorts.Graph.pr prlev u)
 let ppnamedcontextval e =
   pp (pr_named_context (Global.env ()) Evd.empty (named_context_of_val e))
 
@@ -300,6 +302,9 @@ let constr_display csr =
   and level_display u =
     incr cnt; pp (str "with " ++ int !cnt ++ str" " ++ Level.pr u ++ fnl ())
 
+  and tlevel_display u =
+    incr cnt; pp (str "with " ++ int !cnt ++ str" " ++ Trunc.TLevel.pr u ++ fnl ())
+
   and sort_display s =
     if Sorts.is_prop s then "Prop(Pos)"
     else if Sorts.is_set s then "Prop(Null)"
@@ -309,9 +314,19 @@ let constr_display csr =
         "Type("^(string_of_int !cnt)^")"
       end
 
-  and universes_display l = 
-    Array.fold_right (fun x i -> level_display x; (string_of_int !cnt)^(if not(i="")
-        then (" "^i) else "")) (Instance.to_array l) ""
+  and universes_display l =
+    let ul, tl = Instance.to_arrays l in
+    ""
+    |> Array.fold_right
+            (fun x i -> level_display x;
+                       (string_of_int !cnt)^
+                         (if not(i="") then (" "^i) else ""))
+            ul
+    |>  Array.fold_right
+          (fun x i -> tlevel_display x;
+                     (string_of_int !cnt)^
+                       (if not(i="") then (" "^i) else ""))
+          tl
 
   and name_display = function
     | Name id -> "Name("^(Id.to_string id)^")"
@@ -421,7 +436,9 @@ let print_pure_constr csr =
   and box_display c = open_hovbox 1; term_display c; close_box()
 
   and universes_display u =
-    Array.iter (fun u -> print_space (); pp (Level.pr u)) (Instance.to_array u)
+    let au, at = Instance.to_arrays u in
+    Array.iter (fun u -> print_space (); pp (Level.pr u)) au;
+    Array.iter (fun u -> print_space (); pp (Trunc.TLevel.pr u)) at
 
   and sort_display s =
     if Sorts.is_set s then print_string "Set"

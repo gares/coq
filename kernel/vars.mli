@@ -125,16 +125,16 @@ val subst_var : Id.t -> constr -> constr
 
 open Univ
 
-val subst_univs_fn_constr : universe_subst_fn -> constr -> constr
-val subst_univs_fn_puniverses : universe_level_subst_fn -> 
+val subst_univs_fn_constr : Sorts.sort_subst_fn -> constr -> constr
+val subst_univs_fn_puniverses : Sorts.level_subst_fn ->
   'a puniverses -> 'a puniverses
 
-val subst_univs_constr : universe_subst -> constr -> constr
+val subst_univs_constr : Sorts.sort_subst -> constr -> constr
 
 (** Level substitutions for polymorphism. *)
 
-val subst_univs_level_constr : universe_level_subst -> constr -> constr
-val subst_univs_level_context : Univ.universe_level_subst -> Context.Rel.t -> Context.Rel.t
+val subst_univs_level_constr : Sorts.level_subst -> constr -> constr
+val subst_univs_level_context : Sorts.level_subst -> Context.Rel.t -> Context.Rel.t
 
 (** Instance substitution for polymorphism. *)
 val subst_instance_constr : Sorts.sort_instance -> constr -> constr

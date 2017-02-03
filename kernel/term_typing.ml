@@ -201,7 +201,7 @@ let infer_declaration ~trust env kn dcl =
             let j = infer env' body in
             unzip ectx j in
           let j = hcons_j j in
-	  let subst = Univ.UMap.empty in
+	  let subst = Sorts.empty_level_subst in
           let _typ = constrain_type env' j c.const_entry_polymorphic subst
 	    (`SomeWJ (typ,tyj)) in
           feedback_completion_typecheck feedback_id;

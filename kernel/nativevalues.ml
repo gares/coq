@@ -105,13 +105,13 @@ let napply (f:t) (args: t array) =
   Array.fold_left (fun f a -> f a) f args
 
 let mk_constant_accu kn u = 
-  mk_accu (Aconstant (kn,Sorts.Instance.of_array u))
+  mk_accu (Aconstant (kn,Sorts.Instance.of_arrays u))
 
 let mk_ind_accu ind u = 
-  mk_accu (Aind (ind,Sorts.Instance.of_array u))
+  mk_accu (Aind (ind,Sorts.Instance.of_arrays u))
 
 let mk_sort_accu s u =
-  let u = Sorts.Instance.of_array u in
+  let u = Sorts.Instance.of_arrays u in
   let s = Sorts.subst_instance_sort u s in
   mk_accu (Asort s)
 

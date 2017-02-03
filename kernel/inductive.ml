@@ -9,7 +9,6 @@
 open CErrors
 open Util
 open Names
-open Univ
 open Term
 open Vars
 open Declarations
@@ -411,8 +410,9 @@ let rec ienv_decompose_prod (env,_ as ienv) n c =
      | _ -> assert false
 
 let lambda_implicit_lift n a =
-  let level = Level.make (DirPath.make [Id.of_string "implicit"]) 0 in
-  let implicit_sort = mkSort (Sorts.of_level level) in
+  let ulevel = Univ.Level.make (DirPath.make [Id.of_string "implicit"]) 0 in
+  let tlevel = Trunc.TLevel.of_path (DirPath.make [Id.of_string "implicit"]) 0 in
+  let implicit_sort = mkSort (Sorts.of_levels ulevel tlevel) in
   let lambda_implicit a = mkLambda (Anonymous, implicit_sort, a) in
   iterate lambda_implicit n (lift n a)
 

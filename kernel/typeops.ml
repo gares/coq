@@ -547,13 +547,24 @@ let type_of_projection_constant env (p,u) =
 
 (* Make a type polymorphic if an arity *)
 
-let extract_level env p =
+let extract_univ_level env p =
   let _,c = dest_prod_assum env p in
-  match kind_of_term c with Sort u -> Sorts.level u | _ -> None
+  match kind_of_term c with Sort u -> Sorts.univ_level u | _ -> None
 
-let extract_context_levels env l =
+let extract_context_univ_levels env l =
   let fold l = function
-    | RelDecl.LocalAssum (_,p) -> extract_level env p :: l
+    | RelDecl.LocalAssum (_,p) -> extract_univ_level env p :: l
+    | RelDecl.LocalDef _ -> l
+  in
+  List.fold_left fold [] l
+
+let extract_trunc_level env p =
+  let _,c = dest_prod_assum env p in
+  match kind_of_term c with Sort u -> Sorts.trunc_level u | _ -> None
+
+let extract_context_trunc_levels env l =
+  let fold l = function
+    | RelDecl.LocalAssum (_,p) -> extract_trunc_level env p :: l
     | RelDecl.LocalDef _ -> l
   in
   List.fold_left fold [] l
@@ -567,8 +578,11 @@ let make_polymorphic_if_constant_for_ind env {uj_val = c; uj_type = t} =
        let mis = lookup_mind_specif env (fst (destInd ind)) in
        let nparams = Preinductive.inductive_params mis in
        let paramsl = CList.lastn nparams params in
-       let param_ccls = extract_context_levels env paramsl in
-       let s = { template_param_levels = param_ccls; template_level = u} in
+       let param_univ_ccls = extract_context_univ_levels env paramsl in
+       let param_trunc_ccls = extract_context_trunc_levels env paramsl in
+       let s = { template_param_univ_levels = param_univ_ccls;
+                 template_param_trunc_levels = param_trunc_ccls;
+                 template_level = u} in
        TemplateArity (params,s)
      else RegularArity t
   | _ ->

@@ -118,6 +118,8 @@ let super s =
 
 type level_printer = (Level.t -> Pp.std_ppcmds) * (TLevel.t -> Pp.std_ppcmds)
 
+let default_level_printer : level_printer = Level.pr, TLevel.pr
+
 let prl_u (prl:level_printer) = fst prl
 let prl_t (prl:level_printer) = snd prl
 
@@ -163,6 +165,42 @@ type sort_constraint =
   | UnivConstraint of univ_constraint
   | TruncConstraint of trunc_constraint
 
+module UConstraintOrd =
+  struct
+    type t = univ_constraint
+    let compare = compare_univ_constraint
+  end
+
+module UConstraint = struct
+  module M = Set.Make(UConstraintOrd)
+  include M
+
+  let pr prl c =
+    let open Pp in
+    fold
+      (fun (u,op,v) pp_std ->
+        pp_std ++ prl u ++ pr_constraint_type op ++ prl v ++ fnl ())
+      c (str "")
+end
+
+module TConstraintOrd =
+  struct
+    type t = trunc_constraint
+    let compare = compare_trunc_constraint
+  end
+
+module TConstraint = struct
+  module M = Set.Make(TConstraintOrd)
+  include M
+
+  let pr prl c =
+    let open Pp in
+    fold
+      (fun (u,op,v) pp_std ->
+        pp_std ++ prl u ++ pr_constraint_type op ++ prl v ++ fnl ())
+      c (str "")
+end
+
 module ConstraintOrd =
   struct
     type t = sort_constraint
@@ -195,6 +233,19 @@ module Constraint = struct
 end
 
 type constraints = Constraint.t
+
+let split_constraints csts =
+  Constraint.fold
+    (fun cstr (ucsts, tcsts) ->
+      match cstr with
+      | UnivConstraint cstr -> UConstraint.add cstr ucsts, tcsts
+      | TruncConstraint cstr -> ucsts, TConstraint.add cstr tcsts)
+    csts (UConstraint.empty, TConstraint.empty)
+
+let merge_constraints ucsts tcsts =
+  Constraint.empty
+  |> UConstraint.fold Constraint.add_univ ucsts
+  |> TConstraint.fold Constraint.add_trunc tcsts
 
 module Hconstraint =
   Hashcons.Make(
@@ -410,6 +461,9 @@ let is_empty_sort_subst (su,st) =
 type level_subst_fn = universe_level_subst_fn * truncation_level_subst_fn
 type sort_subst_fn = universe_subst_fn * truncation_subst_fn
 
+let level_subst_fn_of (su,st) =
+  Univ.univ_level_subst_of su, Trunc.trunc_level_subst_of st
+
 let level_subst_fn (su,st) = subst_univs_level_level su, subst_truncs_level_level st
 let sort_subst_fn (su,st) = make_univ_subst su, make_trunc_subst st
 
@@ -419,17 +473,33 @@ let level_subst_sorts (su,st) s =
 let level_subst_sorts_fn (su, st) s =
   make (subst_univs_level_universe_fn su s.univ) (subst_truncs_level_truncation_fn st s.trunc)
 
+let univ_level_subst_constraint subst (u,d,v) =
+  let u' = subst_univs_level_level subst u in
+  let v' = subst_univs_level_level subst v in
+  if d != Lt && Level.equal u' v' then None
+  else Some (u',d,v')
+
+let trunc_level_subst_constraint subst (u,d,v) =
+  let u' = subst_truncs_level_level subst u in
+  let v' = subst_truncs_level_level subst v in
+  if d != Lt && TLevel.equal u' v' then None
+  else Some (u', d, v')
+
 let level_subst_constraint subst = function
-  | UnivConstraint (u,d,v) ->
-     let u' = subst_univs_level_level (fst subst) u in
-     let v' = subst_univs_level_level (fst subst) v in
-     if d != Lt && Level.equal u' v' then None
-     else Some (UnivConstraint (u', d, v'))
-  | TruncConstraint (u,d,v) ->
-     let u' = subst_truncs_level_level (snd subst) u in
-     let v' = subst_truncs_level_level (snd subst) v in
-     if d != Lt && TLevel.equal u' v' then None
-     else Some (TruncConstraint (u', d, v'))
+  | UnivConstraint c ->
+     Option.map (fun c -> UnivConstraint c) (univ_level_subst_constraint (fst subst) c)
+  | TruncConstraint c ->
+     Option.map (fun c -> TruncConstraint c) (trunc_level_subst_constraint (snd subst) c)
+
+let univ_level_subst_constraints subst cs =
+  UConstraint.fold
+    (fun c -> Option.fold_right UConstraint.add (univ_level_subst_constraint subst c))
+  cs UConstraint.empty
+
+let trunc_level_subst_constraints subst cs =
+  TConstraint.fold
+    (fun c -> Option.fold_right TConstraint.add (trunc_level_subst_constraint subst c))
+  cs TConstraint.empty
 
 let level_subst_constraints subst cs =
   Constraint.fold
@@ -472,7 +542,8 @@ let subst_constraints fn cs =
 (** Instances. *)
 
 module Instance = struct
-  type t = Level.t array * TLevel.t array
+  type raw = Level.t array * TLevel.t array
+  type t = raw
 
   let empty = [| |], [| |]
 

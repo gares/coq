@@ -772,7 +772,7 @@ let eq_constr_univs_test sigma1 sigma2 t u =
   let open Evd in
   let fold cstr sigma =
     try Some (add_universe_constraints sigma cstr)
-    with Sorts.UniverseInconsistency _ | UniversesDiffer -> None
+    with Sorts.SortInconsistency _ | UniversesDiffer -> None
   in
   let ans =
     Universes.eq_constr_univs_infer_with

@@ -616,9 +616,11 @@ let rec compile_constr reloc c sz cont =
     if Sorts.Instance.is_empty u then
       compile_str_cst reloc bcst sz cont
     else
+      let ua, ta = Sorts.Instance.to_arrays u in
+      ignore(assert false); (* FIXME do something with truncations *)
       comp_app compile_str_cst compile_universe reloc
 	   bcst
-	   (Sorts.Instance.to_array u)
+	   ua
 	   sz
 	   cont
   | Construct _ ->
@@ -628,7 +630,8 @@ let rec compile_constr reloc c sz cont =
         of the structured constant, while the later (if any) will be applied as
         arguments. *)
      let open Univ in begin
-      let levels = Sorts.levels u in
+      let levels = Sorts.univ_levels u in
+      let _tlevels = Sorts.trunc_levels u in (* FIXME do something with this *)
       let global_levels =
 	USet.filter (fun x -> Level.var_index x = None) levels
       in
@@ -638,7 +641,9 @@ let rec compile_constr reloc c sz cont =
       in
       (* We assume that [Universe.type0m] is a neutral element for [Universe.sup] *)
       let uglob =
-        USet.fold (fun lvl u -> Sorts.sup u (Sorts.of_level lvl)) global_levels Sorts.prop
+        USet.fold (fun lvl u -> Sorts.sup u (Sorts.of_levels lvl Trunc.TLevel.hset))
+                  (* FIXME use some tlevels thing instead of this *)
+                  global_levels Sorts.prop
       in
       if local_levels = [] then
         compile_str_cst reloc (Bstrconst (Const_sorts uglob)) sz cont
@@ -874,8 +879,11 @@ and compile_get_global reloc (kn,u) sz cont =
   if Sorts.Instance.is_empty u then
     Kgetglobal kn :: cont
   else
+    let ua, ta = Sorts.Instance.to_arrays u in
+    ignore(assert false);
+    (* FIXME do something with ta *)
     comp_app (fun _ _ _ cont -> Kgetglobal kn :: cont)
-      compile_universe reloc () (Sorts.Instance.to_array u) sz cont
+      compile_universe reloc () ua sz cont
 
 and compile_universe reloc uni sz cont =
   set_max_stack_size sz;
@@ -907,24 +915,26 @@ and compile_const reloc kn u args sz cont =
           | ArgConstr cst -> compile_constr reloc cst sz cont
           | ArgUniv uni -> compile_universe reloc uni sz cont
         in
-	let u = Sorts.Instance.to_array u in
-	let lu = Array.length u in
+	let ua, ta = Sorts.Instance.to_arrays u in
+        ignore (assert false); (* FIXME do something wit truncations *)
+	let lu = Array.length ua in
 	let all =
 	  Array.init (lu + Array.length args) 
-	    (fun i -> if i < lu then ArgUniv u.(i) else ArgConstr args.(i-lu))
+	    (fun i -> if i < lu then ArgUniv ua.(i) else ArgConstr args.(i-lu))
 	in
         comp_app (fun _ _ _ cont -> Kgetglobal kn :: cont)
           compile_arg reloc () all sz cont
 
 let is_univ_copy max u =
-  let u = Sorts.Instance.to_array u in
-  if Array.length u = max then
+  let ua, ta = Sorts.Instance.to_arrays u in
+  ignore(assert false); (* FIXME do something with truncations *)
+  if Array.length ua = max then
     Array.fold_left_i (fun i acc u ->
         if acc then
           match Univ.Level.var_index u with
           | None -> false
           | Some l -> l = i
-        else false) true u
+        else false) true ua
   else
     false
 
@@ -993,7 +1003,10 @@ let compile_constant_body fail_on_error env univs = function
       let instance_size =
         match univs with
         | None -> 0
-        | Some univ -> Sorts.UContext.size univ
+        | Some univ ->
+           let su, st = Sorts.UContext.sizes univ in
+           ignore(assert false); (* FIXME do something with truncations *)
+           su
       in
       match kind_of_term body with
 	| Const (kn',u) when is_univ_copy instance_size u ->

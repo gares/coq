@@ -256,15 +256,18 @@ let is_impredicative env u =
    from the most recent and ignoring let-definitions) is not contributing 
    or is Some u_k if its level is u_k and is contributing. *)
 let param_ccls paramsctxt =
-  let fold acc = function
+  let fold (accu, acct as acc) = function
     | (LocalAssum (_, p)) ->
-      (let c = strip_prod_assum p in
-      match kind_of_term c with
-        | Sort u -> Sorts.level u
-        | _ -> None) :: acc
+       let u, t =
+         let c = strip_prod_assum p in
+         match kind_of_term c with
+         | Sort u -> Sorts.univ_level u, Sorts.trunc_level u
+         | _ -> None, None
+       in
+       u :: accu, t :: acct
     | LocalDef _ -> acc
   in
-  List.fold_left fold [] paramsctxt
+  List.fold_left fold ([],[]) paramsctxt
 
 let squash_from_level target =
   if Sorts.is_prop target
@@ -898,8 +901,10 @@ let build_inductive env p prv ctx env_ar paramsctxt kn isrecord isfinite inds nm
     (* Elimination sorts *)
     let arkind,kelim = 
       match ar_kind with
-      | TemplateArity (paramlevs, lev) -> 
-	let ar = {template_param_levels = paramlevs; template_level = lev} in
+      | TemplateArity ((ulvls, tlvls), lev) ->
+	 let ar = {template_param_univ_levels = ulvls;
+                   template_param_trunc_levels = tlvls;
+                   template_level = lev} in
           TemplateArity ar, NoSquash
       | RegularArity (squash,ar,defs) ->
         let ar = RegularArity

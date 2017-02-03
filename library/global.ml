@@ -241,6 +241,16 @@ let global_universes =
 let global_universe_names () = !global_universes
 let set_global_universe_names s = global_universes := s
 
+type truncation_names =
+  (polymorphic * Trunc.truncation_level) Idmap.t * Id.t Trunc.TMap.t
+
+let global_truncations =
+  Summary.ref ~name:"Global truncation names"
+  ((Idmap.empty, Trunc.TMap.empty) : truncation_names)
+
+let global_truncation_names () = !global_truncations
+let set_global_truncation_names s = global_truncations := s
+
 let is_polymorphic r = 
   let env = env() in 
   match r with

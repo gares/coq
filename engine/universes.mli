@@ -10,6 +10,7 @@ open Util
 open Names
 open Environ
 open Univ
+open Trunc
 open Sorts
 open Constr
 
@@ -22,21 +23,22 @@ val pr_with_global_universes : Sorts.level_printer
 
 (** Local universe name <-> level mapping *)
 
-type universe_binders = (Id.t * Univ.universe_level) list
+type universe_binders =
+  { univ_binders : (Id.t * Univ.universe_level) list
+  ; trunc_binders : (Id.t * Trunc.truncation_level) list }
 					   
 val register_universe_binders : Globnames.global_reference -> universe_binders -> unit
 val universe_binders_of_global : Globnames.global_reference -> universe_binders
 
 (** The global universe counter *)
 val set_remote_new_univ_level : universe_level RemoteCounter.installer
+val set_remote_new_trunc_level : truncation_level RemoteCounter.installer
 
 (** Side-effecting functions creating new universe levels. *)
 
 val new_univ_level : unit -> universe_level
-(* val new_univ : Names.dir_path -> universe *)
-(* val new_Type : Names.dir_path -> types *)
+val new_trunc_level : unit -> truncation_level
 
-val new_global_univ : unit -> universe in_universe_context_set
 val new_global_sort : unit -> Sorts.t in_universe_context_set
 val new_sort_in_family : Sorts.family -> Sorts.t
 
@@ -49,10 +51,17 @@ val new_sort_in_family : Sorts.family -> Sorts.t
 
 type universe_constraint_type = ULe | UEq | ULub
 
-type universe_constraint = Sorts.t * universe_constraint_type * Sorts.t
+type universe_constraint = universe * universe_constraint_type * universe
+type truncation_constraint = truncation * universe_constraint_type * truncation
+type sort_constraint =
+  | UnivConstraint of universe_constraint
+  | TruncConstraint of truncation_constraint
+
 module Constraints : sig
-  include Set.S with type elt = universe_constraint
-		       
+  include Set.S with type elt = sort_constraint
+
+  val add_sort : sorts * universe_constraint_type * sorts -> t -> t
+
   val pr : t -> Pp.std_ppcmds
 end
 
@@ -123,7 +132,7 @@ val fresh_global_or_constr_instance : env -> Globnames.global_reference_or_const
 (** Get fresh variables for the universe context.
     Useful to make tactics that manipulate constrs in universe contexts polymorphic. *)
 val fresh_universe_context_set_instance : universe_context_set -> 
-  universe_level_subst * universe_context_set
+  Sorts.level_subst * universe_context_set
 
 (** Raises [Not_found] if not a global reference. *)
 val global_of_constr : constr -> Globnames.global_reference puniverses
@@ -148,25 +157,24 @@ val extend_context : 'a in_universe_context_set -> universe_context_set ->
 
 (* module UF : Unionfind.PartitionSig with type elt = universe_level *)
 
-type universe_opt_subst = universe option universe_map
+type universe_opt_subst = universe option universe_map * truncation option truncation_map
 
 val subst_opt_univs_constr : universe_opt_subst -> constr -> constr
 
 val normalize_context_set : universe_context_set -> 
   universe_opt_subst (* The defined and undefined variables *) ->
-  universe_set (* univ variables that can be substituted by algebraics *) -> 
+  universe_set (* univ variables that can be substituted by algebraics *) ->
   (universe_opt_subst * universe_set) in_universe_context_set
 
-val normalize_univ_variables : universe_opt_subst -> 
-  universe_opt_subst * universe_set * universe_set * universe_subst
+val normalize_variables :
+  universe_opt_subst ->
+  universe_opt_subst
+  * universe_set * universe_set
+  * truncation_set * truncation_set
+  * sort_subst
 
-val normalize_univ_variable : 
-  find:(universe_level -> universe) ->
-  update:(universe_level -> universe -> universe) ->
-  universe_level -> universe
-
-val normalize_univ_variable_opt_subst : universe_opt_subst ref ->
-  (universe_level -> universe)
+val normalize_sort_variables_opt_subst : universe_opt_subst ref ->
+  Sorts.sort_subst_fn
 
 val normalize_universe_opt_subst : universe_opt_subst ref ->
   (universe -> universe)
@@ -207,8 +215,10 @@ val nf_evars_and_universes_opt_subst : (existential -> constr option) ->
 
 (** Shrink a universe context to a restricted set of variables *)
 
-val universes_of_constr : constr -> universe_set
-val restrict_universe_context : universe_context_set -> universe_set -> universe_context_set
+val universes_of_constr : constr -> universe_set * truncation_set
+val restrict_universe_context : universe_context_set ->
+                                universe_set -> truncation_set ->
+                                universe_context_set
 val simplify_universe_context : universe_context_set -> 
   universe_context_set * Sorts.level_subst
 

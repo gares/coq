@@ -399,7 +399,7 @@ let find_opening_node id =
 type variable_info = Context.Named.Declaration.t * Decl_kinds.binding_kind
 
 type variable_context = variable_info list
-type abstr_info = variable_context * Univ.universe_level_subst * Sorts.UContext.t
+type abstr_info = variable_context * Sorts.level_subst * Sorts.UContext.t
 		  
 type abstr_list = abstr_info Names.Cmap.t * abstr_info Names.Mindmap.t
 

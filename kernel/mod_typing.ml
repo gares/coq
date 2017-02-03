@@ -97,7 +97,7 @@ let rec check_with_def env struc (idl,(c,ctx)) mp equiv =
 	  let cus, ccst = Sorts.UContext.dest uctx in
 	  let newus, cst = Sorts.UContext.dest ctx in
 	  let () =
-	    if not (Sorts.Instance.length cus == Sorts.Instance.length newus) then
+	    if not (Sorts.Instance.lengths cus = Sorts.Instance.lengths newus) then
 	      error_incorrect_with_constraint lab
 	  in
 	  let inst = Sorts.Instance.append cus newus in

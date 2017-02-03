@@ -28,7 +28,8 @@ type engagement = set_predicativity
 *)
 
 type template_arity = {
-  template_param_levels : Univ.universe_level option list;
+  template_param_univ_levels : Univ.universe_level option list;
+  template_param_trunc_levels : Trunc.truncation_level option list;
   template_level : Sorts.t;
 }
 

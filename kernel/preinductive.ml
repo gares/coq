@@ -101,22 +101,33 @@ Remark: Set (predicative) is encoded as Type(0)
 (* cons_subst add the mapping [u |-> su] in subst if [u] is not *)
 (* in the domain or add [u |-> sup x su] if [u] is already mapped *)
 (* to [x]. *)
-let cons_subst u su subst =
+let cons_univ_subst u su subst =
   try
     Univ.UMap.add u (Univ.sup (Univ.UMap.find u subst) su) subst
   with Not_found -> Univ.UMap.add u su subst
 
+let cons_trunc_subst u su subst =
+  try
+    Trunc.TMap.add u (Trunc.Truncation.sup (Trunc.TMap.find u subst) su) subst
+  with Not_found -> Trunc.TMap.add u su subst
+
 (* remember_subst updates the mapping [u |-> x] by [u |-> sup x u] *)
 (* if it is presents and returns the substitution unchanged if not.*)
-let remember_subst u subst =
+let remember_univ_subst u subst =
   try
     let su = Univ.Universe.make u in
     Univ.UMap.add u (Univ.sup (Univ.UMap.find u subst) su) subst
   with Not_found -> subst
 
+let remember_trunc_subst u subst =
+  try
+    let su = Trunc.Truncation.of_level u in
+    Trunc.TMap.add u (Trunc.Truncation.sup (Trunc.TMap.find u subst) su) subst
+  with Not_found -> subst
+
 (* Bind expected levels of parameters to actual levels *)
 (* Propagate the new levels in the signature *)
-let make_subst env =
+let make_univ_subst env =
   let rec make subst = function
     | LocalDef _ :: sign, exp, args ->
         make subst (sign, exp, args)
@@ -130,7 +141,7 @@ let make_subst env =
         (* to be greater than the level of the argument; this is probably *)
         (* a useless extra constraint *)
         let s = univ_of_sort (snd (dest_arity env (Lazy.force a))) in
-          make (cons_subst u s subst) (sign, exp, args)
+          make (cons_univ_subst u s subst) (sign, exp, args)
     | LocalAssum (na,t) :: sign, Some u::exp, [] ->
         (* No more argument here: we add the remaining universes to the *)
         (* substitution (when [u] is distinct from all other universes in the *)
@@ -138,7 +149,7 @@ let make_subst env =
         (* already in the domain of the substitution) [remember_subst] will *)
         (* update its image [x] by [sup x u] in order not to forget the *)
         (* dependency in [u] that remains to be fullfilled. *)
-        make (remember_subst u subst) (sign, exp, [])
+        make (remember_univ_subst u subst) (sign, exp, [])
     | sign, [], _ ->
         (* Uniform parameters are exhausted *)
         subst
@@ -147,10 +158,44 @@ let make_subst env =
   in
   make Univ.UMap.empty
 
+let make_trunc_subst env =
+  let rec make subst = function
+    | LocalDef _ :: sign, exp, args ->
+        make subst (sign, exp, args)
+    | d::sign, None::exp, args ->
+        let args = match args with _::args -> args | [] -> [] in
+        make subst (sign, exp, args)
+    | d::sign, Some u::exp, a::args ->
+        (* We recover the level of the argument, but we don't change the *)
+        (* level in the corresponding type in the arity; this level in the *)
+        (* arity is a global level which, at typing time, will be enforce *)
+        (* to be greater than the level of the argument; this is probably *)
+        (* a useless extra constraint *)
+        let s = trunc_of_sort (snd (dest_arity env (Lazy.force a))) in
+          make (cons_trunc_subst u s subst) (sign, exp, args)
+    | LocalAssum (na,t) :: sign, Some u::exp, [] ->
+        (* No more argument here: we add the remaining universes to the *)
+        (* substitution (when [u] is distinct from all other universes in the *)
+        (* template, it is identity substitution  otherwise (ie. when u is *)
+        (* already in the domain of the substitution) [remember_subst] will *)
+        (* update its image [x] by [sup x u] in order not to forget the *)
+        (* dependency in [u] that remains to be fullfilled. *)
+        make (remember_trunc_subst u subst) (sign, exp, [])
+    | sign, [], _ ->
+        (* Uniform parameters are exhausted *)
+        subst
+    | [], _, _ ->
+        assert false
+  in
+  make Trunc.TMap.empty
+
+
 let instantiate_universes env ctx ar argsorts =
   let args = Array.to_list argsorts in
-  let subst = make_subst env (ctx,ar.template_param_levels,args) in
-  let level = Sorts.subst_sorts (Univ.make_univ_subst subst) ar.template_level in
+  let usubst = make_univ_subst env (ctx,ar.template_param_univ_levels,args) in
+  let tsubst = make_trunc_subst env (ctx,ar.template_param_trunc_levels,args) in
+  let subst = Sorts.sort_subst_fn (usubst, tsubst) in
+  let level = Sorts.subst_sorts subst ar.template_level in
     (ctx, level)
 
 

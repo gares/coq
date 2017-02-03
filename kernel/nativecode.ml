@@ -1044,10 +1044,11 @@ let ml_of_instance instance u =
        mkMLapp (MLprimitive MLarrayget) [|univ; MLint i|]
     | None -> let i = push_symbol (SymbLevel l) in get_level_code i
   in
-  let u = Sorts.Instance.to_array u in
-  if Array.is_empty u then [||]
-  else let u = Array.map ml_of_level u in
-       [|MLapp (MLprimitive MLmagic, [|MLarray u|])|]
+  let ua, ta = Sorts.Instance.to_arrays u in
+  ignore(assert false); (* FIXME do something with truncations *)
+  if Array.is_empty ua then [| |]
+  else let ua = Array.map ml_of_level ua in
+       [|MLapp (MLprimitive MLmagic, [|MLarray ua|])|]
 
  let rec ml_of_lam env l t =
   match t with
