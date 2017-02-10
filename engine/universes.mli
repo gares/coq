@@ -26,7 +26,9 @@ val pr_with_global_universes : Sorts.level_printer
 type universe_binders =
   { univ_binders : (Id.t * Univ.universe_level) list
   ; trunc_binders : (Id.t * Trunc.truncation_level) list }
-					   
+
+val empty_universe_binders : universe_binders
+
 val register_universe_binders : Globnames.global_reference -> universe_binders -> unit
 val universe_binders_of_global : Globnames.global_reference -> universe_binders
 
@@ -159,12 +161,18 @@ val extend_context : 'a in_universe_context_set -> universe_context_set ->
 
 type universe_opt_subst = universe option universe_map * truncation option truncation_map
 
+val empty_opt_subst : universe_opt_subst
+val is_empty_opt_subst : universe_opt_subst -> bool
+
+val opt_subst_union : universe_opt_subst -> universe_opt_subst -> universe_opt_subst
+
 val subst_opt_univs_constr : universe_opt_subst -> constr -> constr
 
 val normalize_context_set : universe_context_set -> 
   universe_opt_subst (* The defined and undefined variables *) ->
   universe_set (* univ variables that can be substituted by algebraics *) ->
-  (universe_opt_subst * universe_set) in_universe_context_set
+  truncation_set ->
+  (universe_opt_subst * universe_set * truncation_set) in_universe_context_set
 
 val normalize_variables :
   universe_opt_subst ->
@@ -178,6 +186,9 @@ val normalize_sort_variables_opt_subst : universe_opt_subst ref ->
 
 val normalize_universe_opt_subst : universe_opt_subst ref ->
   (universe -> universe)
+
+val normalize_truncation_opt_subst : universe_opt_subst ref ->
+  (truncation -> truncation)
 
 val normalize_sort_opt_subst : universe_opt_subst ref ->
   (Sorts.t -> Sorts.t)

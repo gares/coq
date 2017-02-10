@@ -44,7 +44,8 @@ val subst : t -> Universes.universe_opt_subst
 val ugraph : t -> Sorts.Graph.t
 (** The current graph extended with the local constraints *)
 
-val algebraics : t -> Univ.USet.t
+val algebraic_univs : t -> Univ.USet.t
+val algebraic_truncs : t -> Trunc.TSet.t
 (** The subset of unification variables that can be instantiated with algebraic
     universes as they appear in inferred types only. *)
 
@@ -71,12 +72,16 @@ val add_universe_constraints : t -> Universes.universe_constraints -> t
 val add_universe_name : t -> string -> Univ.Level.t -> t
 (** Associate a human-readable name to a local variable. *)
 
+val add_truncation_name : t -> string -> Trunc.TLevel.t -> t
+
 val universe_of_name : t -> string -> Univ.Level.t
 (** Retrieve the universe associated to the name. *)
 
+val truncation_of_name : t -> string -> Trunc.TLevel.t
+
 (** {5 Unification} *)
 
-val restrict : t -> Univ.universe_set -> t
+val restrict : t -> Univ.universe_set -> Trunc.truncation_set -> t
 
 type rigid = 
   | UnivRigid
@@ -92,28 +97,39 @@ val emit_side_effects : Safe_typing.private_constants -> t -> t
 
 val new_univ_variable : ?loc:Loc.t -> rigid -> string option -> t -> t * Univ.Level.t
 val add_global_univ : t -> Univ.Level.t -> t
-val make_flexible_variable : t -> bool -> Univ.Level.t -> t
+val make_flexible_univ_variable : t -> bool -> Univ.Level.t -> t
 
-val is_sort_variable : t -> Sorts.t -> Univ.Level.t option
+val new_trunc_variable : ?loc:Loc.t -> rigid -> string option -> t -> t * Trunc.TLevel.t
+val add_global_trunc : t -> Trunc.TLevel.t -> t
+val make_flexible_trunc_variable : t -> bool -> Trunc.TLevel.t -> t
 
-val normalize_variables : t -> Univ.universe_subst * t
+val is_univ_variable : t -> Univ.Universe.t -> Univ.Level.t option
+val is_trunc_variable : t -> Trunc.Truncation.t -> Trunc.TLevel.t option
 
-val constrain_variables : Univ.USet.t -> t -> Sorts.constraints
+val normalize_variables : t -> Sorts.sort_subst * t
+
+val constrain_variables : Univ.USet.t -> Trunc.TSet.t -> t -> Sorts.constraints
 
 val abstract_undefined_variables : t -> t
 
 val fix_undefined_variables : t -> t
 
-val refresh_undefined_univ_variables : t -> t * Univ.universe_level_subst
+val refresh_undefined_variables : t -> t * Sorts.level_subst
 
 val normalize : t -> t
 
 (** {5 TODO: Document me} *)
 
-val universe_context : ?names:(Id.t Loc.located) list -> t -> (Id.t * Univ.Level.t) list * Sorts.universe_context
+type universe_names =
+  { univ_names : (Id.t Loc.located) list
+  ; trunc_names : (Id.t Loc.located) list }
+
+val universe_context :
+  ?names:universe_names -> t ->
+  Universes.universe_binders * Sorts.universe_context
 
 val update_sigma_env : t -> Environ.env -> t
 
 (** {5 Pretty-printing} *)
 
-val pr_uctx_level : t -> Univ.Level.t -> Pp.std_ppcmds
+val pr_uctx_level : t -> Sorts.level_printer

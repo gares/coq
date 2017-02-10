@@ -635,6 +635,14 @@ let subst_univs_fn_puniverses lsubst (c, u as cu) =
 
 type universe_opt_subst = universe option universe_map * truncation option truncation_map
 
+let empty_opt_subst = UMap.empty, TMap.empty
+let is_empty_opt_subst (usubst, tsubst) = UMap.is_empty usubst && TMap.is_empty tsubst
+
+let opt_subst_union (usubst,tsubst) (usubst',tsubst') =
+  let usubst = UMap.union usubst usubst' in
+  let tsubst = TMap.union tsubst tsubst' in
+  usubst, tsubst
+
 let make_opt_subst_univ s =
   fun x ->
     (match Univ.UMap.find x (fst s) with
@@ -1084,7 +1092,7 @@ let normalize_constraints uctx csts =
   fst (split_constraints (Sorts.Graph.to_constraints g))
 
 (* TODO do something with trunc constraints? *)
-let normalize_context_set ctx (usubst,tsubst) ualgs =
+let normalize_context_set ctx (usubst,tsubst) ualgs talgs =
   let (uctx, tctx), csts = ctx in
   let ucsts, tcsts = split_constraints csts in
   (** Keep the Prop/Set <= i constraints separate for minimization *)
@@ -1152,7 +1160,7 @@ let normalize_context_set ctx (usubst,tsubst) ualgs =
     noneqs (UConstraint.empty, UMap.empty, UMap.empty)
   in
   (* Now we construct the instantiation of each variable. *)
-  let uctx', usubst, algs, inst, noneqs =
+  let uctx', usubst, ualgs, inst, noneqs =
     minimize_univ_variables uctx usubst ualgs ucstrsr ucstrsl
                             (merge_constraints noneqs TConstraint.empty)
   in
@@ -1162,7 +1170,7 @@ let normalize_context_set ctx (usubst,tsubst) ualgs =
                   eqs
                   (merge_constraints UConstraint.empty tcsts)) in
   let usubst = normalize_univ_opt_subst usubst in
-    ((usubst, tsubst), algs), ((uctx', tctx), csts)
+    ((usubst, tsubst), ualgs, talgs), ((uctx', tctx), csts)
 
 (* let normalize_conkey = Profile.declare_profile "normalize_context_set" *)
 (* let normalize_context_set a b c = Profile.profile3 normalize_conkey normalize_context_set a b c *)
