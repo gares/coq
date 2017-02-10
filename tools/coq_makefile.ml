@@ -52,7 +52,7 @@ let lib_dirs =
    "pretyping"; "interp"; "printing"; "intf";
    "proofs"; "tactics"; "tools"; "ltacprof";
    "toplevel"; "stm"; "grammar"; "config";
-   "ltac"; "engine"]
+   "ltac"; "engine"; "vernac"]
 
 
 let usage () =
