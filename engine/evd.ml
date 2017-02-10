@@ -912,8 +912,8 @@ let universe_context_set d = UState.context_set d.universes
 let pr_uctx_level = UState.pr_uctx_level
 let universe_context ?names evd = UState.universe_context ?names evd.universes
 
-let restrict_universe_context evd vars =
-  { evd with universes = UState.restrict evd.universes vars }
+let restrict_universe_context evd uvars tvars =
+  { evd with universes = UState.restrict evd.universes uvars tvars }
 
 let universe_subst evd =
   UState.subst evd.universes
@@ -931,19 +931,34 @@ let new_univ_level_variable ?loc ?name rigid evd =
   let uctx', u = UState.new_univ_variable ?loc rigid name evd.universes in
     ({evd with universes = uctx'}, u)
 
+let new_trunc_level_variable ?loc ?name rigid evd =
+  let uctx', u = UState.new_trunc_variable ?loc rigid name evd.universes in
+    ({evd with universes = uctx'}, u)
+
 let new_univ_variable ?loc ?name rigid evd =
   let evd, u = new_univ_level_variable ?loc ?name rigid evd in
   (evd, Univ.Universe.make u)
 
+let new_trunc_variable ?loc ?name rigid evd =
+  let evd, u = new_trunc_level_variable ?loc ?name rigid evd in
+  (evd, Trunc.Truncation.of_level u)
+
 let new_sort_variable ?loc ?name rigid evd =
   let evd, u = new_univ_level_variable ?loc rigid ?name evd in
-  (evd, Sorts.of_level u)
+  let evd, t = new_trunc_level_variable ?loc rigid ?name evd in
+  (evd, Sorts.of_levels u t)
 
 let add_global_univ d u =
   { d with universes = UState.add_global_univ d.universes u }
 
-let make_flexible_variable evd b u =
-  { evd with universes = UState.make_flexible_variable evd.universes b u }
+let add_global_trunc d u =
+  { d with universes = UState.add_global_trunc d.universes u }
+
+let make_flexible_univ_variable evd b u =
+  { evd with universes = UState.make_flexible_univ_variable evd.universes b u }
+
+let make_flexible_trunc_variable evd b u =
+  { evd with universes = UState.make_flexible_trunc_variable evd.universes b u }
 
 let make_evar_universe_context e l =
   let uctx = UState.make (Environ.universes e) in
@@ -976,11 +991,16 @@ let fresh_global ?loc ?(rigid=univ_flexible) ?names env evd gr =
 
 let whd_sort_variable evd t = t
 
-let is_sort_variable evd s = UState.is_sort_variable evd.universes s
+let is_univ_variable evd s = UState.is_univ_variable evd.universes s
+let is_trunc_variable evd s = UState.is_trunc_variable evd.universes s
 
-let is_flexible_level evd l = 
+let is_flexible_univ_level evd l =
   let uctx = evd.universes in
-    Univ.UMap.mem l (UState.subst uctx)
+    Univ.UMap.mem l (fst (UState.subst uctx))
+
+let is_flexible_trunc_level evd l =
+  let uctx = evd.universes in
+    Trunc.TMap.mem l (snd (UState.subst uctx))
 
 let is_eq_sort s1 s2 =
   if Sorts.equal s1 s2 then None
@@ -989,8 +1009,14 @@ let is_eq_sort s1 s2 =
 (* Precondition: l is not defined in the substitution *)
 let universe_rigidity evd l =
   let uctx = evd.universes in
-  if Univ.USet.mem l (Sorts.ContextSet.levels (UState.context_set uctx)) then
-    UnivFlexible (Univ.USet.mem l (UState.algebraics uctx))
+  if Univ.USet.mem l (Sorts.ContextSet.univ_levels (UState.context_set uctx)) then
+    UnivFlexible (Univ.USet.mem l (UState.algebraic_univs uctx))
+  else UnivRigid
+
+let truncation_rigidity evd l =
+  let uctx = evd.universes in
+  if Trunc.TSet.mem l (Sorts.ContextSet.trunc_levels (UState.context_set uctx)) then
+    UnivFlexible (Trunc.TSet.mem l (UState.algebraic_truncs uctx))
   else UnivRigid
 
 let normalize_sort evd =
@@ -999,7 +1025,7 @@ let normalize_sort evd =
 
 let normalize_universe_instance evd l =
   let vars = ref (UState.subst evd.universes) in
-  let normalize = Sorts.level_subst_fn_of (Universes.normalize_variables_opt_subst vars) in
+  let normalize = Sorts.level_subst_fn_of (Universes.normalize_sort_variables_opt_subst vars) in
     Sorts.Instance.apply_subst normalize l
 
 let normalize_sort evars s =
@@ -1014,7 +1040,7 @@ let set_eq_sort env d s1 s2 =
   | Some (u1, u2) ->
     if not (type_in_type env) then
       add_universe_constraints d
-        (Universes.Constraints.singleton (u1,Universes.UEq,u2))
+        (Universes.Constraints.singleton_sort (u1,Universes.UEq,u2))
     else
       d
 
@@ -1029,7 +1055,7 @@ let set_leq_sort env evd s1 s2 =
   | None -> evd
   | Some (u1, u2) ->
      if not (type_in_type env) then
-       add_universe_constraints evd (Universes.Constraints.singleton (u1,Universes.ULe,u2))
+       add_universe_constraints evd (Universes.Constraints.singleton_sort (u1,Universes.ULe,u2))
      else evd
 	    
 let check_eq evd s s' =
@@ -1046,13 +1072,13 @@ let fix_undefined_variables evd =
   { evd with universes = UState.fix_undefined_variables evd.universes }
 
 let refresh_undefined_universes evd =
-  let uctx', subst = UState.refresh_undefined_univ_variables evd.universes in
+  let uctx', subst = UState.refresh_undefined_variables evd.universes in
   let evd' = cmap (subst_univs_level_constr subst) {evd with universes = uctx'} in
     evd', subst
 
 let normalize_evar_universe_context = UState.normalize
 
-let nf_univ_variables evd = 
+let nf_variables evd =
   let subst, uctx' = normalize_evar_universe_context_variables evd.universes in
   let evd' = {evd with universes = uctx'} in
     evd', subst
@@ -1064,8 +1090,13 @@ let nf_constraints evd =
 
 let universe_of_name evd s = UState.universe_of_name evd.universes s
 
+let truncation_of_name evd s = UState.truncation_of_name evd.universes s
+
 let add_universe_name evd s l =
   { evd with universes = UState.add_universe_name evd.universes s l }
+
+let add_truncation_name evd s l =
+  { evd with universes = UState.add_truncation_name evd.universes s l }
 
 let universes evd = UState.ugraph evd.universes
 
@@ -1093,7 +1124,7 @@ exception UniversesDiffer = UState.UniversesDiffer
 let eq_constr_univs evd t u =
   let fold cstr sigma =
     try Some (add_universe_constraints sigma cstr)
-    with Sorts.UniverseInconsistency _ | UniversesDiffer -> None
+    with Sorts.SortInconsistency _ | UniversesDiffer -> None
   in
   match Universes.eq_constr_univs_infer (UState.ugraph evd.universes) fold t u evd with
   | None -> evd, false
@@ -1386,13 +1417,15 @@ let has_no_evar sigma =
 let pr_evd_level evd = pr_uctx_level evd.universes
 
 let pr_evar_universe_context ctx =
-  let prl = pr_uctx_level ctx in
+  let prl = UState.pr_uctx_level ctx in
   if is_empty_evar_universe_context ctx then mt ()
   else
     (str"UNIVERSES:"++brk(0,1)++ 
        h 0 (Sorts.ContextSet.pr prl (evar_universe_context_set ctx)) ++ fnl () ++
      str"ALGEBRAIC UNIVERSES:"++brk(0,1)++
-     h 0 (Univ.USet.pr prl (UState.algebraics ctx)) ++ fnl() ++
+     h 0 (Univ.USet.pr (fst prl) (UState.algebraic_univs ctx)) ++ fnl() ++
+     str"ALGEBRAIC TRUNCATIONS:"++brk(0,1)++
+     h 0 (Trunc.TSet.pr (snd prl) (UState.algebraic_truncs ctx)) ++ fnl() ++
      str"UNDEFINED UNIVERSES:"++brk(0,1)++
        h 0 (Universes.pr_universe_opt_subst (UState.subst ctx)) ++ fnl())
 

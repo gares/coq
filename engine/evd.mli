@@ -501,40 +501,57 @@ val empty_evar_universe_context : evar_universe_context
 val union_evar_universe_context : evar_universe_context -> evar_universe_context ->
   evar_universe_context
 val evar_universe_context_subst : evar_universe_context -> Universes.universe_opt_subst
-val constrain_variables : Univ.USet.t -> evar_universe_context -> Sorts.constraints
+val constrain_variables : Univ.USet.t -> Trunc.TSet.t -> evar_universe_context -> Sorts.constraints
 
 
 val evar_universe_context_of_binders :
   Universes.universe_binders -> evar_universe_context
 							    
 val make_evar_universe_context : env -> (Id.t located) list option -> evar_universe_context
-val restrict_universe_context : evar_map -> Univ.universe_set -> evar_map							   
+val restrict_universe_context : evar_map -> Univ.universe_set -> Trunc.truncation_set -> evar_map
 (** Raises Not_found if not a name for a universe in this map. *)
 val universe_of_name : evar_map -> string -> Univ.universe_level
 val add_universe_name : evar_map -> string -> Univ.universe_level -> evar_map
+val truncation_of_name : evar_map -> string -> Trunc.truncation_level
+val add_truncation_name : evar_map -> string -> Trunc.truncation_level -> evar_map
 
 val add_constraints_context : evar_universe_context -> 
   Sorts.constraints -> evar_universe_context
 
 
 val normalize_evar_universe_context_variables : evar_universe_context -> 
-  Univ.universe_subst in_evar_universe_context
+  Sorts.sort_subst in_evar_universe_context
 
 val normalize_evar_universe_context : evar_universe_context -> 
   evar_universe_context
 
-val new_univ_level_variable : ?loc:Loc.t -> ?name:string -> rigid -> evar_map -> evar_map * Univ.universe_level
+val new_univ_level_variable : ?loc:Loc.t -> ?name:string -> rigid -> evar_map ->
+                              evar_map * Univ.universe_level
 val new_univ_variable : ?loc:Loc.t -> ?name:string -> rigid -> evar_map -> evar_map * Univ.universe
+
+val new_trunc_level_variable : ?loc:Loc.t -> ?name:string -> rigid -> evar_map ->
+                               evar_map * Trunc.truncation_level
+val new_trunc_variable : ?loc:Loc.t -> ?name:string -> rigid -> evar_map -> evar_map * Trunc.truncation
+
+(* Does having the same name for the trunc and univ parts make sense? *)
 val new_sort_variable : ?loc:Loc.t -> ?name:string -> rigid -> evar_map -> evar_map * sorts
 
 val add_global_univ : evar_map -> Univ.Level.t -> evar_map
+val add_global_trunc : evar_map -> Trunc.TLevel.t -> evar_map
 
 val universe_rigidity : evar_map -> Univ.Level.t -> rigid
-val make_flexible_variable : evar_map -> bool -> Univ.universe_level -> evar_map
-val is_sort_variable : evar_map -> sorts -> Univ.universe_level option 
-(** [is_sort_variable evm s] returns [Some u] or [None] if [s] is 
-    not a local sort variable declared in [evm] *)
-val is_flexible_level : evar_map -> Univ.Level.t -> bool
+val truncation_rigidity : evar_map -> Trunc.TLevel.t -> rigid
+
+val make_flexible_univ_variable : evar_map -> bool -> Univ.universe_level -> evar_map
+val make_flexible_trunc_variable : evar_map -> bool -> Trunc.truncation_level -> evar_map
+
+(** [is_universe_variable evm s] returns [Some u] or [None] if [s] is
+    not a local universe variable declared in [evm] *)
+val is_univ_variable : evar_map -> Univ.universe -> Univ.universe_level option
+val is_trunc_variable : evar_map -> Trunc.truncation -> Trunc.truncation_level option
+
+val is_flexible_univ_level : evar_map -> Univ.Level.t -> bool
+val is_flexible_trunc_level : evar_map -> Trunc.TLevel.t -> bool
 
 (* val normalize_universe_level : evar_map -> Univ.universe_level -> Univ.universe_level *)
 val normalize_sort : evar_map -> Sorts.t -> Sorts.t
@@ -550,8 +567,8 @@ val check_leq : evar_map -> sorts -> sorts -> bool
 
 val evar_universe_context : evar_map -> evar_universe_context
 val universe_context_set : evar_map -> Sorts.universe_context_set
-val universe_context : ?names:(Id.t located) list -> evar_map ->
-		       (Id.t * Univ.Level.t) list * Sorts.universe_context
+val universe_context : ?names:UState.universe_names -> evar_map ->
+		       Universes.universe_binders * Sorts.universe_context
 val universe_subst : evar_map -> Universes.universe_opt_subst
 val universes : evar_map -> Sorts.Graph.t
 
@@ -564,12 +581,12 @@ val merge_universe_subst : evar_map -> Universes.universe_opt_subst -> evar_map
 
 val with_context_set : ?loc:Loc.t -> rigid -> evar_map -> 'a Sorts.in_universe_context_set -> evar_map * 'a
 
-val nf_univ_variables : evar_map -> evar_map * Univ.universe_subst
+val nf_variables : evar_map -> evar_map * Sorts.sort_subst
 val abstract_undefined_variables : evar_universe_context -> evar_universe_context
 
 val fix_undefined_variables : evar_map -> evar_map
 
-val refresh_undefined_universes : evar_map -> evar_map * Univ.universe_level_subst
+val refresh_undefined_universes : evar_map -> evar_map * Sorts.level_subst
 
 val nf_constraints : evar_map -> evar_map
 
@@ -627,7 +644,7 @@ val pr_evar_map_filter : ?with_univs:bool -> (Evar.t -> evar_info -> bool) ->
   evar_map -> Pp.std_ppcmds
 val pr_metaset : Metaset.t -> Pp.std_ppcmds
 val pr_evar_universe_context : evar_universe_context -> Pp.std_ppcmds
-val pr_evd_level : evar_map -> Univ.Level.t -> Pp.std_ppcmds
+val pr_evd_level : evar_map -> Sorts.level_printer
 
 (** {5 Deprecated functions} *)
 

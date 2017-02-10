@@ -132,4 +132,6 @@ val update_sigma_env : t -> Environ.env -> t
 
 (** {5 Pretty-printing} *)
 
+val pr_uctx_univ_level : t -> Univ.Level.t -> Pp.std_ppcmds
+val pr_uctx_trunc_level : t -> Trunc.TLevel.t -> Pp.std_ppcmds
 val pr_uctx_level : t -> Sorts.level_printer

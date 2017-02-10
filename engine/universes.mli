@@ -63,6 +63,7 @@ module Constraints : sig
   include Set.S with type elt = sort_constraint
 
   val add_sort : sorts * universe_constraint_type * sorts -> t -> t
+  val singleton_sort : sorts * universe_constraint_type * sorts -> t
 
   val pr : t -> Pp.std_ppcmds
 end
