@@ -684,21 +684,25 @@ let magicaly_constant_of_fixbody env reference bd = function
         | Some csts ->
            let subst =
              Universes.Constraints.fold
-               (fun (l,d,r) (accu, acct) ->
-                 let accu =
-                   Univ.UMap.add
-                     (Option.get (Sorts.univ_level l))
-                     (Option.get (Sorts.univ_level r))
-                     accu
-                 in
-                 let acct =
-                   Trunc.TMap.add
-                     (Option.get (Sorts.trunc_level l))
-                     (Option.get (Sorts.trunc_level r))
-                     acct
-                 in
-                 accu, acct)
-            csts Sorts.empty_level_subst
+               (fun c (accu, acct) ->
+                 match c with
+                 | Universes.UnivConstraint (l,d,r) ->
+                    let accu =
+                      Univ.UMap.add
+                        (Option.get (Univ.Universe.level l))
+                        (Option.get (Univ.Universe.level r))
+                        accu
+                    in
+                    accu, acct
+                 | Universes.TruncConstraint (l,d,r) ->
+                    let acct =
+                      Trunc.TMap.add
+                        (Option.get (Trunc.Truncation.level l))
+                        (Option.get (Trunc.Truncation.level r))
+                        acct
+                    in
+                    accu, acct)
+               csts Sorts.empty_level_subst
           in
           let inst = Instance.apply_subst (Sorts.level_subst_fn subst) u in
           mkConstU (cst,inst)

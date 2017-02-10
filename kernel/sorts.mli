@@ -39,6 +39,7 @@ val sort_of_product : is_impredicative_set:bool -> sorts -> sorts -> sorts
 val sup : sorts -> sorts -> sorts
 val super : sorts -> sorts
 
+val make : Univ.universe -> Trunc.truncation -> sorts
 val univ_of_sort : sorts -> Univ.universe
 val trunc_of_sort : sorts -> Trunc.truncation
 

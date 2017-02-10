@@ -127,8 +127,15 @@ let typeclass_univ_instance (cl,u') =
 	  if mib.mind_polymorphic then Sorts.UContext.instance mib.mind_universes
 	  else Sorts.Instance.empty
       | _ -> Sorts.Instance.empty
-    in Array.fold_left2 (fun subst u u' -> Univ.UMap.add u u' subst)
-      Univ.UMap.empty (Sorts.Instance.to_array u) (Sorts.Instance.to_array u')
+    in
+    let ua, ta = Sorts.Instance.to_arrays u
+    and ua', ta' = Sorts.Instance.to_arrays u' in
+    let usubst = Array.fold_left2 (fun subst u u' -> Univ.UMap.add u u' subst)
+                                  Univ.UMap.empty ua ua'
+    and tsubst = Array.fold_left2 (fun subst u u' -> Trunc.TMap.add u u' subst)
+                                  Trunc.TMap.empty ta ta'
+    in
+    usubst, tsubst
   in
   let subst_ctx = Context.Rel.map (subst_univs_level_constr subst) in
     { cl with cl_context = fst cl.cl_context, subst_ctx (snd cl.cl_context);

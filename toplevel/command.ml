@@ -99,20 +99,20 @@ let interp_definition pl bl p red_option c ctypopt =
   let imps,pl,ce =
     match ctypopt with
       None ->
-        let subst = evd_comb0 Evd.nf_univ_variables evdref in
+        let subst = evd_comb0 Evd.nf_variables evdref in
 	let ctx = Context.Rel.map (Vars.subst_univs_constr subst) ctx in
 	let env_bl = push_rel_context ctx env in
 	let c, imps2 = interp_constr_evars_impls ~impls env_bl evdref c in
         let nf,subst = Evarutil.e_nf_evars_and_universes evdref in
         let body = nf (it_mkLambda_or_LetIn c ctx) in
-	let vars = Universes.universes_of_constr body in
-	let evd = Evd.restrict_universe_context !evdref vars in
+	let uvars, tvars = Universes.universes_of_constr body in
+	let evd = Evd.restrict_universe_context !evdref uvars tvars in
 	let pl, uctx = Evd.universe_context ?names:pl evd in
  	imps1@(Impargs.lift_implicits nb_args imps2), pl,
 	  definition_entry ~univs:uctx ~poly:p body
     | Some ctyp ->
 	let ty, impsty = interp_type_evars_impls ~impls env_bl evdref ctyp in
-	let subst = evd_comb0 Evd.nf_univ_variables evdref in
+	let subst = evd_comb0 Evd.nf_variables evdref in
 	let ctx = Context.Rel.map (Vars.subst_univs_constr subst) ctx in
 	let env_bl = push_rel_context ctx env in
 	let c, imps2 = interp_casted_constr_evars_impls ~impls env_bl evdref c ty in

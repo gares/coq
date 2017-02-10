@@ -507,7 +507,7 @@ val constrain_variables : Univ.USet.t -> Trunc.TSet.t -> evar_universe_context -
 val evar_universe_context_of_binders :
   Universes.universe_binders -> evar_universe_context
 							    
-val make_evar_universe_context : env -> (Id.t located) list option -> evar_universe_context
+val make_evar_universe_context : env -> UState.universe_names option -> evar_universe_context
 val restrict_universe_context : evar_map -> Univ.universe_set -> Trunc.truncation_set -> evar_map
 (** Raises Not_found if not a name for a universe in this map. *)
 val universe_of_name : evar_map -> string -> Univ.universe_level
@@ -556,6 +556,11 @@ val is_flexible_trunc_level : evar_map -> Trunc.TLevel.t -> bool
 (* val normalize_universe_level : evar_map -> Univ.universe_level -> Univ.universe_level *)
 val normalize_sort : evar_map -> Sorts.t -> Sorts.t
 val normalize_universe_instance : evar_map -> Sorts.sort_instance -> Sorts.sort_instance
+
+val set_leq_univ : env -> evar_map -> Univ.universe -> Univ.universe -> evar_map
+val set_eq_univ : env -> evar_map -> Univ.universe -> Univ.universe -> evar_map
+val set_leq_trunc : env -> evar_map -> Trunc.truncation -> Trunc.truncation -> evar_map
+val set_eq_trunc : env -> evar_map -> Trunc.truncation -> Trunc.truncation -> evar_map
 
 val set_leq_sort : env -> evar_map -> sorts -> sorts -> evar_map
 val set_eq_sort : env -> evar_map -> sorts -> sorts -> evar_map

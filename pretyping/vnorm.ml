@@ -173,27 +173,28 @@ and nf_whd env whd typ =
       constr_type_of_idkey env idkey stk
   | Vatom_stk(Aind ((mi,i) as ind), stk) ->
      let mib = Environ.lookup_mind mi env in
-     let nb_univs =
-       if mib.mind_polymorphic then Sorts.UContext.size mib.mind_universes
-       else 0
+     let nb_univs, nb_truncs =
+       if mib.mind_polymorphic then Sorts.UContext.sizes mib.mind_universes
+       else 0,0
      in
      let mk u =
        let pind = (ind, u) in (mkIndU pind, type_of_ind env pind)
      in
-     nf_univ_args ~nb_univs mk env stk
+     nf_univ_args ~nb_univs ~nb_truncs mk env stk
   | Vatom_stk(Atype u, stk) -> assert false
   | Vuniv_level lvl ->
     assert false
 
-and nf_univ_args ~nb_univs mk env stk =
+and nf_univ_args ~nb_univs ~nb_truncs mk env stk =
   let u =
     if Int.equal nb_univs 0 then Sorts.Instance.empty
     else match stk with
     | Zapp args :: _ ->
-       let inst =
+       let uinst =
 	 Array.init nb_univs (fun i -> Vm.uni_lvl_val (arg args i))
        in
-       Sorts.Instance.of_array inst
+       let tinst = assert false in (* FIXME handle truncations *)
+       Sorts.Instance.of_arrays (uinst, tinst)
     | _ -> assert false
   in
   let (t,ty) = mk u in
@@ -203,14 +204,14 @@ and constr_type_of_idkey env (idkey : Vars.id_key) stk =
   match idkey with
   | ConstKey cst ->
      let cbody = Environ.lookup_constant cst env in
-     let nb_univs =
-       if cbody.const_polymorphic then Sorts.UContext.size cbody.const_universes
-       else 0
+     let nb_univs, nb_truncs =
+       if cbody.const_polymorphic then Sorts.UContext.sizes cbody.const_universes
+       else 0, 0
      in
      let mk u =
        let pcst = (cst, u) in (mkConstU pcst, Typeops.type_of_constant_in env pcst)
      in
-     nf_univ_args ~nb_univs mk env stk
+     nf_univ_args ~nb_univs ~nb_truncs mk env stk
    | VarKey id ->
       let ty = NamedDecl.get_type (lookup_named id env) in
       nf_stk env (mkVar id) ty stk

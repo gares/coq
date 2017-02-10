@@ -569,28 +569,54 @@ let arity_of_case_predicate env (ind,params) dep k =
 (* Compute the inductive argument types: replace the sorts
    that appear in the type of the inductive by the sort of the
    conclusion, and the other ones by fresh universes. *)
+
+let instantiate_arity_univ env evdref scl is l =
+  let u = Univ.Universe.make l in
+  (* Does the sort of parameter [u] appear in (or equal)
+     the sort of inductive [is] ? *)
+  if Sorts.univ_level_mem l is then
+    Sorts.univ_of_sort scl (* constrained sort: replace by scl *)
+  else
+    (* unconstrained sort: replace by fresh universe *)
+    let evm, s = Evd.new_univ_variable Evd.univ_flexible !evdref in
+    let evm = Evd.set_leq_univ env evm s u in
+    evdref := evm; s
+
+let instantiate_arity_trunc env evdref scl is l =
+  let u = Trunc.Truncation.of_level l in
+  (* Does the sort of parameter [u] appear in (or equal)
+     the sort of inductive [is] ? *)
+  if Sorts.trunc_level_mem l is then
+    Sorts.trunc_of_sort scl (* constrained sort: replace by scl *)
+  else
+    (* unconstrained sort: replace by fresh universe *)
+    let evm, s = Evd.new_trunc_variable Evd.univ_flexible !evdref in
+    let evm = Evd.set_leq_trunc env evm s u in
+    evdref := evm; s
+
 let rec instantiate_universes env evdref scl is = function
-  | (LocalDef _ as d)::sign, exp ->
-      d :: instantiate_universes env evdref scl is (sign, exp)
-  | d::sign, None::exp ->
-      d :: instantiate_universes env evdref scl is (sign, exp)
-  | (LocalAssum (na,ty))::sign, Some l::exp ->
-      let ctx,_ = CClosure.dest_arity env ty in
-      let u = Sorts.of_level l in
-      let s =
-	(* Does the sort of parameter [u] appear in (or equal)
-           the sort of inductive [is] ? *)
-        if Sorts.level_mem l is then
-          scl (* constrained sort: replace by scl *)
-        else
-          (* unconstrained sort: replace by fresh universe *)
-          let evm, s = Evd.new_sort_variable Evd.univ_flexible !evdref in
-          let evm = Evd.set_leq_sort env evm s u in
-	    evdref := evm; s
-      in
-      (LocalAssum (na,mkArity(ctx,s))) :: instantiate_universes env evdref scl is (sign, exp)
-  | sign, [] -> sign (* Uniform parameters are exhausted *)
-  | [], _ -> assert false
+  | (LocalDef _ as d)::sign, uexp, texp ->
+      d :: instantiate_universes env evdref scl is (sign, uexp, texp)
+  | d::sign, None::uexp, None::texp ->
+      d :: instantiate_universes env evdref scl is (sign, uexp, texp)
+  | (LocalAssum (na,ty))::sign, Some l::uexp, None::texp ->
+     let ctx,_ = CClosure.dest_arity env ty in
+     let s = instantiate_arity_univ env evdref scl is l in
+     let s = Sorts.make s (Sorts.trunc_of_sort scl) in
+     (LocalAssum (na,mkArity(ctx,s))) :: instantiate_universes env evdref scl is (sign, uexp, texp)
+  | (LocalAssum (na,ty))::sign, None::uexp, Some l::texp ->
+     let ctx,_ = CClosure.dest_arity env ty in
+     let s = instantiate_arity_trunc env evdref scl is l in
+     let s = Sorts.make (Sorts.univ_of_sort scl) s in
+     (LocalAssum (na,mkArity(ctx,s))) :: instantiate_universes env evdref scl is (sign, uexp, texp)
+  | (LocalAssum (na,ty))::sign, Some l::uexp, Some l'::texp ->
+     let ctx,_ = CClosure.dest_arity env ty in
+     let u = instantiate_arity_univ env evdref scl is l in
+     let t = instantiate_arity_trunc env evdref scl is l' in
+     let s = Sorts.make u t in
+     (LocalAssum (na,mkArity(ctx,s))) :: instantiate_universes env evdref scl is (sign, uexp, texp)
+  | sign, [], [] -> sign (* Uniform parameters are exhausted *)
+  | [], _, _ | _, _ :: _, [] | _, [], _ :: _ -> assert false
 
 let type_of_inductive_knowing_conclusion env sigma ((mib,mip),u) conclty =
   match mip.mind_arity with
@@ -601,7 +627,8 @@ let type_of_inductive_knowing_conclusion env sigma ((mib,mip),u) conclty =
     let evdref = ref sigma in
     let ctx =
       instantiate_universes
-        env evdref scl ar.template_level (ctx,ar.template_param_levels) in
+        env evdref scl ar.template_level
+        (ctx,ar.template_param_univ_levels,ar.template_param_trunc_levels) in
       !evdref, mkArity (List.rev ctx,scl)
 
 let type_of_projection_knowing_arg env sigma p c ty =

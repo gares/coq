@@ -26,20 +26,27 @@ let normalize_evar evd ev =
   | Evar (evk,args) -> (evk,args)
   | _ -> assert false
 
-let get_polymorphic_positions f = 
+let get_polymorphic_positions f =
   let open Declarations in
+  let aux templ =
+    List.map2
+      (fun a b ->
+        match a,b with
+        | Some _, _ | _, Some _ -> true
+        | None, None -> false)
+      templ.template_param_univ_levels templ.template_param_trunc_levels
+  in
   match kind_of_term f with
   | Ind (ind, u) | Construct ((ind, _), u) -> 
-    let mib,oib = Global.lookup_inductive ind in
-      (match oib.mind_arity with
+     let mib,oib = Global.lookup_inductive ind in
+     (match oib.mind_arity with
       | RegularArity _ -> assert false
-      | TemplateArity templ -> templ.template_param_levels)
+      | TemplateArity templ -> aux templ)
   | Const (cst, u) ->
-    let cb = Global.lookup_constant cst in
-      (match cb.const_type with
+     let cb = Global.lookup_constant cst in
+     (match cb.const_type with
       | RegularArity _ -> assert false
-      | TemplateArity (_, templ) -> 
-        templ.template_param_levels)
+      | TemplateArity (_, templ) -> aux templ)
   | _ -> assert false
 
 let refresh_universes ?(status=univ_rigid) ?(onlyalg=false) ?(refreshset=false)
@@ -47,32 +54,59 @@ let refresh_universes ?(status=univ_rigid) ?(onlyalg=false) ?(refreshset=false)
   let evdref = ref evd in
   let modified = ref false in
   (* direction: true for fresh universes lower than the existing ones *)
-  let refresh_sort status ~direction s =
-    let s' = evd_comb0 (new_sort_variable status) evdref in
+  let refresh_univ status ~direction s =
+    let s' = evd_comb0 (new_univ_variable status) evdref in
     let evd = 
-      if direction then set_leq_sort env !evdref s' s
-      else set_leq_sort env !evdref s s'
+      if direction then set_leq_univ env !evdref s' s
+      else set_leq_univ env !evdref s s'
     in
-    modified := true; evdref := evd; mkSort s'
+    modified := true; evdref := evd; s'
+  in
+  let refresh_trunc status ~direction s =
+    let s' = evd_comb0 (new_trunc_variable status) evdref in
+    let evd =
+      if direction then set_leq_trunc env !evdref s' s
+      else set_leq_trunc env !evdref s s'
+    in
+    modified := true; evdref := evd; s'
   in
   let rec refresh ~onlyalg status ~direction t =
     match kind_of_term t with
     | Sort s when not (is_small s) ->
-       (match Sorts.level s with
-	| None -> refresh_sort status ~direction s
+       let univ = Sorts.univ_of_sort s in
+       let univ' = match Univ.Universe.level univ with
+	| None -> refresh_univ status ~direction univ
 	| Some l ->
 	   (match Evd.universe_rigidity evd l with
 	    | UnivRigid ->
-	       if not onlyalg then refresh_sort status ~direction s
-	       else t
+	       if not onlyalg then refresh_univ status ~direction univ
+	       else univ
 	    | UnivFlexible alg ->
 	       if onlyalg && alg then
-	         (evdref := Evd.make_flexible_variable !evdref false l; t)
-	       else t))
+	         (evdref := Evd.make_flexible_univ_variable !evdref false l; univ)
+	       else univ)
+       in
+       let trunc = Sorts.trunc_of_sort s in
+       let trunc' = match Trunc.Truncation.level trunc with
+	| None -> refresh_trunc status ~direction trunc
+	| Some l ->
+	   (match Evd.truncation_rigidity evd l with
+	    | UnivRigid ->
+	       if not onlyalg then refresh_trunc status ~direction trunc
+	       else trunc
+	    | UnivFlexible alg ->
+	       if onlyalg && alg then
+	         (evdref := Evd.make_flexible_trunc_variable !evdref false l; trunc)
+	       else trunc)
+       in
+       if univ == univ' && trunc == trunc' then t
+       else mkSort (Sorts.make univ' trunc')
     | Sort s when Sorts.is_set s && refreshset && not direction ->
        (* Cannot make a universe "lower" than "Set",
           only refreshing when we want higher universes. *)
-       refresh_sort status ~direction s
+       let univ = refresh_univ status ~direction (Sorts.univ_of_sort s) in
+       let trunc = refresh_trunc status ~direction (Sorts.trunc_of_sort s) in
+       mkSort (Sorts.make univ trunc)
     | Prod (na,u,v) -> 
       mkProd (na, u, refresh ~onlyalg status ~direction v)
     | _ -> t
@@ -94,14 +128,10 @@ let refresh_universes ?(status=univ_rigid) ?(onlyalg=false) ?(refreshset=false)
     | _ -> Constr.iter (refresh_term_evars onevars false) t
   and refresh_polymorphic_positions args pos =
     let rec aux i = function
-      | Some l :: ls -> 
+      | b :: ls ->
         if i < Array.length args then 
-	  ignore(refresh_term_evars true false args.(i));
+	  ignore(refresh_term_evars b false args.(i));
         aux (succ i) ls
-      | None :: ls -> 
-        if i < Array.length args then 
-          ignore(refresh_term_evars false false args.(i));
-	aux (succ i) ls
       | [] -> ()
     in aux 0 pos
   in

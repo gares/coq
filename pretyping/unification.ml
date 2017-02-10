@@ -550,12 +550,18 @@ let is_rigid_head flags t =
   | Fix _ | CoFix _ -> true
   | _ -> false
 
-let force_eqs c = 
-  Universes.Constraints.fold
-    (fun ((l,d,r) as c) acc -> 
-      let c' = if d == Universes.ULub then (l,Universes.UEq,r) else c in
-	Universes.Constraints.add c' acc) 
-    c Universes.Constraints.empty
+let force_eqs c =
+  let open Universes in
+  Constraints.fold
+    (fun c acc ->
+      match c with
+      | UnivConstraint (l,d,r) ->
+         let c' = if d == ULub then UnivConstraint (l,UEq,r) else c in
+	 Constraints.add c' acc
+      | TruncConstraint (l,d,r) ->
+         let c' = if d == ULub then TruncConstraint (l,UEq,r) else c in
+         Constraints.add c' acc)
+    c Constraints.empty
 
 let constr_cmp pb sigma flags t u =
   let cstrs =
@@ -565,11 +571,11 @@ let constr_cmp pb sigma flags t u =
   match cstrs with
   | Some cstrs ->
       begin try Evd.add_universe_constraints sigma cstrs, true
-      with Sorts.UniverseInconsistency _ -> sigma, false
+      with Sorts.SortInconsistency _ -> sigma, false
       | Evd.UniversesDiffer -> 
 	if is_rigid_head flags t then 
 	  try Evd.add_universe_constraints sigma (force_eqs cstrs), true
-	  with Sorts.UniverseInconsistency _ -> sigma, false
+	  with Sorts.SortInconsistency _ -> sigma, false
 	else sigma, false
       end
   | None ->
@@ -1490,7 +1496,7 @@ let indirect_dependency d decls =
 let finish_evar_resolution ?(flags=Pretyping.all_and_fail_flags) env current_sigma (pending,c) =
   let current_sigma = Sigma.to_evar_map current_sigma in
   let sigma = Pretyping.solve_remaining_evars flags env current_sigma pending in
-  let sigma, subst = nf_univ_variables sigma in
+  let sigma, subst = nf_variables sigma in
   Sigma.Unsafe.of_pair (subst_univs_constr subst (nf_evar sigma c), sigma)
 
 let default_matching_core_flags sigma =
@@ -1580,7 +1586,7 @@ let make_pattern_test from_prefix_of_ind is_correct_type env sigma (pending,c) =
   | None -> None
   | Some (sigma,_,l) ->
      let c = applist (nf_evar sigma (local_strong whd_meta sigma c),l) in
-     let univs, subst = nf_univ_variables sigma in
+     let univs, subst = nf_variables sigma in
      Some (sigma,subst_univs_constr subst c))
 
 let make_eq_test env evd c =

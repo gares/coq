@@ -961,14 +961,23 @@ let make_flexible_trunc_variable evd b u =
   { evd with universes = UState.make_flexible_trunc_variable evd.universes b u }
 
 let make_evar_universe_context e l =
+  let open UState in
   let uctx = UState.make (Environ.universes e) in
   match l with
   | None -> uctx
-  | Some us ->
-      List.fold_left
-        (fun uctx (loc,id) ->
-        fst (UState.new_univ_variable ~loc univ_rigid (Some (Id.to_string id)) uctx))
-        uctx us
+  | Some {univ_names=us; trunc_names=ts} ->
+     let uctx =
+       List.fold_left
+         (fun uctx (loc,id) ->
+           fst (UState.new_univ_variable ~loc univ_rigid (Some (Id.to_string id)) uctx))
+         uctx us
+     in
+     let uctx =
+       List.fold_left
+         (fun uctx (loc,id) ->
+           fst (UState.new_trunc_variable ~loc univ_rigid (Some (Id.to_string id)) uctx))
+         uctx ts
+     in uctx
 
 (****************************************)
 (* Operations on constants              *)
@@ -1006,6 +1015,14 @@ let is_eq_sort s1 s2 =
   if Sorts.equal s1 s2 then None
   else Some (s1, s2)
 
+let is_eq_univ s1 s2 =
+  if Univ.Universe.equal s1 s2 then None
+  else Some (s1, s2)
+
+let is_eq_trunc s1 s2 =
+  if Trunc.Truncation.equal s1 s2 then None
+  else Some (s1, s2)
+
 (* Precondition: l is not defined in the substitution *)
 let universe_rigidity evd l =
   let uctx = evd.universes in
@@ -1023,6 +1040,14 @@ let normalize_sort evd =
   let vars = ref (UState.subst evd.universes) in
   Universes.normalize_sort_opt_subst vars
 
+let normalize_univ evd =
+  let vars = ref (UState.subst evd.universes) in
+  Universes.normalize_universe_opt_subst vars
+
+let normalize_trunc evd =
+  let vars = ref (UState.subst evd.universes) in
+  Universes.normalize_truncation_opt_subst vars
+
 let normalize_universe_instance evd l =
   let vars = ref (UState.subst evd.universes) in
   let normalize = Sorts.level_subst_fn_of (Universes.normalize_sort_variables_opt_subst vars) in
@@ -1031,6 +1056,14 @@ let normalize_universe_instance evd l =
 let normalize_sort evars s =
   let s' = normalize_sort evars s in
   if s' == s then s else s'
+
+let normalize_univ evars u =
+  let u' = normalize_univ evars u in
+  if u' == u then u else u'
+
+let normalize_trunc evars u =
+  let u' = normalize_trunc evars u in
+  if u' == u then u else u'
 
 (* FIXME inefficient *)
 let set_eq_sort env d s1 s2 =
@@ -1041,6 +1074,28 @@ let set_eq_sort env d s1 s2 =
     if not (type_in_type env) then
       add_universe_constraints d
         (Universes.Constraints.singleton_sort (u1,Universes.UEq,u2))
+    else
+      d
+
+let set_eq_univ env d s1 s2 =
+  let s1 = normalize_univ d s1 and s2 = normalize_univ d s2 in
+  match is_eq_univ s1 s2 with
+  | None -> d
+  | Some (u1, u2) ->
+    if not (type_in_type env) then
+      add_universe_constraints d
+        (Universes.Constraints.singleton (Universes.UnivConstraint (u1,Universes.UEq,u2)))
+    else
+      d
+
+let set_eq_trunc env d s1 s2 =
+  let s1 = normalize_trunc d s1 and s2 = normalize_trunc d s2 in
+  match is_eq_trunc s1 s2 with
+  | None -> d
+  | Some (u1, u2) ->
+    if not (type_in_type env) then
+      add_universe_constraints d
+        (Universes.Constraints.singleton (Universes.TruncConstraint (u1,Universes.UEq,u2)))
     else
       d
 
@@ -1058,6 +1113,28 @@ let set_leq_sort env evd s1 s2 =
        add_universe_constraints evd (Universes.Constraints.singleton_sort (u1,Universes.ULe,u2))
      else evd
 	    
+let set_leq_univ env evd s1 s2 =
+  let s1 = normalize_univ evd s1
+  and s2 = normalize_univ evd s2 in
+  match is_eq_univ s1 s2 with
+  | None -> evd
+  | Some (u1, u2) ->
+     if not (type_in_type env) then
+       add_universe_constraints
+         evd (Universes.Constraints.singleton (Universes.UnivConstraint (u1,Universes.ULe,u2)))
+     else evd
+
+let set_leq_trunc env evd s1 s2 =
+  let s1 = normalize_trunc evd s1
+  and s2 = normalize_trunc evd s2 in
+  match is_eq_trunc s1 s2 with
+  | None -> evd
+  | Some (u1, u2) ->
+     if not (type_in_type env) then
+       add_universe_constraints
+         evd (Universes.Constraints.singleton (Universes.TruncConstraint (u1,Universes.ULe,u2)))
+     else evd
+
 let check_eq evd s s' =
   Sorts.Graph.check_eq (UState.ugraph evd.universes) s s'
 

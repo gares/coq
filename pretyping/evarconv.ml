@@ -327,7 +327,7 @@ let rec evar_conv_x ts env evd pbty term1 term2 =
 	  in
 	    if b then Success evd
 	    else UnifFailure (evd, ConversionFailed (env,term1,term2))
-	with Sorts.UniverseInconsistency e -> UnifFailure (evd, UnifUnivInconsistency e)
+	with Sorts.SortInconsistency e -> UnifFailure (evd, UnifUnivInconsistency e)
       in
 	match e with
 	| UnifFailure (evd, e) when not (is_ground_env evd env) -> None
@@ -407,7 +407,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false) ts env evd pbty
        ise_and evd [(fun i ->
          let cstrs = Universes.to_constraints (Evd.universes i) univs in
            try Success (Evd.add_constraints i cstrs)
-           with Sorts.UniverseInconsistency p -> UnifFailure (i, UnifUnivInconsistency p));
+           with Sorts.SortInconsistency p -> UnifFailure (i, UnifUnivInconsistency p));
                   (fun i -> exact_ise_stack2 env i (evar_conv_x ts) sk sk')]
     | None ->
       UnifFailure (evd,NotSameHead)
@@ -658,7 +658,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false) ts env evd pbty
 	      ise_and i [(fun i -> 
 		try Success (Evd.add_universe_constraints i univs)
 		with UniversesDiffer -> UnifFailure (i,NotSameHead)
-		| Sorts.UniverseInconsistency p -> UnifFailure (i, UnifUnivInconsistency p));
+		| Sorts.SortInconsistency p -> UnifFailure (i, UnifUnivInconsistency p));
 			 (fun i -> exact_ise_stack2 env i (evar_conv_x ts) sk1 sk2)]
           | None ->
             UnifFailure (i,NotSameHead)
@@ -767,7 +767,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false) ts env evd pbty
 		 then Evd.set_eq_sort env evd s1 s2
 		 else Evd.set_leq_sort env evd s1 s2
 	       in Success evd'
-	     with Sorts.UniverseInconsistency p ->
+	     with Sorts.SortInconsistency p ->
                UnifFailure (evd,UnifUnivInconsistency p)
 	     | e when CErrors.noncritical e -> UnifFailure (evd,NotSameHead))
 

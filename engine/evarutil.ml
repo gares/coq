@@ -130,7 +130,7 @@ let e_nf_evars_and_universes evdref =
 let nf_evar_map_universes evm =
   let evm = Evd.nf_constraints evm in
   let subst = Evd.universe_subst evm in
-    if Univ.UMap.is_empty subst then evm, nf_evar evm
+    if Universes.is_empty_opt_subst subst then evm, nf_evar evm
     else
       let f = nf_evars_universes evm in
 	Evd.raw_map (fun _ -> map_evar_info f) evm, f
