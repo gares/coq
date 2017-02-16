@@ -141,19 +141,29 @@ end) = struct
       | [_,x] -> str x
       | l -> str"max(" ++ prlist_with_sep (fun () -> str",") (fun x -> str (snd x)) l ++ str")"
 
-  let pr_univ_annot pr x = str "@{" ++ pr x ++ str "}"
+  let pr_trunc l =
+    match l with
+      | [_,x] -> str x
+      | l -> str"max(" ++ prlist_with_sep (fun () -> str",") (fun x -> str (snd x)) l ++ str")"
+
+  let pr_univ_annot pru prt (x,y) = str "@{" ++ pru x ++ str" ; " ++ prt y ++ str "}"
 
   let pr_glob_sort = function
     | GProp -> tag_type (str "Prop")
     | GSet -> tag_type (str "Set")
-    | GType [] -> tag_type (str "Type")
-    | GType u -> hov 0 (tag_type (str "Type") ++ pr_univ_annot pr_univ u)
+    | GType ([],[]) -> tag_type (str "Type")
+    | GType u -> hov 0 (tag_type (str "Type") ++ pr_univ_annot pr_univ pr_trunc u)
 
-  let pr_glob_level = function
-    | GProp -> tag_type (str "Prop")
-    | GSet -> tag_type (str "Set")
-    | GType None -> tag_type (str "Type")
-    | GType (Some (_, u)) -> tag_type (str u)
+  let pr_glob_instance_univ = function
+    | GISet -> tag_type (str "Set")
+    | GILevel None -> tag_type (str "Type")
+    | GILevel (Some (_, u)) -> tag_type (str u)
+
+  let pr_glob_instance_trunc = function
+    | GIHSet -> tag_type (str "HSet")
+    | GIHInf -> tag_type (str "HInf")
+    | GITLevel None -> tag_type (str "Type")
+    | GITLevel (Some (_, u)) -> tag_type (str u)
 
   let pr_qualid sp =
     let (sl, id) = repr_qualid sp in
@@ -171,18 +181,9 @@ end) = struct
   let pr_qualid = pr_qualid
   let pr_patvar = pr_id
 
-  let pr_glob_sort_instance = function
-    | GProp ->
-      tag_type (str "Prop")
-    | GSet ->
-      tag_type (str "Set")
-    | GType u ->
-      (match u with
-        | Some (_,u) -> str u
-        | None -> tag_type (str "Type"))
-
   let pr_universe_instance l =
-    pr_opt_no_spc (pr_univ_annot (prlist_with_sep spc pr_glob_sort_instance)) l
+    pr_opt_no_spc (pr_univ_annot (prlist_with_sep spc pr_glob_instance_univ)
+                                 (prlist_with_sep spc pr_glob_instance_trunc)) l
 
   let pr_reference = function
   | Qualid (_, qid) -> pr_qualid qid

@@ -304,7 +304,7 @@ type program_info_aux = {
   prg_body: constr;
   prg_type: constr;
   prg_ctx:  Evd.evar_universe_context;
-  prg_pl: Id.t Loc.located list option;
+  prg_pl: UState.universe_names option;
   prg_obligations: obligations;
   prg_deps : Id.t list;
   prg_fixkind : fixpoint_kind option ;

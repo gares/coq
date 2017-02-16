@@ -44,15 +44,25 @@ type 'id move_location =
 
 (** Sorts *)
 
-type 'a glob_sort_gen =
-  | GProp (** representation of [Prop] literal *)
-  | GSet  (** representation of [Set] literal *)
-  | GType of 'a (** representation of [Type] literal *)
-type sort_info = string Loc.located list
+type sort_info = string Loc.located list * string Loc.located list
 type level_info = string Loc.located option
+type tlevel_info = string Loc.located option
 
-type glob_sort = sort_info glob_sort_gen
-type glob_level = level_info glob_sort_gen
+type glob_sort =
+  | GProp
+  | GSet
+  | GType of sort_info
+
+type glob_instance_univ =
+  | GISet
+  | GILevel of level_info
+
+type glob_instance_trunc =
+  | GIHSet
+  | GIHInf
+  | GITLevel of tlevel_info
+
+type glob_instance = glob_instance_univ list * glob_instance_trunc list
 
 (** A synonym of [Evar.t], also defined in Term *)
 

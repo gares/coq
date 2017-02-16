@@ -467,6 +467,10 @@ type universe_names =
   { univ_names : (Id.t Loc.located) list
   ; trunc_names : (Id.t Loc.located) list }
 
+let universe_names_equal x y =
+  CList.for_all2eq (fun x y -> Id.equal (snd x) (snd y)) x.univ_names y.univ_names
+  && CList.for_all2eq (fun x y -> Id.equal (snd x) (snd y)) x.trunc_names y.trunc_names
+
 let universe_context_univ ctx univ_names =
   let ulevels = Sorts.ContextSet.univ_levels ctx.uctx_local in
   let newinst, map, left =

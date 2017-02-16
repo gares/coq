@@ -43,10 +43,15 @@ module Make
     else
       pr_id id
 
+  let pr_unames l =
+    let open UState in
+    prlist_with_sep spc pr_lident l.univ_names ++ str" ; "
+    ++ prlist_with_sep spc pr_lident l.trunc_names
+
   let pr_plident (lid, l) =
     pr_lident lid ++
     (match l with
-     | Some l -> prlist_with_sep spc pr_lident l
+     | Some l -> pr_unames l
      | None -> mt())
     
   let string_of_fqid fqid =
@@ -381,7 +386,8 @@ module Make
   let pr_univs pl =
     match pl with
     | None -> mt ()
-    | Some pl -> str"@{" ++ prlist_with_sep spc pr_lident pl ++ str"}"
+    | Some pl ->
+       str"@{" ++ pr_unames pl ++ str"}"
 
   let pr_rec_definition ((((loc,id),pl),ro,bl,type_,def),ntn) =
     let pr_pure_lconstr c = Flags.without_option Flags.beautify pr_lconstr c in
@@ -839,8 +845,8 @@ module Make
         )
       | VernacConstraint v ->
         let pr_uconstraint (l, d, r) =
-          pr_glob_level l ++ spc () ++ Sorts.pr_constraint_type d ++ spc () ++
-            pr_glob_level r
+          pr_glob_instance_univ l ++ spc () ++ Sorts.pr_constraint_type d ++ spc () ++
+            pr_glob_instance_univ r
         in
         return (
           hov 2 (keyword "Constraint" ++ spc () ++
@@ -895,7 +901,7 @@ module Make
             (if abst then keyword "Declare" ++ spc () else mt ()) ++
               keyword "Instance" ++
               (match instid with
-      	 | (loc, Name id), l -> spc () ++ pr_plident ((loc, id),l) ++ spc () 
+      	       | (loc, Name id), l -> spc () ++ pr_plident ((loc, id),l) ++ spc ()
                | (_, Anonymous), _ -> mt ()) ++
               pr_and_type_binders_arg sup ++
               str":" ++ spc () ++

@@ -215,26 +215,27 @@ let mkListConst c =
     Coqlib.gen_reference "" ["Init";"Datatypes"] c
   in 
   let inst = 
-    if Global.is_polymorphic r then fun u -> Sorts.Instance.of_array [|u|]
-    else fun _ -> Sorts.Instance.empty
+    if Global.is_polymorphic r then fun u t -> Sorts.Instance.of_arrays ([|u|],[|t|])
+    else fun _ _ -> Sorts.Instance.empty
   in
-    fun u -> Term.mkConstructU (Globnames.destConstructRef r, inst u)
+    fun u t -> Term.mkConstructU (Globnames.destConstructRef r, inst u t)
 
-let coq_cons univ typ = Term.mkApp (mkListConst "cons" univ, [|typ|])
-let coq_nil univ typ =  Term.mkApp (mkListConst "nil" univ, [|typ|])
+let coq_cons univ trunc typ = Term.mkApp (mkListConst "cons" univ trunc, [|typ|])
+let coq_nil univ trunc typ =  Term.mkApp (mkListConst "nil" univ trunc, [|typ|])
 
-let mk_list univ typ l =
+let mk_list univ trunc typ l =
   let rec loop = function
-    | [] -> coq_nil univ typ
+    | [] -> coq_nil univ trunc typ
     | (step :: l) ->
-	Term.mkApp (coq_cons univ typ, [| step; loop l |]) in
+	Term.mkApp (coq_cons univ trunc typ, [| step; loop l |]) in
   loop l
 
 let mk_plist = 
   let type1lev = Universes.new_univ_level () in
-    fun l -> mk_list type1lev Term.mkProp l
+  let trunc = Trunc.TLevel.hinf in
+    fun l -> mk_list type1lev trunc Term.mkProp l
 
-let mk_list = mk_list Univ.Level.set
+let mk_list = mk_list Univ.Level.set Trunc.TLevel.hset
 let mk_shuffle_list l = mk_list (Lazy.force coq_t_fusion) l
 
 

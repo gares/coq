@@ -70,7 +70,7 @@ let _ =
 (* Extra info on proofs. *)
 type lemma_possible_guards = int list list
 type proof_universes = Evd.evar_universe_context * Universes.universe_binders option
-type universe_binders = Id.t Loc.located list
+type universe_binders = UState.universe_names
 
 type proof_object = {
   id : Names.Id.t;
@@ -313,8 +313,8 @@ let get_open_goals () =
     List.length shelf
 
 let constrain_variables init uctx =
-  let levels = Sorts.Instance.to_set (Sorts.UContext.instance init) in
-  let cstrs = UState.constrain_variables levels uctx in
+  let ulevels, tlevels = Sorts.Instance.to_sets (Sorts.UContext.instance init) in
+  let cstrs = UState.constrain_variables ulevels tlevels uctx in
   Sorts.ContextSet.add_constraints cstrs (UState.context_set uctx)
 
 let close_proof ~keep_body_ucst_separate ?feedback_id ~now fpl =
@@ -342,8 +342,10 @@ let close_proof ~keep_body_ucst_separate ?feedback_id ~now fpl =
 	    nf t
 	  else t
 	in
-        let used_univs_body = Universes.universes_of_constr body in
-        let used_univs_typ = Universes.universes_of_constr typ in
+        let used_univs_body, used_truncs_body = Universes.universes_of_constr body in
+        let used_univs_typ, used_truncs_typ = Universes.universes_of_constr typ in
+	let used_univs = Univ.USet.union used_univs_body used_univs_typ in
+        let used_truncs = Trunc.TSet.union used_truncs_body used_truncs_typ in
         if keep_body_ucst_separate ||
            not (Safe_typing.empty_private_constants = eff) then
           let initunivs = Evd.evar_context_universe_context initial_euctx in
@@ -351,8 +353,7 @@ let close_proof ~keep_body_ucst_separate ?feedback_id ~now fpl =
           (* For vi2vo compilation proofs are computed now but we need to
            * complement the univ constraints of the typ with the ones of
            * the body.  So we keep the two sets distinct. *)
-	  let used_univs = Univ.USet.union used_univs_body used_univs_typ in
-          let ctx_body = restrict_universe_context ctx used_univs in
+          let ctx_body = restrict_universe_context ctx used_univs used_truncs in
           (initunivs, typ), ((body, ctx_body), eff)
         else
           let initunivs = Sorts.UContext.empty in
@@ -360,8 +361,7 @@ let close_proof ~keep_body_ucst_separate ?feedback_id ~now fpl =
           (* Since the proof is computed now, we can simply have 1 set of
            * constraints in which we merge the ones for the body and the ones
            * for the typ *)
-          let used_univs = Univ.USet.union used_univs_body used_univs_typ in
-          let ctx = restrict_universe_context ctx used_univs in
+          let ctx = restrict_universe_context ctx used_univs used_truncs in
           let univs = Sorts.ContextSet.to_context ctx in
           (univs, typ), ((body, Sorts.ContextSet.empty), eff)
       in 

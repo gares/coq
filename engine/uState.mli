@@ -124,6 +124,8 @@ type universe_names =
   { univ_names : (Id.t Loc.located) list
   ; trunc_names : (Id.t Loc.located) list }
 
+val universe_names_equal : universe_names -> universe_names -> bool
+
 val universe_context :
   ?names:universe_names -> t ->
   Universes.universe_binders * Sorts.universe_context

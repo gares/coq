@@ -57,7 +57,7 @@ val delete_all_proofs : unit -> unit
 
 type lemma_possible_guards = Proof_global.lemma_possible_guards
 
-type universe_binders = Id.t Loc.located list
+type universe_binders = UState.universe_names
 
 val start_proof :
   Id.t -> ?pl:universe_binders -> goal_kind -> Evd.evar_map -> named_context_val -> constr ->

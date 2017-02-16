@@ -128,7 +128,7 @@ module Prim :
     val ident : Id.t Gram.entry
     val name : Name.t located Gram.entry
     val identref : Id.t located Gram.entry
-    val pidentref : (Id.t located * (Id.t located list) option) Gram.entry
+    val pidentref : (Id.t located * UState.universe_names option) Gram.entry
     val pattern_ident : Id.t Gram.entry
     val pattern_identref : Id.t located Gram.entry
     val base_ident : Id.t Gram.entry
@@ -156,7 +156,8 @@ module Constr :
     val operconstr : constr_expr Gram.entry
     val ident : Id.t Gram.entry
     val global : reference Gram.entry
-    val universe_level : glob_level Gram.entry
+    val universe_level : glob_instance_univ Gram.entry
+    val truncation_level : glob_instance_trunc Gram.entry
     val sort : glob_sort Gram.entry
     val pattern : cases_pattern_expr Gram.entry
     val constr_pattern : constr_expr Gram.entry

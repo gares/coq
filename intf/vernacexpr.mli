@@ -169,8 +169,8 @@ type option_ref_value =
   | StringRefValue of string
   | QualidRefValue of reference
 
-(** Identifier and optional list of bound universes. *)						 
-type plident = lident * lident list option
+(** Identifier and optional list of bound universes and truncations. *)
+type plident = lident * UState.universe_names option
 
 type sort_expr = glob_sort
 
@@ -352,7 +352,7 @@ type vernac_expr =
   | VernacScheme of (lident option * scheme) list
   | VernacCombinedScheme of lident * lident list
   | VernacUniverse of lident list
-  | VernacConstraint of (glob_level * Sorts.constraint_type * glob_level) list
+  | VernacConstraint of (glob_instance_univ * Sorts.constraint_type * glob_instance_univ) list
 
   (* Gallina extensions *)
   | VernacBeginSection of lident

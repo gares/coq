@@ -143,8 +143,8 @@ let ic_unsafe c = (*FIXME remove *)
     fst (Constrintern.interp_constr env sigma c)
 
 let decl_constant na ctx c =
-  let vars = Universes.universes_of_constr c in
-  let ctx = Universes.restrict_universe_context (Sorts.ContextSet.of_context ctx) vars in
+  let uvars, tvars = Universes.universes_of_constr c in
+  let ctx = Universes.restrict_universe_context (Sorts.ContextSet.of_context ctx) uvars tvars in
   mkConst(declare_constant (Id.of_string na) 
 	    (DefinitionEntry (definition_entry ~opaque:true
 				~univs:(Sorts.ContextSet.to_context ctx) c),

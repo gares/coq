@@ -58,7 +58,7 @@ val compact_the_proof : unit -> unit
     values. *)
 type lemma_possible_guards = int list list
 type proof_universes = Evd.evar_universe_context * Universes.universe_binders option
-type universe_binders = Names.Id.t Loc.located list
+type universe_binders = UState.universe_names
 type proof_object = {
   id : Names.Id.t;
   entries : Safe_typing.private_constants Entries.definition_entry list;

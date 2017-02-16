@@ -223,7 +223,15 @@ GEXTEND Gram
       | -> NoInline] ]
   ;
   pidentref:
-    [ [ i = identref; l = OPT [ "@{" ; l = LIST0 identref; "}" -> l ] -> (i,l) ] ]
+    [ [ i = identref; l = OPT [ "@{" ; l = LIST0 identref; ";"; l' = LIST0 identref; "}" -> l,l' ] ->
+      let _ = () in
+      let pl =
+        let open UState in
+        match l with
+        | Some (l, l') -> Some {univ_names = l; trunc_names = l'}
+        | None -> None
+      in
+      (i,pl) ] ]
   ;
   univ_constraint:
     [ [ l = universe_level; ord = [ "<" -> Sorts.Lt | "=" -> Sorts.Eq | "<=" -> Sorts.Le ];

@@ -117,10 +117,12 @@ let instance_hook k info global imps ?hook cst =
 
 let declare_instance_constant k info global imps ?hook id pl poly evm term termtype =
   let kind = IsDefinition Instance in
-  let evm = 
-    let levels = Univ.USet.union (Universes.universes_of_constr termtype)
-				 (Universes.universes_of_constr term) in
-    Evd.restrict_universe_context evm levels 
+  let evm =
+    let type_ulevels, type_tlevels = Universes.universes_of_constr termtype in
+    let term_ulevels, term_tlevels = Universes.universes_of_constr term in
+    let ulevels = Univ.USet.union type_ulevels term_ulevels in
+    let tlevels = Trunc.TSet.union type_tlevels term_tlevels in
+    Evd.restrict_universe_context evm ulevels tlevels
   in
   let pl, uctx = Evd.universe_context ?names:pl evm in
   let entry = 
@@ -402,8 +404,9 @@ let context poly l =
       let impl = List.exists test impls in
       let decl = (Discharge, poly, Definitional) in
       let nstatus =
-        pi3 (Command.declare_assumption false decl (t, !uctx) [] [] impl
-          Vernacexpr.NoInline (Loc.ghost, id))
+        pi3 (Command.declare_assumption false decl (t, !uctx)
+                                        Universes.empty_universe_binders [] impl
+                                        Vernacexpr.NoInline (Loc.ghost, id))
       in
       let () = uctx := Sorts.ContextSet.empty in
 	status && nstatus

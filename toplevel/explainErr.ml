@@ -54,7 +54,7 @@ let wrap_vernac_error with_header (exn, info) strm =
     (EvaluatedError (strm, None), info)
 
 let process_vernac_interp_error with_header exn = match fst exn with
-  | Sorts.UniverseInconsistency i ->
+  | Sorts.SortInconsistency i ->
     let msg =
       if !Constrextern.print_universes then
 	str "." ++ spc() ++ 

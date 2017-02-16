@@ -400,7 +400,7 @@ let seff id = Vernacexpr.VtSideff [id], Vernacexpr.VtLater
 VERNAC ARGUMENT EXTEND sort
 | [ "Set" ] -> [ GSet ]
 | [ "Prop" ] -> [ GProp ]
-| [ "Type" ] -> [ GType [] ]
+| [ "Type" ] -> [ GType ([],[]) ]
 END
 
 VERNAC COMMAND EXTEND DeriveInversionClear

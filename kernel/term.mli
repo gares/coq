@@ -457,6 +457,7 @@ val map_constr_with_binders :
 
 val map_puniverses : ('a -> 'b) -> 'a puniverses -> 'b puniverses
 val univ_of_sort : sorts -> Univ.universe
+val trunc_of_sort : sorts -> Trunc.truncation
 
 val iter_constr : (constr -> unit) -> constr -> unit
 (** Alias for [Constr.iter] *)

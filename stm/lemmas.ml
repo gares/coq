@@ -453,7 +453,7 @@ let start_proof_with_initialization kind ctx recguard thms snl hook =
 
 let start_proof_com ?inference_hook kind thms hook =
   let env0 = Global.env () in
-  let levels = Option.map snd (fst (List.hd thms)) in 
+  let levels = Option.map snd (fst (List.hd thms)) in
   let evdref = ref (match levels with
 		    | None -> Evd.from_env env0
 		    | Some l -> Evd.from_ctx (Evd.make_evar_universe_context env0 l))

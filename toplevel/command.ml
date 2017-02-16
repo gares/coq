@@ -128,9 +128,11 @@ let interp_definition pl bl p red_option c ctypopt =
         in
 	if not (try List.for_all chk imps2 with Not_found -> false)
 	then warn_implicits_in_term ();
-        let vars = Univ.USet.union (Universes.universes_of_constr body)
-          (Universes.universes_of_constr typ) in
-        let ctx = Evd.restrict_universe_context !evdref vars in
+        let uvars1, tvars1 = Universes.universes_of_constr body
+        and uvars2, tvars2 = Universes.universes_of_constr typ in
+        let uvars = Univ.USet.union uvars1 uvars2
+        and tvars = Trunc.TSet.union tvars1 tvars2 in
+        let ctx = Evd.restrict_universe_context !evdref uvars tvars in
 	let pl, uctx = Evd.universe_context ?names:pl ctx in
 	imps1@(Impargs.lift_implicits nb_args impsty), pl,
 	  definition_entry ~types:typ ~poly:p 
@@ -193,7 +195,7 @@ let declare_definition ident (local, p, k) ce pl imps hook =
   Lemmas.call_hook fix_exn hook local r
 
 let _ = Obligations.declare_definition_ref :=
-       (fun i k c imps hook -> declare_definition i k c [] imps hook)
+       (fun i k c imps hook -> declare_definition i k c Universes.empty_universe_binders imps hook)
 
 let do_definition ident k pl bl red_option c ctypopt hook =
   let (ce, evd, pl', imps as def) =
@@ -306,7 +308,7 @@ let do_assumptions_unbound_univs (_, poly, _ as kind) nl l =
   let l = List.map (on_pi2 (nf_evar evd)) l in
   pi2 (List.fold_left (fun (subst,status,ctx) ((is_coe,idl),t,imps) ->
     let t = replace_vars subst t in
-    let (refs,status') = declare_assumptions idl is_coe kind (t,ctx) [] imps false nl in
+    let (refs,status') = declare_assumptions idl is_coe kind (t,ctx) Universes.empty_universe_binders imps false nl in
     let subst' = List.map2 
       (fun (_,id) (c,u) -> (id,Universes.constr_of_global_univ (c,u)))
       idl refs 
@@ -322,8 +324,8 @@ let do_assumptions_bound_univs coe kind nl id pl c =
   let ty, impls = interp_type_evars_impls env evdref c in
   let nf, subst = Evarutil.e_nf_evars_and_universes evdref in
   let ty = nf ty in
-  let vars = Universes.universes_of_constr ty in
-  let evd = Evd.restrict_universe_context !evdref vars in
+  let uvars,tvars = Universes.universes_of_constr ty in
+  let evd = Evd.restrict_universe_context !evdref uvars tvars in
   let pl, uctx = Evd.universe_context ?names:pl evd in
   let uctx = Sorts.ContextSet.of_context uctx in
   let (_, _, st) = declare_assumption coe kind (ty, uctx) pl impls false nl id in
@@ -364,7 +366,7 @@ let push_types env idl tl =
 
 type structured_one_inductive_expr = {
   ind_name : Id.t;
-  ind_univs : lident list option;
+  ind_univs : UState.universe_names option;
   ind_arity : constr_expr;
   ind_lc : (Id.t * constr_expr) list
 }
@@ -414,7 +416,7 @@ let prepare_param = function
 let rec check_anonymous_type ind =
   let open Glob_term in
     match ind with
-    | GSort (_, GType []) -> true
+    | GSort (_, GType ([],[])) -> true
     | GProd (_, _, _, _, e) 
     | GLetIn (_, _, _, e)
     | GLambda (_, _, _, _, e)
@@ -426,10 +428,15 @@ let make_conclusion_flexible evdref ty poly =
   if poly && isArity ty then
     let _, concl = destArity ty in
     if not (Sorts.is_small concl) then
-    (match Sorts.level concl with
+    begin (match Sorts.univ_level concl with
      | Some u ->
-        evdref := Evd.make_flexible_variable !evdref true u
+        evdref := Evd.make_flexible_univ_variable !evdref true u
+     | None -> ());
+    (match Sorts.trunc_level concl with
+     | Some u ->
+        evdref := Evd.make_flexible_trunc_variable !evdref true u
      | None -> ())
+    end
     else ()
   else () 
 	
@@ -475,9 +482,9 @@ let extract_level env evd min tys =
   in sup_list min sorts
 
 let is_flexible_sort evd u =
-  match Sorts.level u with
-  | Some l -> Evd.is_flexible_level evd l
-  | None -> false
+  match Sorts.univ_level u, Sorts.trunc_level u with
+  | Some l, Some l' -> Evd.is_flexible_univ_level evd l && Evd.is_flexible_trunc_level evd l'
+  | None, _ | _, None -> false
 
 (**********************************************************************)
 (* Tools for sort-polymorphic inductive types                         *)
@@ -499,16 +506,16 @@ where
   - the wi are arbitrary complex universes that do not mention the ui.
 *)
 
+(* FIXME understand truncs *)
 let is_direct_sort_constraint s v = match s with
-  | Some u -> Sorts.level_mem u v
+  | Some u -> Sorts.univ_level_mem u v
   | None -> false
 
 let solve_constraints_system levels level_bounds =
   let levels =
-    Array.mapi (fun i o ->
-      match o with
+    Array.mapi (fun i -> function
       | Some u ->
-        (match Sorts.level u with
+        (match Sorts.univ_level u with
 	| Some u -> Some u
         | _ -> level_bounds.(i) <- Sorts.sup level_bounds.(i) u; None)
       | None -> None)
@@ -734,7 +741,7 @@ let extract_params indl =
 let extract_inductive indl =
   List.map (fun (((_,indname),pl),_,ar,lc) -> {
     ind_name = indname; ind_univs = pl;
-    ind_arity = Option.cata (fun x -> x) (CSort (Loc.ghost,GType [])) ar;
+    ind_arity = Option.cata (fun x -> x) (CSort (Loc.ghost,GType ([],[]))) ar;
     ind_lc = List.map (fun (_,((_,id),t)) -> (id,t)) lc
   }) indl
 
@@ -891,7 +898,7 @@ let check_mutuality env isfix fixl =
 
 type structured_fixpoint_expr = {
   fix_name : Id.t;
-  fix_univs : lident list option;
+  fix_univs : UState.universe_names option;
   fix_annot : Id.t Loc.located option;
   fix_binders : local_binder list;
   fix_body : constr_expr option;
@@ -921,7 +928,8 @@ let declare_fix ?(opaque = false) (_,poly,_ as kind) pl ctx f ((def,_),eff) t im
   declare_definition f kind ce pl imps (Lemmas.mk_hook (fun _ r -> r))
 
 let _ = Obligations.declare_fix_ref :=
-  (fun ?opaque k ctx f d t imps -> declare_fix ?opaque k [] ctx f d t imps)
+          (fun ?opaque k ctx f d t imps ->
+            declare_fix ?opaque k Universes.empty_universe_binders ctx f d t imps)
 
 let prepare_recursive_declaration fixnames fixtypes fixdefs =
   let defs = List.map (subst_vars (List.rev fixnames)) fixdefs in
@@ -1151,7 +1159,7 @@ let interp_recursive isfix fixl notations =
         | None , acc -> acc
         | x , None -> x
         | Some ls , Some us ->
-	   if not (CList.for_all2eq (fun x y -> Id.equal (snd x) (snd y)) ls us) then
+	   if not (UState.universe_names_equal ls us) then
 	     error "(co)-recursive definitions should all have the same universe binders";
 	   Some us) fixl None in
   let ctx = Evd.make_evar_universe_context env all_universes in
@@ -1243,11 +1251,11 @@ let declare_fixpoint local poly ((fixnames,fixdefs,fixtypes),pl,ctx,fiximps) ind
     let env = Global.env() in
     let indexes = search_guard Loc.ghost env indexes fixdecls in
     let fiximps = List.map (fun (n,r,p) -> r) fiximps in
-    let vars = Universes.universes_of_constr (mkFix ((indexes,0),fixdecls)) in
+    let uvars, tvars = Universes.universes_of_constr (mkFix ((indexes,0),fixdecls)) in
     let fixdecls =
       List.map_i (fun i _ -> mkFix ((indexes,i),fixdecls)) 0 fixnames in
     let evd = Evd.from_ctx ctx in
-    let evd = Evd.restrict_universe_context evd vars in
+    let evd = Evd.restrict_universe_context evd uvars tvars in
     let fixdecls = List.map Safe_typing.mk_pure_proof fixdecls in
     let pl, ctx = Evd.universe_context ?names:pl evd in
     ignore (List.map4 (declare_fix (local, poly, Fixpoint) pl ctx)
@@ -1278,11 +1286,11 @@ let declare_cofixpoint local poly ((fixnames,fixdefs,fixtypes),pl,ctx,fiximps) n
     let fixdefs = List.map Option.get fixdefs in
     let fixdecls = prepare_recursive_declaration fixnames fixtypes fixdefs in
     let fixdecls = List.map_i (fun i _ -> mkCoFix (i,fixdecls)) 0 fixnames in
-    let vars = Universes.universes_of_constr (List.hd fixdecls) in
+    let uvars, tvars = Universes.universes_of_constr (List.hd fixdecls) in
     let fixdecls = List.map Safe_typing.mk_pure_proof fixdecls in
     let fiximps = List.map (fun (len,imps,idx) -> imps) fiximps in
     let evd = Evd.from_ctx ctx in
-    let evd = Evd.restrict_universe_context evd vars in
+    let evd = Evd.restrict_universe_context evd uvars tvars in
     let pl, ctx = Evd.universe_context ?names:pl evd in
     ignore (List.map4 (declare_fix (local, poly, CoFixpoint) pl ctx) 
 	      fixnames fixdecls fixtypes fiximps);

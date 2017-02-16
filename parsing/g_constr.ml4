@@ -149,11 +149,18 @@ GEXTEND Gram
   sort:
     [ [ "Set"  -> GSet
       | "Prop" -> GProp
-      | "Type" -> GType []
-      | "Type"; "@{"; u = universe; "}" -> GType (List.map (fun (loc,x) -> (loc, Id.to_string x)) u)
+      | "Type" -> GType ([],[])
+      | "Type"; "@{"; u = universe; ";"; t=truncation; "}" ->
+         GType ((List.map (fun (loc,x) -> (loc, Id.to_string x)) u),
+                (List.map (fun (loc,x) -> (loc, Id.to_string x)) t))
       ] ]
   ;
   universe:
+    [ [ IDENT "max"; "("; ids = LIST1 identref SEP ","; ")" -> ids
+      | id = identref -> [id]
+      ] ]
+  ;
+  truncation:
     [ [ IDENT "max"; "("; ids = LIST1 identref SEP ","; ")" -> ids
       | id = identref -> [id]
       ] ]
@@ -295,14 +302,20 @@ GEXTEND Gram
       | -> [] ] ]
   ;
   instance:
-    [ [ "@{"; l = LIST1 universe_level; "}" -> Some l
+    [ [ "@{"; l = LIST1 universe_level; ";"; l' = LIST1 truncation_level; "}" -> Some (l,l')
       | -> None ] ]
   ;
   universe_level:
-    [ [ "Set" -> GSet
-      | "Prop" -> GProp
-      | "Type" -> GType None
-      | id = identref -> GType (Some (fst id, Id.to_string (snd id)))
+    [ [ "Set" -> GISet
+      | "Type" -> GILevel None
+      | id = identref -> GILevel (Some (fst id, Id.to_string (snd id)))
+      ] ]
+  ;
+  truncation_level:
+    [ [ "HSet" -> GIHSet
+      | "HInf" -> GIHInf
+      | "Type" -> GITLevel None
+      | id = identref -> GITLevel (Some (fst id, Id.to_string (snd id)))
       ] ]
   ;
   fix_constr:

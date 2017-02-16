@@ -214,23 +214,71 @@ let interp_universe_level_name evd (loc,s) =
 	  else user_err ~loc ~hdr:"interp_universe_level_name"
 			     (Pp.(str "Undeclared universe: " ++ str s))
 
+(** Miscellaneous interpretation functions *)
+let interp_truncation_level_name evd (loc,s) =
+  let names, _ = Global.global_truncation_names () in
+    if CString.string_contains s "." then
+      match List.rev (CString.split '.' s) with
+      | [] -> anomaly (str"Invalid truncation name " ++ str s)
+      | n :: dp ->
+	 let num = int_of_string n in
+	 let dp = DirPath.make (List.map Id.of_string dp) in
+	 let level = Trunc.TLevel.of_path dp num in
+	 let evd =
+	   try Evd.add_global_trunc evd level
+	   with Sorts.Graph.AlreadyDeclared -> evd
+	 in evd, level
+    else
+      try
+	let level = Evd.truncation_of_name evd s in
+	evd, level
+      with Not_found ->
+	try
+	  let id = try Id.of_string s with _ -> raise Not_found in
+          evd, snd (Idmap.find id names)
+	with Not_found ->
+	  if not (is_strict_universe_declarations ()) then
+  	    new_trunc_level_variable ~loc ~name:s univ_rigid evd
+	  else user_err ~loc ~hdr:"interp_universe_level_name"
+			     (Pp.(str "Undeclared universe: " ++ str s))
+
 let interp_universe ?loc evd = function
   | [] -> let evd, l = new_univ_level_variable ?loc univ_rigid evd in
-            evd, Sorts.of_level l
+            evd, Univ.Universe.make l
   | l ->
-    List.fold_left (fun (evd, u) l -> 
-      let evd', l = interp_universe_level_name evd l in
-        (evd', Sorts.sup u (Sorts.of_level l)))
-    (evd, Sorts.prop) l
+     let open Univ in
+     List.fold_left (fun (evd, u) l -> 
+         let evd', l = interp_universe_level_name evd l in
+         (evd', Universe.sup u (Universe.make l)))
+                    (evd, Universe.type0m) l
+
+let interp_truncation ?loc evd = function
+  | [] -> let evd, l = new_trunc_level_variable ?loc univ_rigid evd in
+         evd, Trunc.Truncation.of_level l
+  | l ->
+     let open Trunc in
+     List.fold_left (fun (evd, u) l ->
+         let evd', l = interp_truncation_level_name evd l in
+         (evd', Truncation.sup u (Truncation.of_level l)))
+                    (evd, Truncation.hset) l
 
 let interp_universe_level loc evd = function
   | None -> new_univ_level_variable ~loc univ_rigid evd
   | Some (loc,s) -> interp_universe_level_name evd (loc,s)
 
+let interp_truncation_level loc evd = function
+  | None -> new_trunc_level_variable ~loc univ_rigid evd
+  | Some (loc,s) -> interp_truncation_level_name evd (loc,s)
+
+let interp_sort_info ?loc evd (us,ts) =
+  let evd, u = interp_universe ?loc evd us in
+  let evd, t = interp_truncation ?loc evd ts in
+  evd, Sorts.make u t
+
 let interp_sort ?loc evd = function
   | GProp -> evd, Sorts.prop
   | GSet -> evd, Sorts.set
-  | GType n -> interp_universe ?loc evd n
+  | GType s -> interp_sort_info ?loc evd s
 
 let interp_elimination_sort = function
   | GProp -> InProp
@@ -464,31 +512,51 @@ let evar_kind_of_term sigma c =
 
 let interp_universe_level_name loc evd l =
   match l with
-  | GProp -> evd, Univ.Level.prop
-  | GSet -> evd, Univ.Level.set
-  | GType s -> interp_universe_level loc evd s
+  | GISet -> evd, Univ.Level.set
+  | GILevel s -> interp_universe_level loc evd s
+
+let interp_truncation_level_name loc evd l =
+  match l with
+  | GIHSet -> evd, Trunc.TLevel.hset
+  | GIHInf -> evd, Trunc.TLevel.hinf
+  | GITLevel s -> interp_truncation_level loc evd s
+
+(** Instance for global [gr], checking sizes. *)
+let pretype_instance loc evd gr (ul,tl) =
+  let _, ctx = Universes.unsafe_constr_of_global gr in
+  let uarr, tarr = Sorts.Instance.to_arrays (Sorts.UContext.instance ctx) in
+  let ulen = Array.length uarr in
+  let tlen = Array.length tarr in
+  if ulen != List.length ul then
+    user_err ~loc ~hdr:"pretype"
+	     (str "Universe instance should have length " ++ int ulen)
+  else if tlen != List.length tl then
+    user_err ~loc ~hdr:"pretype"
+	     (str "Truncation instance should have length " ++ int tlen)
+  else
+    let evd, ul' = List.fold_left (fun (evd, univs) ul ->
+	               let evd, ul = interp_universe_level_name loc evd ul in
+	               (evd, ul :: univs)) (evd, []) ul
+    in
+    if List.exists (fun l -> Univ.Level.is_prop l) ul' then
+      user_err ~loc ~hdr:"pretype"
+	       (str "Universe instances cannot contain Prop, polymorphic" ++
+		   str " universe instances must be greater or equal to Set.");
+    let evd, tl' = List.fold_left (fun (evd, truncs) tl ->
+	               let evd, tl = interp_truncation_level_name loc evd tl in
+	               (evd, tl :: truncs)) (evd, []) tl
+    in
+    let ua = Array.of_list (List.rev ul') in
+    let ta = Array.of_list (List.rev tl') in
+    evd, Sorts.Instance.of_arrays (ua,ta)
 
 let pretype_global loc rigid env evd gr us = 
   let evd, instance = 
     match us with
     | None -> evd, None
-    | Some l -> 
-       let _, ctx = Universes.unsafe_constr_of_global gr in
-       let arr = Sorts.Instance.to_array (Sorts.UContext.instance ctx) in
-       let len = Array.length arr in
-       if len != List.length l then
-	 user_err ~loc ~hdr:"pretype"
-		       (str "Universe instance should have length " ++ int len)
-       else
-	 let evd, l' = List.fold_left (fun (evd, univs) l -> 
-	    let evd, l = interp_universe_level_name loc evd l in
-	      (evd, l :: univs)) (evd, []) l
-	 in
-	 if List.exists (fun l -> Univ.Level.is_prop l) l' then
-	   user_err ~loc ~hdr:"pretype"
-		 (str "Universe instances cannot contain Prop, polymorphic" ++
-		   str " universe instances must be greater or equal to Set.");
-	 evd, Some (Sorts.Instance.of_array (Array.of_list (List.rev l')))
+    | Some i ->
+       let evd, i = pretype_instance loc evd gr i in
+       evd, Some i
   in
     Evd.fresh_global ~loc ~rigid ?names:instance env.ExtraEnv.env evd gr
 
@@ -509,7 +577,7 @@ let pretype_ref loc evdref env ref us =
       make_judge c ty
 
 let judge_of_Type loc evd s =
-  let evd, s = interp_universe ~loc evd s in
+  let evd, s = interp_sort_info ~loc evd s in
   let judge =
     { uj_val = mkSort s; uj_type = mkSort (Sorts.super s) }
   in

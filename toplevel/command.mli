@@ -22,7 +22,7 @@ open Pfedit
 
 val do_universe : polymorphic -> Id.t Loc.located list -> unit
 val do_constraint : polymorphic ->
-  (Misctypes.glob_level * Sorts.constraint_type * Misctypes.glob_level) list -> unit
+  (Misctypes.glob_instance_univ * Sorts.constraint_type * Misctypes.glob_instance_univ) list -> unit
 
 (** {6 Hooks for Pcoq} *)
 
@@ -32,7 +32,7 @@ val get_declare_definition_hook : unit -> (Safe_typing.private_constants definit
 (** {6 Definitions/Let} *)
 
 val interp_definition :
-  lident list option -> local_binder list -> polymorphic -> red_expr option -> constr_expr ->
+  UState.universe_names option -> local_binder list -> polymorphic -> red_expr option -> constr_expr ->
   constr_expr option -> Safe_typing.private_constants definition_entry * Evd.evar_map * 
       Universes.universe_binders * Impargs.manual_implicits
 
@@ -40,7 +40,7 @@ val declare_definition : Id.t -> definition_kind ->
   Safe_typing.private_constants definition_entry -> Universes.universe_binders -> Impargs.manual_implicits ->
     Globnames.global_reference Lemmas.declaration_hook -> Globnames.global_reference
 
-val do_definition : Id.t -> definition_kind -> lident list option ->
+val do_definition : Id.t -> definition_kind -> UState.universe_names option ->
   local_binder list -> red_expr option -> constr_expr ->
   constr_expr option -> unit Lemmas.declaration_hook -> unit
 
@@ -72,7 +72,7 @@ val do_assumptions : locality * polymorphic * assumption_object_kind ->
 
 type structured_one_inductive_expr = {
   ind_name : Id.t;
-  ind_univs : lident list option;
+  ind_univs : UState.universe_names option;
   ind_arity : constr_expr;
   ind_lc : (Id.t * constr_expr) list
 }
@@ -112,7 +112,7 @@ val do_mutual_inductive :
 
 type structured_fixpoint_expr = {
   fix_name : Id.t;
-  fix_univs : lident list option;
+  fix_univs : UState.universe_names option;
   fix_annot : Id.t Loc.located option;
   fix_binders : local_binder list;
   fix_body : constr_expr option;
@@ -137,24 +137,24 @@ type recursive_preentry =
 
 val interp_fixpoint :
   structured_fixpoint_expr list -> decl_notation list ->
-    recursive_preentry * lident list option * Evd.evar_universe_context * 
+    recursive_preentry * UState.universe_names option * Evd.evar_universe_context *
     (Name.t list * Impargs.manual_implicits * int option) list
 
 val interp_cofixpoint :
   structured_fixpoint_expr list -> decl_notation list ->
-    recursive_preentry * lident list option * Evd.evar_universe_context * 
+    recursive_preentry * UState.universe_names option * Evd.evar_universe_context *
     (Name.t list * Impargs.manual_implicits * int option) list
 
 (** Registering fixpoints and cofixpoints in the environment *)
 
 val declare_fixpoint :
   locality -> polymorphic ->
-  recursive_preentry * lident list option * Evd.evar_universe_context * 
+  recursive_preentry * UState.universe_names option * Evd.evar_universe_context *
   (Name.t list * Impargs.manual_implicits * int option) list ->
   lemma_possible_guards -> decl_notation list -> unit
 
 val declare_cofixpoint : locality -> polymorphic -> 
-  recursive_preentry * lident list option * Evd.evar_universe_context * 
+  recursive_preentry * UState.universe_names option * Evd.evar_universe_context *
   (Name.t list * Impargs.manual_implicits * int option) list ->
   decl_notation list -> unit
 

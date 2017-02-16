@@ -305,6 +305,7 @@ module Constr =
     let ident = make_gen_entry uconstr "ident"
     let global = make_gen_entry uconstr "global"
     let universe_level = make_gen_entry uconstr "universe_level"
+    let truncation_level = make_gen_entry uconstr "truncation_level"
     let sort = make_gen_entry uconstr "sort"
     let pattern = Gram.entry_create "constr:pattern"
     let constr_pattern = gec_constr "constr_pattern"

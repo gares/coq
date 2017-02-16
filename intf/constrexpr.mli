@@ -44,7 +44,7 @@ type raw_cases_pattern_expr =
   | RCPatAtom of Loc.t * Id.t option
   | RCPatOr of Loc.t * raw_cases_pattern_expr list
 
-type instance_expr = Misctypes.glob_level list
+type instance_expr = Misctypes.glob_instance
 
 type cases_pattern_expr =
   | CPatAlias of Loc.t * cases_pattern_expr * Id.t
@@ -132,7 +132,7 @@ and constr_notation_substitution =
     constr_expr list list * (** for recursive notations *)
     local_binder list list (** for binders subexpressions *)
 
-type typeclass_constraint = (Name.t located * Id.t located list option) * binding_kind * constr_expr
+type typeclass_constraint = (Name.t located * UState.universe_names option) * binding_kind * constr_expr
 
 and typeclass_context = typeclass_constraint list
 

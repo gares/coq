@@ -93,5 +93,5 @@ val declare_universe_context : polymorphic -> Sorts.universe_context_set -> unit
 
 val do_universe : polymorphic -> Id.t Loc.located list -> unit
 val do_constraint : polymorphic ->
-  (Misctypes.glob_level * Sorts.constraint_type * Misctypes.glob_level) list ->
+  (Misctypes.glob_instance_univ * Sorts.constraint_type * Misctypes.glob_instance_univ) list ->
   unit

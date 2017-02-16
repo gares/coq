@@ -30,7 +30,7 @@ val declare_instance_constant :
   Impargs.manual_explicitation list -> (** implicits *)
   ?hook:(Globnames.global_reference -> unit) ->
   Id.t -> (** name *)
-  Id.t Loc.located list option ->
+  UState.universe_names option ->
   bool -> (* polymorphic *)
   Evd.evar_map -> (* Universes *)
   Constr.t -> (** body *)

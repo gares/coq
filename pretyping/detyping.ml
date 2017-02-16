@@ -414,15 +414,19 @@ let detype_case computable detype detype_eqns testdep avoid data p c bl =
       let eqnl = detype_eqns constructs constagsl bl in
       GCases (dl,tag,pred,[tomatch,(alias,aliastyp)],eqnl)
 
-let detype_sort sigma s =
+let detype_sort sigma s : glob_sort =
   match family_of_sort s with
   | InProp -> GProp
   | InSet -> GSet
   | InType ->
+     let u = Sorts.univ_of_sort s in
+     let t = Sorts.trunc_of_sort s in
      GType
        (if !print_universes
-        then [dl, Pp.string_of_ppcmds (Sorts.pr_with (Evd.pr_evd_level sigma) s)]
-        else [])
+        then
+          [dl, Pp.string_of_ppcmds (Univ.Universe.pr_with (fst (Evd.pr_evd_level sigma)) u)],
+          [dl, Pp.string_of_ppcmds (Trunc.Truncation.pr_with (snd (Evd.pr_evd_level sigma)) t)]
+        else [],[])
 
 type binder_kind = BProd | BLambda | BLetIn
 
@@ -433,11 +437,20 @@ let detype_anonymous = ref (fun loc n -> anomaly ~label:"detype" (Pp.str "index 
 let set_detype_anonymous f = detype_anonymous := f
 
 let detype_level sigma l =
-  GType (Some (dl, Pp.string_of_ppcmds (Evd.pr_evd_level sigma l)))
+  GILevel (Some (dl, Pp.string_of_ppcmds (fst (Evd.pr_evd_level sigma) l)))
+
+let detype_tlevel sigma l =
+  GITLevel (Some (dl, Pp.string_of_ppcmds (snd (Evd.pr_evd_level sigma) l)))
 
 let detype_instance sigma l = 
   if Sorts.Instance.is_empty l then None
-  else Some (List.map (detype_level sigma) (Array.to_list (Sorts.Instance.to_array l)))
+  else
+    let us, ts = Sorts.Instance.to_arrays l in
+    let us = Array.to_list us
+    and ts = Array.to_list ts in
+    let us = List.map (detype_level sigma) us
+    and ts = List.map (detype_tlevel sigma) ts in
+    Some (us,ts)
 
 let rec detype flags avoid env sigma t =
   match kind_of_term (collapse_appl t) with

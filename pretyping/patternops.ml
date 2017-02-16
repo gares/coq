@@ -132,7 +132,7 @@ let pattern_of_constr env sigma t =
        begin match Sorts.family_of_sort s with
        | InProp -> PSort GProp
        | InSet -> PSort GSet
-       | InType -> PSort (GType [])
+       | InType -> PSort (GType ([],[]))
        end
     | Cast (c,_,_)      -> pattern_of_constr env c
     | LetIn (na,c,t,b) -> PLetIn (na,pattern_of_constr env c,

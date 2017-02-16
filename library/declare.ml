@@ -512,12 +512,11 @@ let do_constraint poly l =
   let open Misctypes in
   let u_of_id x =
     match x with
-    | GProp -> Loc.dummy_loc, (false, Univ.Level.prop)
-    | GSet -> Loc.dummy_loc, (false, Univ.Level.set)
-    | GType None ->
+    | GISet -> Loc.dummy_loc, (false, Univ.Level.set)
+    | GILevel None ->
        user_err ~hdr:"Constraint"
                      (str "Cannot declare constraints on anonymous universes")
-    | GType (Some (loc, id)) ->
+    | GILevel (Some (loc, id)) ->
        let id = Id.of_string id in
        let names, _ = Global.global_universe_names () in
        try loc, Idmap.find id names

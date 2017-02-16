@@ -118,19 +118,24 @@ let typecheck_params_and_fields def id pl t ps nots fs =
        let env = push_rel_context newps env0 in
        let poly =
          match t with
-         | CSort (_, Misctypes.GType []) -> true | _ -> false in
+         | CSort (_, Misctypes.GType ([],[])) -> true | _ -> false in
        let s = interp_type_evars env evars ~impls:empty_internalization_env t in
        let sred = Reductionops.whd_all env !evars s in
-	 (match kind_of_term sred with
-	 | Sort s' -> 
-	    (if poly then
-               match Evd.is_sort_variable !evars s' with
-	       | Some l -> evars := Evd.make_flexible_variable !evars true l; 
-	                  sred, true
-	       | None -> s, false
-             else s, false)
-	 | _ -> user_err ~loc:(constr_loc t) (str"Sort expected."))
-    | None -> 
+       if poly then
+         let s' =
+           try destSort sred
+           with DestKO -> user_err ~loc:(constr_loc t) (str"Sort expected.")
+         in
+         let u = univ_of_sort s'
+         and t = trunc_of_sort s' in
+         match Evd.is_univ_variable !evars u, Evd.is_trunc_variable !evars t with
+	 | Some l, Some l' ->
+            evars := Evd.make_flexible_univ_variable !evars true l;
+            evars := Evd.make_flexible_trunc_variable !evars true l';
+	    sred, true
+	 | None, _ | _, None -> s, false
+       else s, false
+    | None ->
       let uvarkind = Evd.univ_flexible_alg in
 	mkSort (Evarutil.evd_comb0 (Evd.new_sort_variable uvarkind) evars), true
   in
@@ -152,8 +157,14 @@ let typecheck_params_and_fields def id pl t ps nots fs =
 	arity, evars
       else
         let evars = Evd.set_leq_sort env_ar evars univ aritysort in
+        let arityuniv = univ_of_sort aritysort
+        and aritytrunc = trunc_of_sort aritysort in
         if Sorts.is_small univ &&
-	   Option.cata (Evd.is_flexible_level evars) false (Evd.is_sort_variable evars aritysort) then
+	     Option.cata (Evd.is_flexible_univ_level evars)
+                         false (Evd.is_univ_variable evars arityuniv) &&
+               Option.cata (Evd.is_flexible_trunc_level evars)
+                           false (Evd.is_trunc_variable evars aritytrunc)
+        then
 	   (* We can assume that the level in aritysort is not constrained
 	       and clear it, if it is flexible *)
           mkArity (ctx, univ),
@@ -408,7 +419,8 @@ let declare_structure finite poly ctx id idbuild paramimpls params arity templat
       mind_entry_universes = ctx;
     }
   in
-  let kn = Command.declare_mutual_inductive_with_eliminations mie [] [(paramimpls,[])] in
+  let kn = Command.declare_mutual_inductive_with_eliminations
+             mie Universes.empty_universe_binders [(paramimpls,[])] in
   let rsp = (kn,0) in (* This is ind path of idstruc *)
   let cstr = (rsp,1) in
   let kinds,sp_projs = declare_projections rsp ~kind binder_name coers fieldimpls fields in
