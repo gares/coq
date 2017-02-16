@@ -348,7 +348,6 @@ let typecheck_inductive env mie =
   let inds = Array.of_list inds in
 
   (* Compute/check the sorts of the inductive types *)
-
   let inds =
     Array.map (fun ((id,full_arity,sign,expltype,def_level,inf_level),cn,lc,clev,cond)  ->
       let infu = 
@@ -360,10 +359,10 @@ let typecheck_inductive env mie =
       let full_polymorphic () = 
         let is_natural =
           if type_in_type env || Sorts.Graph.check_leq (universes env') infu def_level
-          then if not (Sorts.is_prop def_level)
-               then NoSquash
-               else (* Prop has additional conditions on constructor shapes*)
+          then if Sorts.is_prop def_level
+               then (* Prop has additional conditions on constructor shapes*)
                  squash_from_cond cond
+               else NoSquash
           else squash_from_level def_level
         in
         let _ =
