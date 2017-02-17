@@ -81,7 +81,7 @@ let union ctx ctx' =
     let declarenew g =
       g
       |> Univ.USet.fold (fun u g -> Sorts.Graph.add_universe u false g) newus
-      |> Trunc.TSet.fold (fun u g -> Sorts.Graph.add_truncation u false g) newts
+      |> Trunc.TSet.fold (fun u g -> Sorts.Graph.add_truncation u g) newts
     in
     { uctx_unames = (unames, unames_rev);
       uctx_tnames = (tnames, tnames_rev);
@@ -596,7 +596,7 @@ let merge ?loc sideff rigid uctx ctx' =
          ulevels
     |> TSet.fold
          (fun u g ->
-           try Sorts.Graph.add_truncation u false g
+           try Sorts.Graph.add_truncation u g
            with Sorts.Graph.AlreadyDeclared when sideff -> g)
          tlevels
   in
@@ -684,11 +684,11 @@ let new_trunc_variable ?loc rigid name
     | None -> add_uctx_trunc_loc u loc uctx.uctx_tnames
   in
   let initial =
-    Sorts.Graph.add_truncation u false uctx.uctx_initial_universes
+    Sorts.Graph.add_truncation u uctx.uctx_initial_universes
   in
   let uctx' =
     {uctx' with uctx_tnames = tnames; uctx_local = ctx';
-                uctx_universes = Sorts.Graph.add_truncation u false uctx.uctx_universes;
+                uctx_universes = Sorts.Graph.add_truncation u uctx.uctx_universes;
                 uctx_initial_universes = initial}
   in uctx', u
 
@@ -705,10 +705,10 @@ let add_global_univ uctx u =
 
 let add_global_trunc uctx u =
   let initial =
-    Sorts.Graph.add_truncation u true uctx.uctx_initial_universes
+    Sorts.Graph.add_truncation u uctx.uctx_initial_universes
   in
   let univs =
-    Sorts.Graph.add_truncation u true uctx.uctx_universes
+    Sorts.Graph.add_truncation u uctx.uctx_universes
   in
   { uctx with uctx_local = Sorts.ContextSet.add_truncation u uctx.uctx_local;
                                      uctx_initial_universes = initial;
@@ -846,7 +846,7 @@ let refresh_undefined_variables uctx =
     g
     |> Univ.USet.fold (fun u g -> Sorts.Graph.add_universe u false g)
                       (Sorts.ContextSet.univ_levels ctx')
-    |> Trunc.TSet.fold (fun u g -> Sorts.Graph.add_truncation u false g)
+    |> Trunc.TSet.fold (fun u g -> Sorts.Graph.add_truncation u g)
                       (Sorts.ContextSet.trunc_levels ctx')
   in
   let initial = declare uctx.uctx_initial_universes in

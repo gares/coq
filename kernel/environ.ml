@@ -192,7 +192,7 @@ let add_universes strict ctx g =
   in
   let g = Array.fold_left
 	    (* Be lenient, module typing reintroduces universes and constraints due to includes *)
-	    (fun g v -> try Sorts.Graph.add_truncation v strict g with Sorts.Graph.AlreadyDeclared -> g)
+	    (fun g v -> try Sorts.Graph.add_truncation v g with Sorts.Graph.AlreadyDeclared -> g)
 	    g ta
   in
     Sorts.Graph.merge_constraints (Sorts.UContext.constraints ctx) g
@@ -206,7 +206,7 @@ let add_universes_set strict ctx g =
 	    (Sorts.ContextSet.univ_levels ctx) g
   in
   let g = Trunc.TSet.fold
-	    (fun v g -> try Sorts.Graph.add_truncation v strict g with Sorts.Graph.AlreadyDeclared -> g)
+	    (fun v g -> try Sorts.Graph.add_truncation v g with Sorts.Graph.AlreadyDeclared -> g)
 	    (Sorts.ContextSet.trunc_levels ctx) g
   in
   Sorts.Graph.merge_constraints (Sorts.ContextSet.constraints ctx) g

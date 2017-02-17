@@ -594,7 +594,8 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
       in
       let entries = UMap.add vlev (Canonical v) g.entries in
       let g = { entries; index = g.index - 1; n_nodes = g.n_nodes + 1; n_edges = g.n_edges } in
-      insert_edge strict (get_var_min_arc g) v g
+      let g = insert_edge strict (get_var_min_arc g) v g in
+      Option.fold_left (fun g max -> insert_edge strict v max g) g (get_max_arc g)
 
   exception Found_explanation of explanation
 
@@ -765,7 +766,7 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
     | Some max ->
        let entries = add_lit_arc max (-1) (add_lit_arc Level.min 0 UMap.empty) in
        let empty = { entries; index = (-2); n_nodes = 2; n_edges = 0 } in
-       enforce_univ_lt Level.min max empty
+       enforce_univ_leq Level.min max empty
 
   (* Prop = Set / HSet = HInf are forbidden here. *)
   let initial = empty

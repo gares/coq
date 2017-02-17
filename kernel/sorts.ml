@@ -84,6 +84,8 @@ let is_set s = is_type0_univ (univ_of_sort s)
 
 let is_small s = is_small_univ (univ_of_sort s)
 
+let is_hset s = Truncation.is_hset (trunc_of_sort s)
+
 let family_mem s = function
   | InProp -> is_prop s
   | InSet -> is_small s
@@ -637,7 +639,7 @@ module Instance = struct
 
   let pr (fn1,fn2) (a1,a2) =
     let open Pp in
-    prvect_with_sep spc fn1 a1 ++ prvect_with_sep spc fn2 a2
+    prvect_with_sep spc fn1 a1 ++ str " ; " ++ prvect_with_sep spc fn2 a2
 
   let equal_one lev_eq t u =
     t == u ||
@@ -810,7 +812,7 @@ module Graph = struct
 
   exception AlreadyDeclared = Graphgen.AlreadyDeclared
   let add_universe l b (ug, tg) = UGraph.add_level l b ug, tg
-  let add_truncation l b (ug, tg) = ug, TGraph.add_level l b tg
+  let add_truncation l (ug, tg) = ug, TGraph.add_level l false tg
 
   let enforce_constraint c (ug, tg) =
     match c with
@@ -836,7 +838,7 @@ module Graph = struct
     Constraint.for_all (check_constraint t) cs
 
   let pr (fn1, fn2) (ug, tg) =
-    Pp.(UGraph.pr fn1 ug ++ TGraph.pr fn2 tg)
+    Pp.(UGraph.pr fn1 ug ++ str "\n;\n" ++ TGraph.pr fn2 tg)
 
   let dump out (ug, tg) =
     UGraph.dump_universes out ug;
@@ -1025,7 +1027,7 @@ module ContextSet = struct
     if is_empty ctx then Pp.mt()
     else
       let open Pp in
-      h 0 (USet.pr (prl_u prl) us ++ TSet.pr (prl_t prl) ts ++ str " |= ") ++
+      h 0 (USet.pr (prl_u prl) us ++ str "\n;\n" ++ TSet.pr (prl_t prl) ts ++ str " |= ") ++
         h 0 (v 0 (Constraint.pr prl cs))
 end
 

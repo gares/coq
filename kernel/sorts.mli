@@ -24,6 +24,7 @@ val hash : sorts -> int
 val is_set : sorts -> bool
 val is_prop : sorts -> bool
 val is_small : sorts -> bool
+val is_hset : sorts -> bool
 val family_mem : sorts -> family -> bool
 
 val hcons : sorts -> sorts
@@ -251,7 +252,7 @@ sig
 
   exception AlreadyDeclared (* = Graphgen.AlreadyDeclared *)
   val add_universe : Univ.Level.t -> bool -> t -> t
-  val add_truncation : Trunc.TLevel.t -> bool -> t -> t
+  val add_truncation : Trunc.TLevel.t -> t -> t
 
   (** Merge of constraints in a universes graph.
       The function [merge_constraints] merges a set of constraints in a given
