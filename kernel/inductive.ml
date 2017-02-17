@@ -91,7 +91,9 @@ let elim_sorts_abstract (_,mip) =
 let is_hset_type env revparams t =
   let t = substl revparams t in (* Order?? *)
   let s = (Retypeops.infer_type env no_evars t).utj_type in
-  Sorts.is_small s
+  Sorts.Graph.trunc_check_eq (Environ.universes env)
+                             (Sorts.trunc_of_sort s)
+                             Trunc.Truncation.hset
 
 let elim_sorts env (_,mip) params =
   match mip.mind_kelim with
