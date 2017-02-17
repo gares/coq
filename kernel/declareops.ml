@@ -226,6 +226,12 @@ let subst_template_ind_arity sub s = s
 let subst_ind_arity =
   subst_decl_arity subst_regular_ind_arity subst_template_ind_arity
 
+let subst_squash sub = function
+  | NoSquash | PropSquash | SetSquash as s -> s
+  | ConditionalSquash tys ->
+     let tys = List.map (subst_mps sub) tys in
+     ConditionalSquash tys
+
 let subst_mind_packet sub mbp =
   { mind_consnames = mbp.mind_consnames;
     mind_consnrealdecls = mbp.mind_consnrealdecls;
@@ -237,7 +243,7 @@ let subst_mind_packet sub mbp =
     mind_user_lc = Array.smartmap (subst_mps sub) mbp.mind_user_lc;
     mind_nrealargs = mbp.mind_nrealargs;
     mind_nrealdecls = mbp.mind_nrealdecls;
-    mind_kelim = mbp.mind_kelim;
+    mind_kelim = subst_squash sub mbp.mind_kelim;
     mind_recargs = subst_wf_paths sub mbp.mind_recargs (*wf_paths*);
     mind_nb_constant = mbp.mind_nb_constant;
     mind_nb_args = mbp.mind_nb_args;
@@ -288,6 +294,12 @@ let hcons_ind_arity =
 
 (** Substitution of inductive declarations *)
 
+let hcons_squash = function
+  | NoSquash | PropSquash | SetSquash as s -> s
+  | ConditionalSquash tys ->
+     let tys = List.map Term.hcons_constr tys in
+     ConditionalSquash tys
+
 let hcons_mind_packet oib =
   let user = Array.smartmap Term.hcons_types oib.mind_user_lc in
   let nf = Array.smartmap Term.hcons_types oib.mind_nf_lc in
@@ -298,6 +310,7 @@ let hcons_mind_packet oib =
     mind_arity_ctxt = hcons_rel_context oib.mind_arity_ctxt;
     mind_arity = hcons_ind_arity oib.mind_arity;
     mind_consnames = Array.smartmap Names.Id.hcons oib.mind_consnames;
+    mind_kelim = hcons_squash oib.mind_kelim;
     mind_user_lc = user;
     mind_nf_lc = nf }
 

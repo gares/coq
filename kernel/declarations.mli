@@ -127,7 +127,10 @@ type regular_inductive_arity = {
 type inductive_arity = (regular_inductive_arity, template_arity) declaration_arity
 
 type squash_kinds =
-  NoSquash | PropSquash | SetSquash | ConditionalSquash of types list
+  | NoSquash
+  | PropSquash
+  | SetSquash
+  | ConditionalSquash of types list
 
 type one_inductive_body = {
 (** {8 Primitive datas } *)
