@@ -172,7 +172,7 @@ let rec classify_vernac e =
         VtSideff ids, VtLater
     | VernacCombinedScheme ((_,id),_) -> VtSideff [id], VtLater
     | VernacBeginSection (_,id) -> VtSideff [id], VtLater
-    | VernacUniverse _ | VernacConstraint _
+    | VernacUniverse _ | VernacTruncation _ | VernacConstraint _ | VernacTConstraint _
     | VernacCanonical _ | VernacCoercion _ | VernacIdentityCoercion _
     | VernacAddLoadPath _ | VernacRemoveLoadPath _ | VernacAddMLPath _
     | VernacChdir _ 

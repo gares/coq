@@ -185,7 +185,10 @@ GEXTEND Gram
           VernacRegister(id, RegisterInline)
       | IDENT "Universe"; l = LIST1 identref -> VernacUniverse l
       | IDENT "Universes"; l = LIST1 identref -> VernacUniverse l
+      | IDENT "Truncation"; l = LIST1 identref -> VernacTruncation l
+      | IDENT "Truncations"; l = LIST1 identref -> VernacTruncation l
       | IDENT "Constraint"; l = LIST1 univ_constraint SEP "," -> VernacConstraint l
+      | IDENT "TConstraint"; l = LIST1 trunc_constraint SEP "," -> VernacTConstraint l
   ] ]
   ;
 
@@ -236,6 +239,10 @@ GEXTEND Gram
   univ_constraint:
     [ [ l = universe_level; ord = [ "<" -> Sorts.Lt | "=" -> Sorts.Eq | "<=" -> Sorts.Le ];
 	r = universe_level -> (l, ord, r) ] ]
+  ;
+  trunc_constraint:
+    [ [ l = truncation_level; ord = [ "=" -> Sorts.Eq | "<=" -> Sorts.Le ];
+	r = truncation_level -> (l, ord, r) ] ]
   ;
   finite_token:
     [ [ "Inductive" -> (Inductive_kw,Finite)

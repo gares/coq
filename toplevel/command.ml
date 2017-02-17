@@ -42,7 +42,9 @@ open Entries
 module RelDecl = Context.Rel.Declaration
 
 let do_universe poly l = Declare.do_universe poly l
+let do_truncation poly l = Declare.do_truncation poly l
 let do_constraint poly l = Declare.do_constraint poly l
+let do_tconstraint poly l = Declare.do_tconstraint poly l
 
 let rec under_binders env sigma f n c =
   if Int.equal n 0 then f env sigma c else

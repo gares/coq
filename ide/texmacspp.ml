@@ -532,7 +532,9 @@ let rec tmpp v loc =
   | VernacBindScope _ as x -> xmlTODO loc x
   | VernacNotationAddFormat _ as x -> xmlTODO loc x
   | VernacUniverse _
+  | VernacTruncation _
   | VernacConstraint _
+  | VernacTConstraint _
   | VernacPolymorphic (_, _) as x -> xmlTODO loc x
   (* Gallina *)
   | VernacDefinition (ldk, ((_,id),_), de) ->

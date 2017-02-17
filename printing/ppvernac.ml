@@ -843,6 +843,11 @@ module Make
           hov 2 (keyword "Universe" ++ spc () ++
                    prlist_with_sep (fun _ -> str",") pr_lident v)
         )
+      | VernacTruncation v ->
+        return (
+          hov 2 (keyword "Truncation" ++ spc () ++
+                   prlist_with_sep (fun _ -> str",") pr_lident v)
+        )
       | VernacConstraint v ->
         let pr_uconstraint (l, d, r) =
           pr_glob_instance_univ l ++ spc () ++ Sorts.pr_constraint_type d ++ spc () ++
@@ -851,6 +856,15 @@ module Make
         return (
           hov 2 (keyword "Constraint" ++ spc () ++
                    prlist_with_sep (fun _ -> str",") pr_uconstraint v)
+        )
+      | VernacTConstraint v ->
+        let pr_tconstraint (l, d, r) =
+          pr_glob_instance_trunc l ++ spc () ++ Sorts.pr_constraint_type d ++ spc () ++
+            pr_glob_instance_trunc r
+        in
+        return (
+          hov 2 (keyword "TConstraint" ++ spc () ++
+                   prlist_with_sep (fun _ -> str",") pr_tconstraint v)
         )
 
       (* Gallina extensions *)

@@ -95,3 +95,7 @@ val do_universe : polymorphic -> Id.t Loc.located list -> unit
 val do_constraint : polymorphic ->
   (Misctypes.glob_instance_univ * Sorts.constraint_type * Misctypes.glob_instance_univ) list ->
   unit
+val do_truncation : polymorphic -> Id.t Loc.located list -> unit
+val do_tconstraint : polymorphic ->
+  (Misctypes.glob_instance_trunc * Sorts.constraint_type * Misctypes.glob_instance_trunc) list ->
+  unit

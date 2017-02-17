@@ -634,12 +634,26 @@ let vernac_universe loc poly l =
 		  str "use Monomorphic Universe instead");
   do_universe poly l
 
+let vernac_truncation loc poly l =
+  if poly && not (Lib.sections_are_opened ()) then
+    user_err ~loc ~hdr:"vernac_truncation"
+		 (str"Polymorphic truncations can only be declared inside sections, " ++
+		  str "use Monomorphic Truncation instead");
+  do_truncation poly l
+
 let vernac_constraint loc poly l =
   if poly && not (Lib.sections_are_opened ()) then
     user_err ~loc ~hdr:"vernac_constraint"
 		 (str"Polymorphic universe constraints can only be declared"
 		  ++ str " inside sections, use Monomorphic Constraint instead");
   do_constraint poly l
+
+let vernac_tconstraint loc poly l =
+  if poly && not (Lib.sections_are_opened ()) then
+    user_err ~loc ~hdr:"vernac_tconstraint"
+		 (str"Polymorphic truncation constraints can only be declared"
+		  ++ str " inside sections, use Monomorphic TConstraint instead");
+  do_tconstraint poly l
 
 (**********************)
 (* Modules            *)
@@ -1971,7 +1985,9 @@ let interp ?proof ~loc locality poly c =
   | VernacScheme l -> vernac_scheme l
   | VernacCombinedScheme (id, l) -> vernac_combined_scheme id l
   | VernacUniverse l -> vernac_universe loc poly l
+  | VernacTruncation l -> vernac_truncation loc poly l
   | VernacConstraint l -> vernac_constraint loc poly l
+  | VernacTConstraint l -> vernac_tconstraint loc poly l
 
   (* Modules *)
   | VernacDeclareModule (export,lid,bl,mtyo) ->

@@ -453,6 +453,7 @@ let declare_universe_context poly ctx =
 
 (* Discharged or not *)
 type universe_decl = polymorphic * (Id.t * Univ.universe_level) list
+type truncation_decl = polymorphic * (Id.t * Trunc.truncation_level) list
 
 let cache_universes (p, l) =
   let glob = Global.global_universe_names () in
@@ -466,11 +467,31 @@ let cache_universes (p, l) =
   cache_universe_context (p, ctx);
   Global.set_global_universe_names glob'
 
+let cache_truncations (p, l) =
+  let glob = Global.global_truncation_names () in
+  let glob', ctx =
+    List.fold_left (fun ((idl,lid),ctx) (id, lev) ->
+        ((Idmap.add id (p, lev) idl,
+          Trunc.TMap.add lev id lid),
+         Sorts.ContextSet.add_truncation lev ctx))
+      (glob, Sorts.ContextSet.empty) l
+  in
+  cache_universe_context (p, ctx);
+  Global.set_global_truncation_names glob'
+
 let input_universes : universe_decl -> Libobject.obj =
   declare_object
     { (default_object "Global universe name state") with
       cache_function = (fun (na, pi) -> cache_universes pi);
       load_function = (fun _ (_, pi) -> cache_universes pi);
+      discharge_function = (fun (_, (p, _ as x)) -> if p then None else Some x);
+      classify_function = (fun a -> Keep a) }
+
+let input_truncations : truncation_decl -> Libobject.obj =
+  declare_object
+    { (default_object "Global truncation name state") with
+      cache_function = (fun (na, pi) -> cache_truncations pi);
+      load_function = (fun _ (_, pi) -> cache_truncations pi);
       discharge_function = (fun (_, (p, _ as x)) -> if p then None else Some x);
       classify_function = (fun a -> Keep a) }
 
@@ -487,6 +508,20 @@ let do_universe poly l =
 	      (id, lev)) l
   in
     Lib.add_anonymous_leaf (input_universes (poly, l))
+
+let do_truncation poly l =
+  let in_section = Lib.sections_are_opened () in
+  let () =
+    if poly && not in_section then
+      user_err ~hdr:"Constraint"
+                   (str"Cannot declare polymorphic truncations outside sections")
+  in
+  let l =
+    List.map (fun (l, id) ->
+	      let lev = Universes.new_trunc_level () in
+	      (id, lev)) l
+  in
+    Lib.add_anonymous_leaf (input_truncations (poly, l))
 
 type constraint_decl = polymorphic * Sorts.constraints
 
@@ -542,6 +577,45 @@ let do_constraint poly l =
      let ploc, (p, lu) = u_of_id l and rloc, (p', ru) = u_of_id r in
      check_poly ploc p rloc p';
      Sorts.Constraint.add_univ (lu, d, ru) acc)
+    Sorts.Constraint.empty l
+  in
+    Lib.add_anonymous_leaf (input_constraints (poly, constraints))
+
+let do_tconstraint poly l =
+  let open Misctypes in
+  let u_of_id x =
+    match x with
+    | GIHSet -> Loc.dummy_loc, (false, Trunc.TLevel.hset)
+    | GIHInf -> Loc.dummy_loc, (false, Trunc.TLevel.hinf)
+    | GITLevel None ->
+       user_err ~hdr:"TConstraint"
+                     (str "Cannot declare constraints on anonymous truncations")
+    | GITLevel (Some (loc, id)) ->
+       let id = Id.of_string id in
+       let names, _ = Global.global_truncation_names () in
+       try loc, Idmap.find id names
+       with Not_found ->
+         user_err ~loc ~hdr:"TConstraint" (str "Undeclared truncation " ++ pr_id id)
+  in
+  let in_section = Lib.sections_are_opened () in
+  let () =
+    if poly && not in_section then
+      user_err ~hdr:"TConstraint"
+                    (str"Cannot declare polymorphic constraints outside sections")
+  in
+  let check_poly loc p loc' p' =
+    if poly then ()
+    else if p || p' then
+      let loc = if p then loc else loc' in
+      user_err ~loc ~hdr:"TConstraint"
+                    (str "Cannot declare a global constraint on " ++
+                    str "a polymorphic truncation, use "
+                    ++ str "Polymorphic TConstraint instead")
+  in
+  let constraints = List.fold_left (fun acc (l, d, r) ->
+     let ploc, (p, lu) = u_of_id l and rloc, (p', ru) = u_of_id r in
+     check_poly ploc p rloc p';
+     Sorts.Constraint.add_trunc (lu, d, ru) acc)
     Sorts.Constraint.empty l
   in
     Lib.add_anonymous_leaf (input_constraints (poly, constraints))
