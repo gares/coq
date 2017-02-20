@@ -36,12 +36,16 @@
 #install_printer  (* univ constraints *)  ppuniverseconstraints;;
 #install_printer  (* universe *)  ppuni;;
 #install_printer  (* universes *)  ppuniverse;;
+#install_printer  (* truncation *)  pptrunc;;
+#install_printer  (* truncations *)  pptruncation;;
 #install_printer  (* universes *)  ppuniverses;;
 #install_printer  (* univ level *) ppuni_level;;
+#install_printer  (* trunc level *) pptrunc_level;;
 #install_printer  (* univ context *) ppuniverse_context;;
 #install_printer  (* univ context future *) ppuniverse_context_future;;
 #install_printer  (* univ context set *) ppuniverse_context_set;;
 #install_printer  (* univ set *) ppuniverse_set;;
+#install_printer  (* trunc set *) pptruncation_set;;
 #install_printer  (* univ instance *) ppuniverse_instance;;
 #install_printer  (* univ subst *) ppuniverse_subst;;
 #install_printer  (* univ full subst *) ppuniverse_level_subst;;

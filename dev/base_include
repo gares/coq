@@ -63,6 +63,7 @@ open Context
 open Typeops
 open Term_typing
 open Univ
+open Trunc
 open Inductive
 open Indtypes
 open Cooking

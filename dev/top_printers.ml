@@ -15,6 +15,7 @@ open Libnames
 open Globnames
 open Nameops
 open Univ
+open Trunc
 open Sorts
 open Environ
 open Printer
@@ -207,10 +208,15 @@ let ppuni u = pp(pr_uni u)
 let ppuni_level u = pp (Level.pr u)
 let ppuniverse u = pp (str"[" ++ Universe.pr u ++ str"]")
 
+let pptrunc u = pp (Truncation.pr u)
+let pptrunc_level u = pp (TLevel.pr u)
+let pptruncation u = pp (str"[" ++ Truncation.pr u ++ str"]")
+
 let prlev = Universes.pr_with_global_universes
 let prulev = fst prlev
 let prtlev = snd prlev
 let ppuniverse_set l = pp (USet.pr prulev l)
+let pptruncation_set (l:Trunc.truncation_set) = pp (TSet.pr prtlev l)
 let ppuniverse_instance l = pp (Instance.pr prlev l)
 let ppuniverse_context l = pp (UContext.pr prlev l)
 let ppuniverse_context_set l = pp (ContextSet.pr prlev l)
