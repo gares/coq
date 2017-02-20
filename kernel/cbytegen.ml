@@ -925,16 +925,26 @@ and compile_const reloc kn u args sz cont =
         comp_app (fun _ _ _ cont -> Kgetglobal kn :: cont)
           compile_arg reloc () all sz cont
 
-let is_univ_copy max u =
+let is_univ_copy (umax,tmax) u =
   let ua, ta = Sorts.Instance.to_arrays u in
-  ignore(assert false); (* FIXME do something with truncations *)
-  if Array.length ua = max then
-    Array.fold_left_i (fun i acc u ->
-        if acc then
-          match Univ.Level.var_index u with
-          | None -> false
-          | Some l -> l = i
-        else false) true ua
+  if Array.length ua = umax && Array.length ta = tmax then
+    let ub =
+      Array.fold_left_i (fun i acc u ->
+          if acc then
+            match Univ.Level.var_index u with
+            | None -> false
+            | Some l -> l = i
+          else false) true ua
+    in
+    let tb =
+      Array.fold_left_i (fun i acc u ->
+          if acc then
+            match Trunc.TLevel.var_index u with
+            | None -> false
+            | Some l -> l = i
+          else false) true ta
+    in
+    ub && tb
   else
     false
 
@@ -1002,11 +1012,9 @@ let compile_constant_body fail_on_error env univs = function
       let body = Mod_subst.force_constr sb in
       let instance_size =
         match univs with
-        | None -> 0
+        | None -> 0,0
         | Some univ ->
-           let su, st = Sorts.UContext.sizes univ in
-           ignore(assert false); (* FIXME do something with truncations *)
-           su
+           Sorts.UContext.sizes univ
       in
       match kind_of_term body with
 	| Const (kn',u) when is_univ_copy instance_size u ->
@@ -1014,7 +1022,8 @@ let compile_constant_body fail_on_error env univs = function
 	    let con= constant_of_kn (canonical_con kn') in
 	      Some (BCalias (get_alias env con))
 	| _ ->
-	    let res = compile fail_on_error ~universes:instance_size env body in
+            let universes = fst instance_size + snd instance_size in
+	    let res = compile fail_on_error ~universes env body in
 	      Option.map (fun x -> BCdefined (to_memory x)) res
 
 (* Shortcut of the previous function used during module strengthening *)
