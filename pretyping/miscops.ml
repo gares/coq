@@ -27,12 +27,23 @@ let smartmap_cast_type f c =
 
 (** Equalities on [glob_sort] *)
 
+let glob_univ_eq g1 g2 = match g1, g2 with
+  | GUSet, GUSet | GUAnon, GUAnon -> true
+  | GUniv l1, GUniv l2 ->
+     List.equal (fun x y -> CString.equal (snd x) (snd y)) l1 l2
+  | (GUSet | GUAnon | GUniv _), _ -> false
+
+let glob_trunc_eq g1 g2 = match g1, g2 with
+  | GHSet, GHSet | GHInf, GHInf -> true
+  | GTrunc l1, GTrunc l2 ->
+     List.equal (fun x y -> CString.equal (snd x) (snd y)) l1 l2
+  | (GHSet | GHInf | GTrunc _), _ -> false
+
 let glob_sort_eq g1 g2 = match g1, g2 with
 | GProp, GProp -> true
 | GSet, GSet -> true
-| GType (ul1,tl1), GType (ul2,tl2) ->
-   List.equal (fun x y -> CString.equal (snd x) (snd y)) ul1 ul2
-   && List.equal (fun x y -> CString.equal (snd x) (snd y)) tl1 tl2
+| GType (u1,t1), GType (u2,t2) ->
+   glob_univ_eq u1 u2 && glob_trunc_eq t1 t2
 | _ -> false
 
 let intro_pattern_naming_eq nam1 nam2 = match nam1, nam2 with

@@ -44,14 +44,25 @@ type 'id move_location =
 
 (** Sorts *)
 
-type sort_info = string Loc.located list * string Loc.located list
+type univ_info = string Loc.located list
+type trunc_info = string Loc.located list
 type level_info = string Loc.located option
 type tlevel_info = string Loc.located option
+
+type glob_univ =
+  | GUSet
+  | GUAnon
+  | GUniv of univ_info
+
+type glob_trunc =
+  | GHSet
+  | GHInf
+  | GTrunc of trunc_info
 
 type glob_sort =
   | GProp
   | GSet
-  | GType of sort_info
+  | GType of glob_univ * glob_trunc
 
 type glob_instance_univ =
   | GISet

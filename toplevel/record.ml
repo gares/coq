@@ -117,8 +117,9 @@ let typecheck_params_and_fields def id pl t ps nots fs =
     | Some t -> 
        let env = push_rel_context newps env0 in
        let poly =
+         let open Misctypes in
          match t with
-         | CSort (_, Misctypes.GType ([],[])) -> true | _ -> false in
+         | CSort (_, GType (GUniv [], GTrunc [])) -> true | _ -> false in
        let s = interp_type_evars env evars ~impls:empty_internalization_env t in
        let sred = Reductionops.whd_all env !evars s in
        if poly then

@@ -239,13 +239,17 @@ let interp_truncation_level_name evd (loc,s) =
 	with Not_found ->
 	  if not (is_strict_universe_declarations ()) then
   	    new_trunc_level_variable ~loc ~name:s univ_rigid evd
-	  else user_err ~loc ~hdr:"interp_universe_level_name"
-			     (Pp.(str "Undeclared universe: " ++ str s))
+	  else user_err ~loc ~hdr:"interp_truncation_level_name"
+			     (Pp.(str "Undeclared truncation: " ++ str s))
 
 let interp_universe ?loc evd = function
-  | [] -> let evd, l = new_univ_level_variable ?loc univ_rigid evd in
+  | GUSet -> evd, Univ.type0_univ
+  | GUAnon ->
+     let evd, l = new_univ_level_variable ?loc univ_flexible evd in
+     evd, Univ.Universe.make l
+  | GUniv [] -> let evd, l = new_univ_level_variable ?loc univ_rigid evd in
             evd, Univ.Universe.make l
-  | l ->
+  | GUniv l ->
      let open Univ in
      List.fold_left (fun (evd, u) l -> 
          let evd', l = interp_universe_level_name evd l in
@@ -253,9 +257,11 @@ let interp_universe ?loc evd = function
                     (evd, Universe.type0m) l
 
 let interp_truncation ?loc evd = function
-  | [] -> let evd, l = new_trunc_level_variable ?loc univ_rigid evd in
+  | GHSet -> evd, Trunc.Truncation.hset
+  | GHInf -> evd, Trunc.Truncation.hinf
+  | GTrunc [] -> let evd, l = new_trunc_level_variable ?loc univ_rigid evd in
          evd, Trunc.Truncation.of_level l
-  | l ->
+  | GTrunc l ->
      let open Trunc in
      List.fold_left (fun (evd, u) l ->
          let evd', l = interp_truncation_level_name evd l in
@@ -270,15 +276,13 @@ let interp_truncation_level loc evd = function
   | None -> new_trunc_level_variable ~loc univ_rigid evd
   | Some (loc,s) -> interp_truncation_level_name evd (loc,s)
 
-let interp_sort_info ?loc evd (us,ts) =
-  let evd, u = interp_universe ?loc evd us in
-  let evd, t = interp_truncation ?loc evd ts in
-  evd, Sorts.make u t
-
 let interp_sort ?loc evd = function
   | GProp -> evd, Sorts.prop
   | GSet -> evd, Sorts.set
-  | GType s -> interp_sort_info ?loc evd s
+  | GType (u,t) ->
+     let evd, u = interp_universe ?loc evd u in
+     let evd, t = interp_truncation ?loc evd t in
+     evd, Sorts.make u t
 
 let interp_elimination_sort = function
   | GProp -> InProp
@@ -576,8 +580,10 @@ let pretype_ref loc evdref env ref us =
     let ty = Typing.unsafe_type_of env.ExtraEnv.env evd c in
       make_judge c ty
 
-let judge_of_Type loc evd s =
-  let evd, s = interp_sort_info ~loc evd s in
+let judge_of_Type loc evd u t =
+  let evd, u = interp_universe ~loc evd u in
+  let evd, t = interp_truncation ~loc evd t in
+  let s = Sorts.make u t in
   let judge =
     { uj_val = mkSort s; uj_type = mkSort (Sorts.super s) }
   in
@@ -586,7 +592,7 @@ let judge_of_Type loc evd s =
 let pretype_sort loc evdref = function
   | GProp -> judge_of_prop
   | GSet -> judge_of_set
-  | GType s -> evd_comb1 (judge_of_Type loc) evdref s
+  | GType (u,t) -> evd_comb2 (judge_of_Type loc) evdref u t
 
 let new_type_evar env evdref loc =
   let sigma = Sigma.Unsafe.of_evar_map !evdref in

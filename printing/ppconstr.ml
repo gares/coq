@@ -136,23 +136,25 @@ end) = struct
 
   let pr_sep_com sep f c = pr_with_comments (constr_loc c) (sep() ++ f c)
 
-  let pr_univ l =
-    match l with
-      | [_,x] -> str x
-      | l -> str"max(" ++ prlist_with_sep (fun () -> str",") (fun x -> str (snd x)) l ++ str")"
+  let pr_univ = function
+    | GUSet -> str "Set"
+    | GUAnon -> str "_"
+    | GUniv [_,x] -> str x
+    | GUniv l -> str"max(" ++ prlist_with_sep (fun () -> str",") (fun x -> str (snd x)) l ++ str")"
 
-  let pr_trunc l =
-    match l with
-      | [_,x] -> str x
-      | l -> str"max(" ++ prlist_with_sep (fun () -> str",") (fun x -> str (snd x)) l ++ str")"
+  let pr_trunc = function
+    | GHSet -> str "HSet"
+    | GHInf -> str "HInf"
+    | GTrunc [_,x] -> str x
+    | GTrunc l -> str"max(" ++ prlist_with_sep (fun () -> str",") (fun x -> str (snd x)) l ++ str")"
 
   let pr_univ_annot pru prt (x,y) = str "@{" ++ pru x ++ str" ; " ++ prt y ++ str "}"
 
   let pr_glob_sort = function
     | GProp -> tag_type (str "Prop")
     | GSet -> tag_type (str "Set")
-    | GType ([],[]) -> tag_type (str "Type")
-    | GType u -> hov 0 (tag_type (str "Type") ++ pr_univ_annot pr_univ pr_trunc u)
+    | GType (GUniv [], GTrunc []) -> tag_type (str "Type")
+    | GType (u,t) -> hov 0 (tag_type (str "Type") ++ pr_univ_annot pr_univ pr_trunc (u,t))
 
   let pr_glob_instance_univ = function
     | GISet -> tag_type (str "Set")

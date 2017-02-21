@@ -1245,7 +1245,7 @@ let rec rebuild_return_type rt =
 	Constrexpr.CLetIn(loc,na,t,rebuild_return_type t')
     | _ -> Constrexpr.CProdN(Loc.ghost,[[Loc.ghost,Anonymous],
 				       Constrexpr.Default Decl_kinds.Explicit,rt],
-			    Constrexpr.CSort(Loc.ghost,GType ([],[])))
+			    Constrexpr.CSort(Loc.ghost,GType (GUniv [], GTrunc [])))
 
 
 let do_build_inductive

@@ -604,7 +604,7 @@ let extern_glob_sort = function
   | GProp -> GProp
   | GSet -> GSet
   | GType _ as s when !print_universes -> s
-  | GType _ -> GType ([],[])
+  | GType _ -> GType (GUniv [], GTrunc [])
 
 let extern_universes = function
   | Some _ as l when !print_universes -> l

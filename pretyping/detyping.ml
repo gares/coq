@@ -414,6 +414,21 @@ let detype_case computable detype detype_eqns testdep avoid data p c bl =
       let eqnl = detype_eqns constructs constagsl bl in
       GCases (dl,tag,pred,[tomatch,(alias,aliastyp)],eqnl)
 
+let detype_univ sigma = function
+  | u when Univ.is_type0_univ u -> GUSet
+  | u ->
+     if !print_universes
+     then GUniv [dl, Pp.string_of_ppcmds (Univ.Universe.pr_with (fst (Evd.pr_evd_level sigma)) u)]
+     else GUniv []
+
+let detype_trunc sigma = function
+  | t when Trunc.Truncation.is_hset t -> GHSet
+  | t when Trunc.Truncation.is_hinf t -> GHInf
+  | t ->
+     if !print_universes
+     then GTrunc [dl, Pp.string_of_ppcmds (Trunc.Truncation.pr_with (snd (Evd.pr_evd_level sigma)) t)]
+     else GTrunc []
+
 let detype_sort sigma s : glob_sort =
   match family_of_sort s with
   | InProp -> GProp
@@ -421,12 +436,9 @@ let detype_sort sigma s : glob_sort =
   | InType ->
      let u = Sorts.univ_of_sort s in
      let t = Sorts.trunc_of_sort s in
-     GType
-       (if !print_universes
-        then
-          [dl, Pp.string_of_ppcmds (Univ.Universe.pr_with (fst (Evd.pr_evd_level sigma)) u)],
-          [dl, Pp.string_of_ppcmds (Trunc.Truncation.pr_with (snd (Evd.pr_evd_level sigma)) t)]
-        else [],[])
+     let u = detype_univ sigma u in
+     let t = detype_trunc sigma t in
+     GType (u, t)
 
 type binder_kind = BProd | BLambda | BLetIn
 

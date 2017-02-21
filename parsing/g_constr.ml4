@@ -126,6 +126,8 @@ let name_colon =
 
 let aliasvar = function CPatAlias (loc, _, id) -> Some (loc,Name id) | _ -> None
 
+let unidify (loc,s) = loc, Id.to_string s
+
 GEXTEND Gram
   GLOBAL: binder_constr lconstr constr operconstr universe_level truncation_level sort global
   constr_pattern lconstr_pattern Constr.ident
@@ -149,20 +151,26 @@ GEXTEND Gram
   sort:
     [ [ "Set"  -> GSet
       | "Prop" -> GProp
-      | "Type" -> GType ([],[])
+      | "Type" -> GType (GUniv [], GTrunc [])
       | "Type"; "@{"; u = universe; ";"; t=truncation; "}" ->
-         GType ((List.map (fun (loc,x) -> (loc, Id.to_string x)) u),
-                (List.map (fun (loc,x) -> (loc, Id.to_string x)) t))
+         GType (u,t)
       ] ]
   ;
   universe:
-    [ [ IDENT "max"; "("; ids = LIST1 identref SEP ","; ")" -> ids
-      | id = identref -> [id]
+    [ [ "Set" -> GUSet
+      | IDENT "max"; "("; ids = LIST1 identref SEP ","; ")" ->
+         GUniv (List.map unidify ids)
+      | "_" -> GUAnon
+      | id = identref -> GUniv [unidify id]
       ] ]
   ;
   truncation:
-    [ [ IDENT "max"; "("; ids = LIST1 identref SEP ","; ")" -> ids
-      | id = identref -> [id]
+    [ [ "HSet" -> GHSet
+      | "HInf" -> GHInf
+      | IDENT "max"; "("; ids = LIST1 identref SEP ","; ")" ->
+         GTrunc (List.map unidify) ids
+      | "_" -> GTrunc []
+      | id = identref -> GTrunc [unidify id]
       ] ]
   ;
   lconstr:
