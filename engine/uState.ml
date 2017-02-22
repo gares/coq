@@ -193,7 +193,11 @@ module type UnifyIn = sig
   val level_mem : level -> algebraic -> bool
   val level_rem : level -> algebraic -> algebraic -> algebraic
 
-  val is_small : level -> bool
+  val is_minimal : level -> bool
+
+  (* Univ mode: do not allow [l = Set] when [l] is rigid.
+     Trunc mode: do allow [l = HSet] even when [l] is rigid. *)
+  val allow_eq_rigid_litteral : bool
 
   val opt_subst_mem : level -> opt_subst -> bool
   val normalize : opt_subst ref -> algebraic -> algebraic
@@ -235,11 +239,11 @@ module UnifyGen (In : UnifyIn) = struct
       begin match In.level r with
       | None -> error ("Algebraic universe on the right")
       | Some rl ->
-         if In.is_small rl then
+         if In.is_minimal rl then
            let levels = In.levels l in
            In.LSet.fold
              (fun l local ->
-               if In.is_small l || In.opt_subst_mem l !vars then
+               if In.allow_eq_rigid_litteral || In.is_minimal l || In.opt_subst_mem l !vars then
                  unify fo (In.make_alg l) Universes.UEq r local
                else In.error_inconsistency
                              (Sorts.Le, In.make_alg l, r, None))
@@ -269,8 +273,8 @@ module UnifyGen (In : UnifyIn) = struct
            In.instantiate_variable r' l vars
          else if not (In.check_eq univs l r) then
            (* Two rigid/global levels, none of them being local,
-                     one of them being Prop/Set, disallow *)
-           if In.is_small l' || In.is_small r' then
+              one of them being Prop/Set, disallow *)
+           if not In.allow_eq_rigid_litteral && (In.is_minimal l' || In.is_minimal r') then
              In.error_inconsistency (Sorts.Eq, l, r, None)
            else
              if fo then
@@ -286,7 +290,7 @@ module UnifyGen (In : UnifyIn) = struct
          if In.level_mem l r then
            In.enforce_leq inst lu local
          else In.error_inconsistency (Sorts.Eq, lu, r, None)
-    | _, _ (* One of the two is algebraic or global *) ->
+    | Inl _, Inl _ (* Both are algebraic *) ->
        if In.check_eq univs l r then local
        else In.error_inconsistency (Sorts.Eq, l, r, None)
     end
@@ -328,7 +332,9 @@ module UnifyUnivsIn : UnifyIn with
   let make_alg = Universe.make
   let level_mem = univ_level_mem
   let level_rem = univ_level_rem
-  let is_small = Level.is_small
+  let is_minimal = Level.is_small
+
+  let allow_eq_rigid_litteral = false
 
   let opt_subst_mem l (usubst,_) = UMap.mem l usubst
   let normalize = Universes.normalize_universe_opt_subst
@@ -368,7 +374,9 @@ module UnifyTruncsIn : UnifyIn with
   let make_alg = Truncation.of_level
   let level_mem = Truncation.level_mem
   let level_rem = Truncation.level_rem
-  let is_small = TLevel.is_hset
+  let is_minimal = TLevel.is_hset
+
+  let allow_eq_rigid_litteral = true
 
   let opt_subst_mem l (_,tsubst) = TMap.mem l tsubst
   let normalize = Universes.normalize_truncation_opt_subst
