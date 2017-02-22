@@ -28,8 +28,16 @@ install_printer Top_printers.pppattern
 install_printer Top_printers.ppglob_constr
 
 install_printer Top_printers.ppconstr
+install_printer Top_printers.ppsort
 install_printer Top_printers.ppuni
+install_printer Top_printers.ppuni_level
 install_printer Top_printers.pptrunc
+install_printer Top_printers.pptrunc_level
+install_printer Top_printers.ppuniverse_set
+install_printer Top_printers.pptruncation_set
+install_printer Top_printers.ppuniverse_instance
+install_printer Top_printers.ppuniverse_context
+install_printer Top_printers.ppuniverse_context_set
 install_printer Top_printers.ppuniverses
 install_printer Top_printers.ppconstraints
 install_printer Top_printers.pptype

@@ -204,6 +204,8 @@ let pppftreestate p = pp(print_pftreestate p)
 (* let prglls glls = pp(pr_glls glls) *)
 (* let pproof p = pp(print_proof Evd.empty empty_named_context p) *)
 
+let ppsort s = pp (Sorts.pr s)
+
 let ppuni u = pp(pr_uni u)
 let ppuni_level u = pp (Level.pr u)
 let ppuniverse u = pp (str"[" ++ Universe.pr u ++ str"]")

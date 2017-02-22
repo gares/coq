@@ -34,6 +34,7 @@
 #install_printer  (* constr_substituted *) ppsconstr;; 
 #install_printer  (* constraints *)  ppconstraints;;
 #install_printer  (* univ constraints *)  ppuniverseconstraints;;
+#install_printer  (* sorts *) ppsort;
 #install_printer  (* universe *)  ppuni;;
 #install_printer  (* universes *)  ppuniverse;;
 #install_printer  (* truncation *)  pptrunc;;
