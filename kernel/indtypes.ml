@@ -248,9 +248,6 @@ let cumulate_arity_large_levels env sign =
 	lev, push_rel d env)
     sign (Sorts.prop, env))
 
-let is_impredicative env u =
-  Sorts.is_prop u || (Sorts.is_set u && is_impredicative_set env)
-
 (* Returns the list [x_1, ..., x_n] of levels contributing to template
    polymorphism. The elements x_k is None if the k-th parameter (starting
    from the most recent and ignoring let-definitions) is not contributing 
@@ -367,7 +364,7 @@ let typecheck_inductive env mie =
         in
         let _ =
 	  (** Impredicative sort, always allow *)
-          if is_impredicative env def_level then ()
+          if is_impredicative_sort env def_level then ()
 	  else (** Predicative case: the inferred level must be lower or equal to the
 		   declared level. *)
             if is_natural <> NoSquash then

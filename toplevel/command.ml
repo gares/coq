@@ -441,9 +441,6 @@ let make_conclusion_flexible evdref ty poly =
     end
     else ()
   else () 
-	
-let is_impredicative env u = 
-  Sorts.equal u Sorts.prop || (is_impredicative_set env && Sorts.equal u Sorts.set)
 
 let interp_ind_arity env evdref ind =
   let c = intern_gen IsType env ind.ind_arity in
@@ -565,7 +562,7 @@ let inductive_levels env evdref poly arities inds =
       (List.map2 (fun (_,tys,_) (arity,(ctx,du)) -> 
 	let len = List.length tys in
         let minlev =
-	  if len > 1 && not (is_impredicative env du) then
+	  if len > 1 && not (is_impredicative_sort env du) then
             Sorts.sup du Sorts.set
           else du
 	in
@@ -587,7 +584,7 @@ let inductive_levels env evdref poly arities inds =
   in
   let evd, arities =
     CList.fold_left3 (fun (evd, arities) cu (arity,(ctx,du)) len ->
-      if is_impredicative env du then
+      if is_impredicative_sort env du then
 	(** Any product is allowed here. *)
 	evd, arity :: arities
       else (** If in a predicative sort, or asked to infer the type,

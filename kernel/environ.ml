@@ -52,6 +52,9 @@ let is_impredicative_set env =
   | ImpredicativeSet -> true
   | _ -> false
 
+let is_impredicative_sort env s =
+  Sorts.is_impredicative ~is_impredicative_set:(is_impredicative_set env) s
+
 let type_in_type env = not (typing_flags env).check_universes
 let deactivated_guard env = not (typing_flags env).check_guarded
 

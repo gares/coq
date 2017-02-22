@@ -35,6 +35,7 @@ val family_leq : family -> family -> bool
 
 val family_of_sort : sorts -> family
 
+val is_impredicative : is_impredicative_set:bool -> sorts -> bool
 val sort_of_product : is_impredicative_set:bool -> sorts -> sorts -> sorts
 
 val sup : sorts -> sorts -> sorts

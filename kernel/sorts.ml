@@ -1059,7 +1059,7 @@ let trunc_level_mem t s = Truncation.level_mem t s.trunc
 
 let pr s =
   let open Pp in
-  Universe.pr s.univ ++ Truncation.pr s.trunc
+  Universe.pr s.univ ++ str"; " ++ Truncation.pr s.trunc
 
 let pr_with prl s =
   let open Pp in
