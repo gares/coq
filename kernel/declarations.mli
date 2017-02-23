@@ -13,7 +13,7 @@ open Term
    declarations. This includes global constants/axioms, mutual
    inductive definitions, modules and module types *)
 
-type set_predicativity = ImpredicativeSet | PredicativeSet
+type set_predicativity = Sorts.set_predicativity = ImpredicativeSet | PredicativeSet
 
 type engagement = set_predicativity
 

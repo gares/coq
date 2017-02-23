@@ -103,11 +103,12 @@ let family_of_sort s =
   else if is_set s then InSet
   else InType
 
-let is_impredicative ~is_impredicative_set s =
-  is_prop s || (is_impredicative_set && is_set s)
+type set_predicativity = ImpredicativeSet | PredicativeSet
+let is_impredicative predset s =
+  is_prop s || (match predset with ImpredicativeSet -> is_set s | PredicativeSet -> false)
 
-let sort_of_product ~is_impredicative_set domsort rangsort =
-  if is_impredicative ~is_impredicative_set rangsort then rangsort
+let sort_of_product predset domsort rangsort =
+  if is_impredicative predset rangsort then rangsort
   else
     let u = Universe.sup (univ_of_sort domsort) (univ_of_sort rangsort) in
     make u (trunc_of_sort rangsort)

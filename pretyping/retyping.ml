@@ -146,8 +146,7 @@ let retype ?(polyprop=true) sigma =
     | Prod (name,t,c2) ->
        let domsort = sort_of env t in
        let rangsort = sort_of (push_rel (LocalAssum (name,t)) env) c2 in
-       let is_impredicative_set = is_impredicative_set env in
-       Sorts.sort_of_product ~is_impredicative_set domsort rangsort
+       Sorts.sort_of_product (engagement env) domsort rangsort
     | App(f,args) when is_template_polymorphic env f ->
       let t = type_of_global_reference_knowing_parameters env f args in
         sort_of_atomic_type env sigma t args

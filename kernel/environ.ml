@@ -53,7 +53,10 @@ let is_impredicative_set env =
   | _ -> false
 
 let is_impredicative_sort env s =
-  Sorts.is_impredicative ~is_impredicative_set:(is_impredicative_set env) s
+  Sorts.is_impredicative (engagement env) s
+
+let sort_of_product env domsort rangsort =
+  Sorts.sort_of_product (engagement env) domsort rangsort
 
 let type_in_type env = not (typing_flags env).check_universes
 let deactivated_guard env = not (typing_flags env).check_guarded

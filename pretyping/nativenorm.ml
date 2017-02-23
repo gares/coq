@@ -141,10 +141,6 @@ let type_of_var env id =
   with Not_found ->
     anomaly ~label:"type_of_var" (str "variable " ++ Id.print id ++ str " unbound")
 
-let sort_of_product env domsort rangsort =
-  let is_impredicative_set = is_impredicative_set env in
-  Sorts.sort_of_product ~is_impredicative_set domsort rangsort
-
 (* normalisation of values *)
 
 let branch_of_switch lvl ans bs = 

@@ -189,10 +189,6 @@ let type_of_apply env func funt argsv argstv =
 
 (* Type of product *)
 
-let sort_of_product env domsort rangsort =
-  let is_impredicative_set = is_impredicative_set env in
-  Sorts.sort_of_product ~is_impredicative_set domsort rangsort
-
 (* [judge_of_product env name (typ1,s1) (typ2,s2)] implements the rule
 
     env |- typ1:s1       env, name:typ1 |- typ2 : s2

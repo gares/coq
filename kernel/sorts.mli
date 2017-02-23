@@ -35,8 +35,9 @@ val family_leq : family -> family -> bool
 
 val family_of_sort : sorts -> family
 
-val is_impredicative : is_impredicative_set:bool -> sorts -> bool
-val sort_of_product : is_impredicative_set:bool -> sorts -> sorts -> sorts
+type set_predicativity = ImpredicativeSet | PredicativeSet
+val is_impredicative : set_predicativity -> sorts -> bool
+val sort_of_product : set_predicativity -> sorts -> sorts -> sorts
 
 val sup : sorts -> sorts -> sorts
 val super : sorts -> sorts

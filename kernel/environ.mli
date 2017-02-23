@@ -53,6 +53,7 @@ val engagement    : env -> engagement
 val typing_flags    : env -> typing_flags
 val is_impredicative_set : env -> bool
 val is_impredicative_sort : env -> sorts -> bool
+val sort_of_product : env -> sorts -> sorts -> sorts
 val type_in_type : env -> bool
 val deactivated_guard : env -> bool
 
