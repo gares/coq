@@ -79,8 +79,6 @@ type aast = {
 }
 let pr_ast { expr; indentation } = Pp.(int indentation ++ str " " ++ Ppvernac.pr_vernac expr)
 
-let default_proof_mode () = Proof_global.get_default_proof_mode_name ()
-
 (* Commands piercing opaque *)
 let may_pierce_opaque = function
   | { expr = VernacPrint _ } -> true
@@ -99,14 +97,14 @@ let update_global_env () =
 
 module Vcs_ = Vcs.Make(Stateid.Self)
 type future_proof = Proof_global.closed_proof_output Future.computation
-type proof_mode = string
+
 type depth = int
 type cancel_switch = bool ref
 type branch_type =
   [ `Master
-  | `Proof of proof_mode * depth
+  | `Proof of depth
   | `Edit of
-      proof_mode * Stateid.t * Stateid.t  * vernac_qed_type * Vcs_.Branch.t ]
+      Stateid.t * Stateid.t  * vernac_qed_type * Vcs_.Branch.t ]
 (* TODO 8.7 : split commands and tactics, since this type is too messy now *)
 type cmd_t = {
   ctac : bool; (* is a tactic *)
@@ -209,14 +207,14 @@ end = struct (* {{{ *)
     List.fold_left max 0
       (CList.map_filter
         (function
-         | { Vcs_.kind = `Proof (_,n) } -> Some n
+         | { Vcs_.kind = `Proof n } -> Some n
          | { Vcs_.kind = `Edit _ } -> Some 1
          | _ -> None)
         (List.map (Vcs_.get_branch vcs) (Vcs_.branches vcs)))
 
   let find_proof_at_depth vcs pl =
     try List.find (function
-          | _, { Vcs_.kind = `Proof(m, n) } -> Int.equal n pl
+          | _, { Vcs_.kind = `Proof n } -> Int.equal n pl
           | _, { Vcs_.kind = `Edit _ } -> anomaly(Pp.str "find_proof_at_depth")
           | _ -> false)
         (List.map (fun h -> h, Vcs_.get_branch vcs h) (Vcs_.branches vcs))
@@ -496,21 +494,14 @@ end = struct (* {{{ *)
 
   let checkout_shallowest_proof_branch () =
     if List.mem edit_branch (Vcs_.branches !vcs) then begin
-      checkout edit_branch;
-      match get_branch edit_branch with
-      | { kind = `Edit (mode, _,_,_,_) } -> Proof_global.activate_proof_mode mode
-      | _ -> assert false
+      checkout edit_branch
     end else
       let pl = proof_nesting () in
       try
-        let branch, mode = match Vcs_aux.find_proof_at_depth !vcs pl with
-          | h, { Vcs_.kind = `Proof (m, _) } -> h, m | _ -> assert false in
-        checkout branch;
-        stm_prerr_endline (fun () -> "mode:" ^ mode);
-        Proof_global.activate_proof_mode mode
+        let branch = fst @@ Vcs_aux.find_proof_at_depth !vcs pl in
+        checkout branch
       with Failure _ ->
-        checkout Branch.master;
-        Proof_global.disactivate_current_proof_mode ()
+        checkout Branch.master
 
   (* copies the transaction on every open branch *)
   let propagate_sideff ~replay:t =
@@ -2228,7 +2219,7 @@ let known_state ?(redefine_qed=false) ~cache id =
                 VCS.create_proof_task_box nodes ~qed:id ~block_start;
                 begin match brinfo, qed.fproof with
                 | { VCS.kind = `Edit _ }, None -> assert false
-                | { VCS.kind = `Edit (_,_,_, okeep, _) }, Some (ofp, cancel) ->
+                | { VCS.kind = `Edit (_,_, okeep, _) }, Some (ofp, cancel) ->
                     assert(redefine_qed = true);
                     if okeep != keep then
                       msg_error(strbrk("The command closing the proof changed. "
@@ -2359,14 +2350,7 @@ let observe id =
 let finish () =
   let head = VCS.current_branch () in
   observe (VCS.get_branch_pos head);
-  VCS.print ();
-  (* EJGA: Setting here the proof state looks really wrong, and it
-     hides true bugs cf bug #5363. Also, what happens with observe? *)
-  (* Some commands may by side effect change the proof mode *)
-  match VCS.get_branch head with
-  | { VCS.kind = `Edit (mode,_,_,_,_) } -> Proof_global.activate_proof_mode mode
-  | { VCS.kind = `Proof (mode, _) } -> Proof_global.activate_proof_mode mode
-  | _ -> ()
+  VCS.print ()
 
 let wait () =
   Slaves.wait_all_done ();
@@ -2429,7 +2413,7 @@ let merge_proof_branch ~valid ?id qast keep brname =
       VCS.delete_branch brname;
       VCS.propagate_sideff None;
       `Ok
-  | { VCS.kind = `Edit (mode, qed_id, master_id, _,_) } ->
+  | { VCS.kind = `Edit (qed_id, master_id, _,_) } ->
       let ofp =
         match VCS.visit qed_id with
         | { step = `Qed ({ fproof }, _) } -> fproof
@@ -2536,38 +2520,21 @@ let process_transaction ?(newtip=Stateid.fresh ())
           anomaly(str"classifier: VtQuery + VtLater must imply part_of_script")
 
       (* Proof *)
-      | VtStartProof (mode, guarantee, names), w ->
+      | VtStartProof (guarantee, names), w ->
+          (* XXX: Push to the node state *)
+          Pcoq.push_proof_tactic_entry !Lemmas.default_proof_mode;
+          (* XXXXXXXXXXXXXXXXXXXXXXXXXXX *)
           let id = VCS.new_node ~id:newtip () in
           let bname = VCS.mk_branch_name x in
           VCS.checkout VCS.Branch.master;
           if VCS.Branch.equal head VCS.Branch.master then begin
             VCS.commit id (Fork (x, bname, guarantee, names));
-            VCS.branch bname (`Proof (mode, VCS.proof_nesting () + 1))
+            VCS.branch bname (`Proof (VCS.proof_nesting () + 1))
           end else begin
-            VCS.branch bname (`Proof (mode, VCS.proof_nesting () + 1));
+            VCS.branch bname (`Proof (VCS.proof_nesting () + 1));
             VCS.merge id ~ours:(Fork (x, bname, guarantee, names)) head
           end;
-          Proof_global.activate_proof_mode mode;
           Backtrack.record (); if w == VtNow then finish (); `Ok
-      | VtProofMode _, VtLater ->
-          anomaly(str"VtProofMode must be executed VtNow")
-      | VtProofMode mode, VtNow ->
-          let id = VCS.new_node ~id:newtip () in
-          VCS.commit id (mkTransCmd x [] false `MainQueue);
-          List.iter
-            (fun bn -> match VCS.get_branch bn with
-            | { VCS.root; kind = `Master; pos } -> ()
-            | { VCS.root; kind = `Proof(_,d); pos } ->
-                VCS.delete_branch bn;
-                VCS.branch ~root ~pos bn (`Proof(mode,d))
-            | { VCS.root; kind = `Edit(_,f,q,k,ob); pos } ->
-                VCS.delete_branch bn;
-                VCS.branch ~root ~pos bn (`Edit(mode,f,q,k,ob)))
-            (VCS.branches ());
-          VCS.checkout_shallowest_proof_branch ();
-          Backtrack.record ();
-          finish ();
-          `Ok
       | VtProofStep { parallel; proof_block_detection = cblock }, w ->
           let id = VCS.new_node ~id:newtip () in
           let queue =
@@ -2626,9 +2593,7 @@ let process_transaction ?(newtip=Stateid.fresh ())
                 | VernacLocal (_,e) -> opacity_of_produced_term e
                 | _ -> Doesn'tGuaranteeOpacity in
               VCS.commit id (Fork (x,bname,opacity_of_produced_term x.expr,[]));
-              let proof_mode = default_proof_mode () in
-              VCS.branch bname (`Proof (proof_mode, VCS.proof_nesting () + 1));
-              Proof_global.activate_proof_mode proof_mode;
+              VCS.branch bname (`Proof (VCS.proof_nesting () + 1))
             end else begin
               VCS.commit id (mkTransCmd x [] in_proof `MainQueue);
               (* We hope it can be replayed, but we can't really know *)
@@ -2808,21 +2773,21 @@ let edit_at id =
       | { step = `Sideff (`Ast(_,id)) } -> id
       | { step = `Sideff _ } -> tip
       | { next } -> master_for_br root next in
-  let reopen_branch start at_id mode qed_id tip old_branch =
+  let reopen_branch start at_id qed_id tip old_branch =
     let master_id, cancel_switch, keep =
       (* Hum, this should be the real start_id in the cluster and not next *)
       match VCS.visit qed_id with
       | { step = `Qed ({ fproof = Some (_,cs); keep },_) } -> start, cs, keep
       | _ -> anomaly (str "ProofTask not ending with Qed") in
     VCS.branch ~root:master_id ~pos:id
-      VCS.edit_branch (`Edit (mode, qed_id, master_id, keep, old_branch));
+      VCS.edit_branch (`Edit (qed_id, master_id, keep, old_branch));
     VCS.delete_boxes_of id;
     cancel_switch := true;
     Reach.known_state ~cache:(interactive ()) id;
     VCS.checkout_shallowest_proof_branch ();
     `Focus { stop = qed_id; start = master_id; tip } in
   let no_edit = function
-   | `Edit (pm, _,_,_,_) -> `Proof(pm,1)
+   | `Edit (_,_,_,_) -> `Proof 1
    | x -> x in
   let backto id bn =
     List.iter VCS.delete_branch (VCS.branches ());
@@ -2849,17 +2814,17 @@ let edit_at id =
       let focused = List.exists ((=) VCS.edit_branch) (VCS.branches ()) in
       let branch_info =
         match snd (VCS.get_info id).vcs_backup with
-        | Some{ mine = bn, { VCS.kind = `Proof(m,_) }} -> Some(m,bn)
-        | Some{ mine = _, { VCS.kind = `Edit(m,_,_,_,bn) }} -> Some (m,bn)
+        | Some{ mine = bn, { VCS.kind = `Proof _ }} -> Some bn
+        | Some{ mine = _, { VCS.kind = `Edit(_,_,_,bn) }} -> Some bn
         | _ -> None in
       match focused, VCS.proof_task_box_of id, branch_info with
       | _, Some _, None -> assert false
-      | false, Some { qed = qed_id ; lemma = start }, Some(mode,bn) ->
+      | false, Some { qed = qed_id ; lemma = start }, Some bn ->
           let tip = VCS.cur_tip () in
           if has_failed qed_id && is_pure qed_id && not !Flags.async_proofs_never_reopen_branch
-          then reopen_branch start id mode qed_id tip bn
+          then reopen_branch start id qed_id tip bn
           else backto id (Some bn)
-      | true, Some { qed = qed_id }, Some(mode,bn) ->
+      | true, Some { qed = qed_id }, Some bn ->
           if on_cur_branch id then begin
             assert false
           end else if is_ancestor_of_cur_branch id then begin
@@ -2878,7 +2843,7 @@ let edit_at id =
           end else begin
             anomaly(str"Cannot leave an `Edit branch open")
           end
-      | false, None, Some(_,bn) -> backto id (Some bn)
+      | false, None, Some bn -> backto id (Some bn)
       | false, None, None -> backto id None
     in
     VCS.print ();

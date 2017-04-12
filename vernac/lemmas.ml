@@ -365,18 +365,38 @@ let universe_proof_terminator compute_guard hook =
 let standard_proof_terminator compute_guard hook =
   universe_proof_terminator compute_guard (fun _ -> hook)
 
+(* Default proof mode, to be set at the beginning of proofs for
+   programs that cannot be statically classified. *)
+let default_proof_mode = ref "No"
+let get_default_proof_mode () = !default_proof_mode
+let set_default_proof_mode mn = default_proof_mode := mn
+
+let _ =
+  Goptions.declare_string_option {Goptions.
+    optsync = true ;
+    optdepr = false;
+    optname = "default proof mode" ;
+    optkey = ["Default";"Proof";"Mode"] ;
+    optread = get_default_proof_mode;
+    optwrite = set_default_proof_mode;
+  }
+
+let pfedit_start_proof id ?pl str sigma hyps c ?init_tac terminator =
+  Pcoq.push_proof_tactic_entry !default_proof_mode;
+  Pfedit.start_proof id ?pl str sigma hyps c ?init_tac terminator
+
 let start_proof id ?pl kind sigma ?terminator ?sign c ?init_tac ?(compute_guard=[]) hook =
   let terminator = match terminator with
   | None -> standard_proof_terminator compute_guard hook
   | Some terminator -> terminator compute_guard hook
   in
-  let sign = 
+  let sign =
     match sign with
     | Some sign -> sign
     | None -> initialize_named_context_for_proof ()
   in
   !start_hook c;
-  Pfedit.start_proof id ?pl kind sigma sign c ?init_tac terminator
+  pfedit_start_proof id ?pl kind sigma sign c ?init_tac terminator
 
 let start_proof_univs id ?pl kind sigma ?terminator ?sign c ?init_tac ?(compute_guard=[]) hook =
   let terminator = match terminator with
@@ -389,7 +409,7 @@ let start_proof_univs id ?pl kind sigma ?terminator ?sign c ?init_tac ?(compute_
     | None -> initialize_named_context_for_proof ()
   in
   !start_hook c;
-  Pfedit.start_proof id ?pl kind sigma sign c ?init_tac terminator
+  pfedit_start_proof id ?pl kind sigma sign c ?init_tac terminator
 
 let rec_tac_initializer finite guard thms snl =
   if finite then
@@ -549,10 +569,11 @@ let save_proof ?proof = function
       in
       (* if the proof is given explicitly, nothing has to be deleted *)
       if Option.is_empty proof then Pfedit.delete_current_proof ();
+      ignore(Pcoq.pop_proof_tactic_entry ());
       Proof_global.(apply_terminator terminator (Proved (is_opaque,idopt,proof_obj)))
 
 (* Miscellaneous *)
 
 let get_current_context () =
   Pfedit.get_current_context ()
-           
+

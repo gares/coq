@@ -746,7 +746,6 @@ let rec tmpp v loc =
       let tac = None (** FIXME *) in
       let using = Option.map (xmlSectionSubsetDescr "using") using in
       xmlProof loc (Option.List.(cons tac (cons using [])))
-  | VernacProofMode name -> xmlProofMode loc name
 
   (* Toplevel control *)
   | VernacToplevelControl _ as x -> xmlTODO loc x

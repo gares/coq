@@ -38,7 +38,6 @@ GEXTEND Gram
     [ [ IDENT "Goal"; c = lconstr -> VernacGoal c
       | IDENT "Proof" ->
           VernacProof (None,hint_proof_using G_vernac.section_subset_expr None)
-      | IDENT "Proof" ; IDENT "Mode" ; mn = string -> VernacProofMode mn
       | IDENT "Proof"; c = lconstr -> VernacExactProof c
       | IDENT "Abort" -> VernacAbort None
       | IDENT "Abort"; IDENT "All" -> VernacAbortAll

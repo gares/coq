@@ -1195,8 +1195,6 @@ open Decl_kinds
             keyword "using" ++ spc() ++ pr_using e ++ spc() ++
             keyword "with" ++ spc() ++ Pputils.pr_raw_generic (Global.env ()) te
         )
-      | VernacProofMode s ->
-        return (keyword "Proof Mode" ++ str s)
       | VernacBullet b ->
         return (begin match b with
           | Dash n -> str (String.make n '-')
