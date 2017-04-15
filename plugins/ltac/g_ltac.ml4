@@ -54,7 +54,7 @@ let toplevel_selector = new_entry "vernac:toplevel_selector"
 let tacdef_body = new_entry "tactic:tacdef_body"
 
 (* Registers [tactic_mode] as a parser for proof editing *)
-let _ = Pcoq.add_proof_tactic_entry "Classic" tactic_mode
+let _ = Pcoq.register_tactic_entry "Classic" tactic_mode
 
 (* Hack to parse "[ id" without dropping [ *)
 let test_bracket_ident =

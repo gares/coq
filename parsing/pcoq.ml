@@ -525,8 +525,7 @@ module Vernac_ =
       ] in
       uncurry (Gram.extend main_entry) (None, make_rule rule)
 
-    (* We need a stack to effectively marshal the state *)
-    let command_entry_ref = ref (noedit_mode, [])
+    let command_entry_ref = ref (noedit_mode, None)
     let command_entry =
       Gram.Entry.of_parser "command_entry"
         (fun strm -> Gram.parse_tokens_after_filter (fst !command_entry_ref) strm)
@@ -534,7 +533,6 @@ module Vernac_ =
   end
 
 let main_entry = Vernac_.main_entry
-let tactic_entry : (string, _) Hashtbl.t = Hashtbl.create 19
 
 let epsilon_value f e =
   let r = Rule (Next (Stop, e), fun x _ -> f x) in
@@ -587,30 +585,48 @@ let recover_grammar_command (type a) (tag : a grammar_command) : a list =
 let extend_dyn_grammar (GrammarCommand.Dyn (tag, g)) = extend_grammar_command tag g
 
 (* Tactic parsing modes *)
-let add_proof_tactic_entry p e = Hashtbl.add tactic_entry p e
+let register_tactic_entry, find_tactic_entry =
+  let tactic_entry : (string, Vernacexpr.vernac_expr Gram.entry) Hashtbl.t =
+    Hashtbl.create 19 in
+  let register_tactic_entry ename e = Hashtbl.add tactic_entry ename e in
+  let find_tactic_entry ename =
+    try Hashtbl.find tactic_entry ename
+    with Not_found ->
+      CErrors.anomaly Pp.(str "tactic entry not found: " ++ str ename) in
+  register_tactic_entry, find_tactic_entry
 
-let push_proof_tactic_entry p =
-  try
-    let pentry = Hashtbl.find tactic_entry p in
-    Vernac_.(command_entry_ref := (pentry, p :: (snd !command_entry_ref)))
-  with Not_found -> CErrors.anomaly Pp.(str "tactic entry not found: " ++ str p)
+let select_tactic_entry spec =
+  match spec with
+  | None -> Vernac_.noedit_mode, spec
+  | Some ename -> find_tactic_entry ename, spec
 
-let select_pentry l =
-  match l with [] -> Vernac_.noedit_mode | p :: _ -> Hashtbl.find tactic_entry p
+let set_tactic_entry ename =
+  Vernac_.command_entry_ref := select_tactic_entry (Some ename)
 
-let pop_proof_tactic_entry () =
-  match (snd !Vernac_.command_entry_ref) with
-  | []     -> CErrors.anomaly Pp.(str "closing a proof tactic entry in an empty context.")
-  | p :: l -> Vernac_.(command_entry_ref := (select_pentry l, l)); p
-
-let get_proof_tactic_entry_stack () = snd !Vernac_.command_entry_ref
+let unset_tactic_entry () =
+  let old = snd !Vernac_.command_entry_ref in
+  Vernac_.command_entry_ref := select_tactic_entry None;
+  old
 
 (* Summary functions: the state of the lexer is included in that of the parser.
    Because the grammar affects the set of keywords when adding or removing
    grammar rules. *)
-type frozen_t = (int * GrammarCommand.t * GramState.t) list * CLexer.keyword_state * string list
+type frozen_t = {
+  grammar : (int * GrammarCommand.t * GramState.t) list;
+  lexer: CLexer.keyword_state;
+  tactic_entry_name : string option;
+}
 
-let freeze _ : frozen_t = (!grammar_stack, CLexer.get_keyword_state (), snd !Vernac_.command_entry_ref)
+let freeze _ : frozen_t = {
+  grammar = !grammar_stack;
+  lexer = CLexer.get_keyword_state ();
+  tactic_entry_name = snd !Vernac_.command_entry_ref;
+}
+
+let print { grammar; tactic_entry_name } =
+  match tactic_entry_name with
+  | None -> Printf.sprintf "Vernac(%d)" (List.length grammar) 
+  | Some s -> Printf.sprintf "%s(%d)" s (List.length grammar) 
 
 (* We compare the current state of the grammar and the state to unfreeze,
    by computing the longest common suffixes *)
@@ -620,24 +636,27 @@ let factorize_grams l1 l2 =
 let number_of_entries gcl =
   List.fold_left (fun n (p,_,_) -> n + p) 0 gcl
 
-let unfreeze (grams, lex, t_entry) =
+let unfreeze { grammar = grams; lexer = lex; tactic_entry_name = t_entry } =
   let (undo, redo, common) = factorize_grams !grammar_stack grams in
   let n = number_of_entries undo in
   remove_grammars n;
   grammar_stack := common;
   CLexer.set_keyword_state lex;
   List.iter extend_dyn_grammar (List.rev_map pi2 redo);
-  Vernac_.(command_entry_ref := (select_pentry t_entry, t_entry))
+  Vernac_.command_entry_ref := select_tactic_entry t_entry
 
 (** No need to provide an init function : the grammar state is
     statically available, and already empty initially, while
     the lexer state should not be resetted, since it contains
     keywords declared in g_*.ml4 *)
+let grammar_lexer_summary_name = "GRAMMAR_LEXER"
 let _ =
-  Summary.declare_summary "GRAMMAR_LEXER"
+  Summary.declare_summary grammar_lexer_summary_name
     { Summary.freeze_function = freeze;
       Summary.unfreeze_function = unfreeze;
       Summary.init_function = Summary.nop }
+
+type state = frozen_t
 
 let with_grammar_rule_protection f x =
   let fs = freeze false in

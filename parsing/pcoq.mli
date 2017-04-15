@@ -315,23 +315,30 @@ val recover_grammar_command : 'a grammar_command -> 'a list
 
 val with_grammar_rule_protection : ('a -> 'b) -> 'a -> 'b
 
-(** Vernacular and tactic parsing. The parser maintains a stateful
-    stack of available tactic modes entries, and will try to parse
-    using the entry at the top of the stack. An empty stack means no
-    tactic mode.
+(** Grammar entry for tactics: proof mode(s).
+  By default Coq's grammar has an empty entry (non-terminal) for
+  tactics.  A plugin can register its non-terminal by providing a name
+  and a grammar entry.
+ 
+  For example the Ltac plugin register the "Classic" grammar
+  entry for parsing its tactics. 
   *)
 
-val add_proof_tactic_entry : string -> vernac_expr Gram.entry -> unit
-(** add a new entry to the proof parsing mode *)
+val register_tactic_entry : string -> vernac_expr Gram.entry -> unit
 
-val push_proof_tactic_entry : string -> unit
-(** signal entering a proof *)
-val pop_proof_tactic_entry : unit -> string
-(** signal closing a proof *)
-
-val get_proof_tactic_entry_stack : unit -> string list
-(** mainly for debug purposes *)
+val set_tactic_entry : string -> unit
+(** choose a (different) grammar entry for parsing tactics *) 
+val unset_tactic_entry : unit -> string option
+(** go back to the default empty grammar entry (i.e. closing a proof) *)
 
 (** Location Utils  *)
 val to_coqloc : Ploc.t -> Loc.t
 val (!@) : Ploc.t -> Loc.t
+
+(** Parsing state handling in the STM *)
+type state
+val freeze : unit -> state
+val unfreeze : state -> unit
+val print : state -> string
+
+
