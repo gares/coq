@@ -220,15 +220,22 @@ module Constraint = struct
   include M
 
   let pr prl c =
-    let open Pp in
-    fold
-      (fun c pp_std ->
-        match c with
-        | UnivConstraint (u,op,v) ->
-           pp_std ++ prl_u prl u ++ pr_constraint_type op ++ prl_u prl v ++ fnl ()
-        | TruncConstraint (u,op,v) ->
-           pp_std ++ prl_t prl u ++ pr_constraint_type op ++ prl_t prl v ++ fnl ())
-      c (str "")
+    if is_empty c then Pp.str ""
+    else
+      let open Pp in
+      let pp_us, pp_ts =
+        fold
+          (fun c (pp_us, pp_ts) ->
+            match c with
+            | UnivConstraint (u,op,v) ->
+               let pp_us = pp_us ++ prl_u prl u ++ pr_constraint_type op ++ prl_u prl v ++ fnl () in
+               pp_us, pp_ts
+            | TruncConstraint (u,op,v) ->
+               let pp_ts = pp_ts ++ prl_t prl u ++ pr_constraint_type op ++ prl_t prl v ++ fnl () in
+               pp_us, pp_ts)
+          c (str "", str "")
+      in
+      pp_us ++ str "; " ++ pp_ts
 
   let add_univ c cs = add (UnivConstraint c) cs
 
@@ -449,14 +456,14 @@ let enforce_trunc_constraint (u, d, v) =
 (** Substitutions. *)
 type level_subst = universe_level_subst * truncation_level_subst
 let pr_level_subst (su,st) =
-  Pp.(pr_universe_level_subst su ++ pr_truncation_level_subst st)
+  Pp.(pr_universe_level_subst su ++ str "; " ++ pr_truncation_level_subst st)
 let empty_level_subst = empty_univ_level_subst, empty_trunc_level_subst
 let is_empty_level_subst (su,st) =
   is_empty_univ_level_subst su && is_empty_trunc_level_subst st
 
 type sort_subst = universe_subst * truncation_subst
 let pr_sort_subst (su,st) =
-  Pp.(pr_universe_subst su ++ pr_truncation_subst st)
+  Pp.(pr_universe_subst su ++ str "; " ++ pr_truncation_subst st)
 let empty_sort_subst = empty_univ_subst, empty_trunc_subst
 let is_empty_sort_subst (su,st) =
   is_empty_univ_subst su && is_empty_trunc_subst st
@@ -1042,7 +1049,7 @@ let abstract_sorts poly ctx =
   if poly
   then
     let subst = Instance.make_subst instance in
-    let cs = subst_instance_constraints instance (UContext.constraints ctx) in
+    let cs = level_subst_constraints subst (UContext.constraints ctx) in
     let ctx = UContext.make (instance, cs) in
     subst, ctx
   else
