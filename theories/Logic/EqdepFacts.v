@@ -177,7 +177,8 @@ Proof.
     destruct H. simpl.
     exists eq_refl.
     reflexivity.
-  - destruct H as (->,<-).
+  - destruct H as [H H'].
+    destruct H, H'.
     reflexivity.
 Defined.
 
