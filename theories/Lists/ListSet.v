@@ -263,7 +263,7 @@ Section first_definitions.
     - tauto.
     - inversion_clear ND.
       destruct (Aeq_dec b x) as [<-|Hbx].
-      + congruence.
+      + intros H1 e;destruct e. auto.
       + destruct 1; subst; auto.
   Qed.
 

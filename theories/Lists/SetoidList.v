@@ -1052,8 +1052,9 @@ compute.
 transitivity a; auto. symmetry; auto.
 rewrite <- IHl; auto.
 destruct (eqA_dec a a'); simpl in *.
-left; split; simpl; congruence.
-right. rewrite IHl; auto.
+- left; split; simpl;trivial.
+  injection H. auto.
+- right. rewrite IHl; auto.
 Qed.
 
 End Find.

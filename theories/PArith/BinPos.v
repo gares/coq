@@ -700,7 +700,9 @@ Qed.
 
 Lemma sub_mask_add p q r : sub_mask p q = IsPos r -> q + r = p.
 Proof.
- case sub_mask_spec; congruence.
+  case sub_mask_spec;try congruence.
+  - discriminate.
+  - discriminate.
 Qed.
 
 Lemma sub_mask_add_diag_l p q : sub_mask (p+q) p = IsPos q.
@@ -735,7 +737,7 @@ Qed.
 
 Theorem eqb_eq p q : (p =? q) = true <-> p=q.
 Proof.
- revert q. induction p; destruct q; simpl; rewrite ?IHp; split; congruence.
+  revert q. induction p; destruct q; simpl; rewrite ?IHp; split; solve [discriminate|congruence].
 Qed.
 
 Theorem ltb_lt p q : (p <? q) = true <-> p < q.

@@ -38,7 +38,8 @@ Qed.
 Lemma Decidable_complete_alt : forall P (H : Decidable P),
   Decidable_witness = false -> ~ P.
 Proof.
-intros P [wit spec] Hd Hc; simpl in *; intuition congruence.
+  intros P [wit spec] Hd Hc; simpl in *. intuition.
+  rewrite Hd in H1;discriminate.
 Qed.
 
 (** The generic function that should be used to program, together with some

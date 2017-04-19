@@ -72,7 +72,7 @@ Qed.
 Lemma Lget_app_Some : forall (A:Set) l delta i (a: A),
 Lget i l = Some a ->
 Lget i (l ++ delta) = Some a.
-induction l;destruct i;simpl;try congruence;auto.
+induction l;destruct i;simpl;try discriminate;auto.
 Qed.
 
 Section Store.
@@ -168,11 +168,12 @@ case_eq (i ?= j).
 intro H;rewrite (Pos.compare_eq _ _ H);intros a;clear i H.
 induction j;destruct T;simpl;try (apply IHj);congruence.
 unfold Pos.compare.
-generalize i;clear i;induction j;destruct T;simpl in H|-*;
-destruct i;simpl;try rewrite (IHj _ H);try (destruct i;simpl;congruence);reflexivity|| congruence.
+generalize i;clear i;induction j;destruct T;simpl in H|-*
+;destruct i;simpl;try rewrite (IHj _ H);first [reflexivity|discriminate|(destruct i;simpl;congruence)].
+
 unfold Pos.compare.
-generalize i;clear i;induction j;destruct T;simpl in H|-*;
-destruct i;simpl;try rewrite (IHj _ H);try (destruct i;simpl;congruence);reflexivity|| congruence.
+generalize i;clear i;induction j;destruct T;simpl in H|-*
+;destruct i;simpl;try rewrite (IHj _ H);first [reflexivity|discriminate|(destruct i;simpl;congruence)].
 Qed.
 
 Record Store : Type :=
@@ -249,12 +250,12 @@ Proof.
 intros i a S F x H.
 case_eq (i ?= index S);intro test.
 rewrite (Pos.compare_eq _ _ test) in H.
-rewrite (get_Full_Eq _ F) in H;congruence.
+rewrite (get_Full_Eq _ F) in H;discriminate.
 rewrite <- H.
 rewrite (get_push_Full i a).
 rewrite test;reflexivity.
 assumption.
-rewrite (get_Full_Gt _ F) in H;congruence.
+rewrite (get_Full_Gt _ F) in H;try discriminate;congruence.
 Qed.
 
 Lemma Full_index_one_empty : forall S, Full S -> index S = 1 -> S=empty.
@@ -278,12 +279,12 @@ end.
 Lemma get_In : forall (x:A) (S:Store) (F:Full S) i ,
 get i S = PSome x -> In x S F.
 induction F.
-intro i;rewrite get_empty; congruence.
+intro i;rewrite get_empty; discriminate.
 intro i;rewrite get_push_Full;trivial.
 case_eq (i ?= index S);simpl.
 left;congruence.
 right;eauto.
-congruence.
+discriminate.
 Qed.
 
 End Store.

@@ -209,11 +209,11 @@ end.
 
 Lemma eqb_nat_eq : forall m n (p : t m) (q : t n), eqb p q = true -> m = n.
 Proof.
-intros m n p; revert n; induction p; destruct q; simpl; intros; f_equal.
-- now apply EqNat.beq_nat_true.
+intros m n p; revert n; induction p; destruct q; simpl.
+- intros; f_equal. now apply EqNat.beq_nat_true.
 - easy.
 - easy.
-- eapply IHp. eassumption.
+- intros;f_equal. eapply IHp. eassumption.
 Qed.
 
 Lemma eqb_eq : forall n (p q : t n), eqb p q = true <-> p = q.
@@ -233,7 +233,8 @@ Lemma eq_dec {n} (x y : t n): {x = y} + {x <> y}.
 Proof.
 case_eq (eqb x y); intros.
 - left; now apply eqb_eq.
-- right. intros Heq. apply <- eqb_eq in Heq. congruence.
+- right. intros Heq. apply <- eqb_eq in Heq.
+  rewrite H in Heq;discriminate.
 Defined.
 
 Definition cast: forall {m} (v: t m) {n}, m = n -> t n.

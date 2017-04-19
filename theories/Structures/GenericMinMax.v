@@ -573,9 +573,11 @@ Module UsualMinMaxDecProperties
 
  Module Import Private_Dec := MinMaxDecProperties O M.
 
- Lemma max_case_strong : forall n m (P:t -> Type),
+ Lemma max_case_strong : forall n m (P:t -> Type@{_;HSet}),
   (m<=n -> P n) -> (n<=m -> P m) -> P (max n m).
- Proof. intros; apply max_case_strong; auto. congruence. Defined.
+ Proof.
+   intros; apply max_case_strong; auto. intros x y e px;revert y e;apply eq_rect,px.
+ Defined.
 
  Lemma max_case : forall n m (P:t -> Type),
   P n -> P m -> P (max n m).
@@ -586,7 +588,7 @@ Module UsualMinMaxDecProperties
 
  Lemma min_case_strong : forall n m (P:O.t -> Type),
   (n<=m -> P n) -> (m<=n -> P m) -> P (min n m).
- Proof. intros; apply min_case_strong; auto. congruence. Defined.
+ Proof. intros; apply min_case_strong; auto. induction 1. trivial. Defined.
 
  Lemma min_case : forall n m (P:O.t -> Type),
   P n -> P m -> P (min n m).

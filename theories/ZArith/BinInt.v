@@ -378,7 +378,7 @@ Qed.
 Lemma compare_eq_iff n m : (n ?= m) = Eq <-> n = m.
 Proof.
 destruct n, m; simpl; rewrite ?CompOpp_iff, ?Pos.compare_eq_iff;
- split; congruence.
+  split; solve [discriminate|congruence].
 Qed.
 
 Lemma compare_sub n m : (n ?= m) = (n - m ?= 0).

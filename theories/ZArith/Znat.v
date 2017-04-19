@@ -113,7 +113,7 @@ Qed.
 
 Lemma inj n m : Z.of_N n = Z.of_N m -> n = m.
 Proof.
- destruct n, m; simpl; congruence.
+  destruct n, m; simpl;solve [discriminate| congruence].
 Qed.
 
 Lemma inj_iff n m : Z.of_N n = Z.of_N m <-> n = m.
