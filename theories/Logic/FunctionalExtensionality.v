@@ -75,8 +75,8 @@ Defined.
 Opaque functional_extensionality_dep_good.
 
 Lemma forall_sig_eq_rect
-      {A B} (f : forall a : A, B a)
-      (P : { g : _ | (forall a, f a = g a) } -> Type)
+      {A:Type@{_;HSet}} {B:A -> Type@{_;HSet}} (f : forall a : A, B a)
+      (P : { g : _ | (forall a, f a = g a) } -> Type@{_;HSet})
       (k : P (exist (fun g => forall a, f a = g a) f (fun a => eq_refl)))
       g
 : P g.
@@ -89,7 +89,9 @@ Proof.
   cut (forall x, (exist _ (f x) eq_refl) = g' x).
   { intro H'.
     apply functional_extensionality_dep_good in H'.
-    destruct H'.
+    (* This doesn't work because somehow elim_sorts_abstract gets used. *)
+    (* destruct H'.*)
+    revert g' H'. apply eq_rect.
     exact k. }
   { intro x.
     destruct (g' x) as [g'x1 g'x2].
