@@ -290,6 +290,13 @@ Notation "x <> y" := (x <> y :>_) : type_scope.
 Arguments eq {A} x _.
 Arguments eq_refl {A x} , [A] x.
 
+(* Makes an anonymous universe for the annotation. *)
+Definition eq_rect (A : Type@{_;HSet}) (x : A) (P : A -> Type)
+           (v : P x) (y : A) (e : x = y) : P y
+  := match e with eq_refl => v end.
+
+Definition eq_rec A x (P : A -> Set) := @eq_rect A x P.
+
 Arguments eq_ind [A] x P _ y _.
 Arguments eq_rec [A] x P _ y _.
 Arguments eq_rect [A] x P _ y _.
