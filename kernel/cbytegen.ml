@@ -1009,22 +1009,25 @@ let compile fail_on_error ?universes:(universes=0) env c =
 let compile_constant_body fail_on_error env univs = function
   | Undef _ | OpaqueDef _ -> Some BCconstant
   | Def sb ->
-      let body = Mod_subst.force_constr sb in
-      let instance_size =
-        match univs with
-        | None -> 0,0
-        | Some univ ->
-           Sorts.UContext.sizes univ
-      in
-      match kind_of_term body with
-	| Const (kn',u) when is_univ_copy instance_size u ->
-	    (* we use the canonical name of the constant*)
-	    let con= constant_of_kn (canonical_con kn') in
-	      Some (BCalias (get_alias env con))
-	| _ ->
-            let universes = fst instance_size + snd instance_size in
-	    let res = compile fail_on_error ~universes env body in
-	      Option.map (fun x -> BCdefined (to_memory x)) res
+     if false
+     then
+       let body = Mod_subst.force_constr sb in
+       let instance_size =
+         match univs with
+         | None -> 0,0
+         | Some univ ->
+            Sorts.UContext.sizes univ
+       in
+       match kind_of_term body with
+       | Const (kn',u) when is_univ_copy instance_size u ->
+	  (* we use the canonical name of the constant*)
+	  let con= constant_of_kn (canonical_con kn') in
+	  Some (BCalias (get_alias env con))
+       | _ ->
+          let universes = fst instance_size + snd instance_size in
+	  let res = compile fail_on_error ~universes env body in
+	  Option.map (fun x -> BCdefined (to_memory x)) res
+     else None
 
 (* Shortcut of the previous function used during module strengthening *)
 
