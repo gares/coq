@@ -51,16 +51,19 @@ Proof.
 intros A x P H y H'; case JMeq_eq with (1 := H'); trivial.
 Qed.
 
+(*
 Lemma JMeq_rec : forall (A:Type) (x:A) (P:A -> Set),
   P x -> forall y, JMeq x y -> P y.
 Proof.
 intros A x P H y H'; case JMeq_eq with (1 := H'); trivial.
 Qed.
+ *)
 
-Lemma JMeq_rect : forall (A:Type) (x:A) (P:A->Type),
+Lemma JMeq_rect : forall (A:Type) (x:A) (P:A->Type@{_;HSet}),
   P x -> forall y, JMeq x y -> P y.
 Proof.
-intros A x P H y H'; case JMeq_eq with (1 := H'); trivial.
+  intros A x P H y H'. apply JMeq_eq in H'.
+  revert y H';apply eq_rect;trivial.
 Qed.
 
 Lemma JMeq_ind_r : forall (A:Type) (x:A) (P:A -> Prop),
@@ -69,16 +72,19 @@ Proof.
 intros A x P H y H'; case JMeq_eq with (1 := JMeq_sym H'); trivial.
 Qed.
 
+(*
 Lemma JMeq_rec_r : forall (A:Type) (x:A) (P:A -> Set),
    P x -> forall y, JMeq y x -> P y.
 Proof.
 intros A x P H y H'; case JMeq_eq with (1 := JMeq_sym H'); trivial.
 Qed.
+ *)
 
-Lemma JMeq_rect_r : forall (A:Type) (x:A) (P:A -> Type),
+Lemma JMeq_rect_r : forall (A:Type) (x:A) (P:A -> Type@{_;HSet}),
    P x -> forall y, JMeq y x -> P y.
 Proof.
-intros A x P H y H'; case JMeq_eq with (1 := JMeq_sym H'); trivial.
+  intros A x P H y H';apply JMeq_sym, JMeq_eq in H'.
+  revert y H';apply eq_rect;trivial.
 Qed.
 
 Lemma JMeq_congr :
@@ -91,6 +97,7 @@ Qed.
 
 Require Import Eqdep.
 
+(*
 Lemma JMeq_eq_dep_id :
  forall (A B:Type) (x:A) (y:B), JMeq x y -> eq_dep Type (fun X => X) A x B y.
 Proof.
@@ -104,7 +111,7 @@ Proof.
 destruct 1.
 apply JMeq_refl.
 Qed.
-
+*)
 (** [eq_dep U P p x q y] is strictly finer than [JMeq (P p) x (P q) y] *)
 
 Lemma eq_dep_JMeq :
