@@ -376,12 +376,7 @@ Proof.
   transitivity (eq_trans (eq_trans (UIP (eq_refl x) (eq_refl x)) z)
                          (eq_sym (UIP (eq_refl x) (eq_refl x)))).
   - destruct z. destruct (UIP _ _). reflexivity.
-  - change
-      (match eq_refl x as y' in _ = x' return y' = y' -> Prop with
-       | eq_refl => fun z => z = (eq_refl (eq_refl x))
-       end (eq_trans (eq_trans (UIP (eq_refl x) (eq_refl x)) z)
-                     (eq_sym (UIP (eq_refl x) (eq_refl x))))).
-    destruct z. destruct (UIP _ _). reflexivity.
+  - reflexivity.
 Qed.
 Theorem UIP_shift : forall U, UIP_refl_ U -> forall x:U, UIP_refl_ (x = x).
 Proof (fun U UIP_refl x =>
