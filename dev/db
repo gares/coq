@@ -38,6 +38,7 @@ install_printer Top_printers.pptruncation_set
 install_printer Top_printers.ppuniverse_instance
 install_printer Top_printers.ppuniverse_context
 install_printer Top_printers.ppuniverse_context_set
+install_printer Top_printers.ppsort_level_subst
 install_printer Top_printers.ppuniverses
 install_printer Top_printers.ppconstraints
 install_printer Top_printers.pptype
