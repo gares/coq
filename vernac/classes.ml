@@ -379,13 +379,19 @@ let context poly l =
     with e when CErrors.noncritical e ->
       error "Anonymous variables not allowed in contexts."
   in
-  let uctx = ref (Evd.universe_context_set !evars) in
+  let uctx = Evd.universe_context_set !evars in
+  let insect = Lib.sections_are_opened () in
+  let inmodtype = Lib.sections_are_opened () in
+  let discharge = poly && not insect in
+  let uctx =
+    if not discharge then
+      (Declare.declare_universe_context poly uctx; Univ.ContextSet.empty)
+    else uctx
+  in
   let fn status (id, b, t) =
-    if Lib.is_modtype () && not (Lib.sections_are_opened ()) then
-      let ctx = Univ.ContextSet.to_context !uctx in
+    if inmodtype && not insect then
       (* Declare the universe context once *)
-      let () = uctx := Univ.ContextSet.empty in
-      let decl = (ParameterEntry (None,poly,(t,ctx),None), IsAssumption Logical) in
+      let decl = (ParameterEntry (None,poly,(t,Univ.ContextSet.to_context uctx),None), IsAssumption Logical) in
       let cst = Declare.declare_constant ~internal:Declare.InternalTacticRequest id decl in
 	match class_of_constr t with
 	| Some (rels, ((tc,_), args) as _cl) ->
@@ -402,11 +408,9 @@ let context poly l =
       let impl = List.exists test impls in
       let decl = (Discharge, poly, Definitional) in
       let nstatus =
-        pi3 (Command.declare_assumption false decl (t, Univ.ContextSet.empty) [] [] impl
-          Vernacexpr.NoInline (Loc.ghost, id))
+        pi3 (Command.declare_assumption false decl (t, uctx) [] [] impl
+               Vernacexpr.NoInline (Loc.ghost, id))
       in
 	status && nstatus
-  in 
-  if Lib.sections_are_opened () then
-    Declare.declare_universe_context poly !uctx;
+  in
   List.fold_left fn true (List.rev ctx)
