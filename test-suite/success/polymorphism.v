@@ -27,6 +27,7 @@ End withoutpoly.
 
 Set Universe Polymorphism.
 
+
 Inductive empty :=. 
 Inductive emptyt : Type :=. 
 Inductive singleton : Type :=
@@ -303,7 +304,9 @@ Set Printing Universes.
 Axiom admit : forall A, A.
 Record R := {O : Type}.
 
-Definition RL (x : R@{i}) : ltac:(let u := constr:(Type@{i}:Type@{j}) in exact (R@{j}) ) := {|O := @O x|}.
+Definition RL (x : R@{i}) : ltac:(let u := constr:(Type@{i}:Type@{j}) in
+                                  exact (R@{j}) ) := {|O := @O x|}.
+
 Definition RLRL : forall x : R, RL x = RL (RL x) := fun x => eq_refl.
 Definition RLRL' : forall x : R, RL x = RL (RL x).
   intros. apply eq_refl.
@@ -322,3 +325,17 @@ Fail Definition bad : False := TypeNeqSmallType.paradox (unwrap' Type (wrap _
 Type)) eq_refl.
 
 End Hurkens'.
+
+  Set Printing Universes.
+
+Set Universe Polymorphism.
+Module Type Foo.
+  Context {A B : Type}.
+
+  Definition foo : Type := B.
+End Foo.
+
+Module F.
+  Context {A B : Type}.
+  Definition foo : Type := B.
+End F.
