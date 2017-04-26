@@ -464,7 +464,7 @@ and eqappr env cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
             let mind = Environ.lookup_mind (fst ind1) env in
             if mind.Declarations.mind_polymorphic then
               let num_param_arity =
-                Context.Rel.length (mind.Declarations.mind_packets.(snd ind1).Declarations.mind_arity_ctxt)
+                mind.Declarations.mind_nparams + mind.Declarations.mind_packets.(snd ind1).Declarations.mind_nrealargs
               in
               if not (num_param_arity = CClosure.stack_args_size v1 && num_param_arity = CClosure.stack_args_size v2) then
                 raise exn
@@ -485,7 +485,9 @@ and eqappr env cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
               let mind = Environ.lookup_mind (fst ind1) env in
               if mind.Declarations.mind_polymorphic then
                 let num_cnstr_args =
-                  let nparamsctxt = Context.Rel.length mind.Declarations.mind_params_ctxt in
+                  let nparamsctxt =
+                    mind.Declarations.mind_nparams + mind.Declarations.mind_packets.(snd ind1).Declarations.mind_nrealargs
+                  in
                   nparamsctxt + mind.Declarations.mind_packets.(snd ind1).Declarations.mind_consnrealargs.(j1 - 1)
                 in
                 if not (num_cnstr_args = CClosure.stack_args_size v1 && num_cnstr_args = CClosure.stack_args_size v2) then
