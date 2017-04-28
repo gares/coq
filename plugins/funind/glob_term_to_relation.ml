@@ -16,7 +16,9 @@ module RelDecl = Context.Rel.Declaration
 module NamedDecl = Context.Named.Declaration
 
 let observe strm =
- Feedback.msg_debug strm
+  if do_observe () then
+    Feedback.msg_debug strm
+  else ()
 
 (*let observennl strm =
   if do_observe ()
