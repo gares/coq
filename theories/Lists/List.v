@@ -1215,9 +1215,7 @@ End Fold_Right_Recursor.
       induction l; simpl.
       intuition.
       intros.
-      case_eq (f a); intros; simpl; try intuition.
-      - destruct H3. easy.
-      - destruct H1. rewrite H in H4;discriminate.
+      case_eq (f a); intros; simpl; intuition congruence.
     Qed.
 
   (** [find] *)

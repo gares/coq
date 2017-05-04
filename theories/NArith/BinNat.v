@@ -297,7 +297,7 @@ Qed.
 
 Theorem compare_eq_iff n m : (n ?= m) = Eq <-> n = m.
 Proof.
-destruct n, m; simpl; rewrite ?Pos.compare_eq_iff; split; solve [discriminate|congruence].
+destruct n, m; simpl; rewrite ?Pos.compare_eq_iff; split; congruence.
 Qed.
 
 Theorem compare_lt_iff n m : (n ?= m) = Lt <-> n < m.

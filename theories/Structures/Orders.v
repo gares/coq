@@ -302,12 +302,8 @@ Module TTLB_to_OTF (Import O : TotalTransitiveLeBool') <: OrderedTypeFull.
  case_eq (x <=? y).
  case_eq (y <=? x).
  constructor. split; auto.
- constructor. split; try congruence. red. unfold le. rewrite H. intros H1;red in H1.
- discriminate H1.
- constructor. destruct (leb_total x y); split; try congruence.
- - rewrite H in H0;discriminate H0.
- - rewrite H in H0;discriminate H0.
- - unfold le. rewrite H;discriminate.
+ constructor. split; congruence.
+ constructor. destruct (leb_total x y); split; congruence.
  Qed.
 
  Definition eqb x y := (x <=? y) && (y <=? x).
