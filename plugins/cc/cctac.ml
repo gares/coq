@@ -367,31 +367,18 @@ let convert_to_hyp_tac c1 t1 c2 t2 p =
        simplest_elim false_t]
   end }
 
-let discriminate_tac (cstr,u as cstru) p =
+(* Essentially [assert (Heq : lhs = rhs) by proof_tac p; discriminate Heq] *)
+let discriminate_tac cstru p =
   Proofview.Goal.nf_enter { enter = begin fun gl ->
-    let t1=constr_of_term p.p_lhs and t2=constr_of_term p.p_rhs in
+    let lhs=constr_of_term p.p_lhs and rhs=constr_of_term p.p_rhs in
     let env = Proofview.Goal.env gl in
-    let concl = Proofview.Goal.concl gl in
-    let xid = Tacmach.New.of_old (pf_get_new_id (Id.of_string "X")) gl in
-    let identity = Universes.constr_of_global (Lazy.force _I) in
-    let trivial = Universes.constr_of_global (Lazy.force _True) in
     let evm = Tacmach.New.project gl in
-    let evm, intype = refresh_type env evm (Tacmach.New.pf_unsafe_type_of gl t1) in
-    let evm, outtype = Evd.new_sort_variable Evd.univ_flexible evm in
-    let outtype = mkSort outtype in
-    let pred = mkLambda(Name xid,outtype,mkRel 1) in
-    let hid = Tacmach.New.of_old (pf_get_new_id (Id.of_string "Heq")) gl in
-    let proj = Tacmach.New.of_old (build_projection intype cstru trivial concl) gl in
-    let injt=app_global _f_equal
-			[|intype;outtype;proj;t1;t2;mkVar hid|] in
-    let endt k =
-      injt (fun injt ->
-            app_global _eq_rect
-		       [|outtype;trivial;pred;identity;concl;injt|] k) in
-    let neweq=new_app_global _eq [|intype;t1;t2|] in
+    let evm, intype = refresh_type env evm (Tacmach.New.pf_unsafe_type_of gl lhs) in
+    let hid = Tacmach.New.pf_get_new_id (Id.of_string "Heq") gl in
+    let neweq=new_app_global _eq [|intype;lhs;rhs|] in
     Tacticals.New.tclTHEN (Proofview.Unsafe.tclEVARS evm)
 			  (Tacticals.New.tclTHENS (neweq (assert_before (Name hid)))
-      [proof_tac p; Proofview.V82.tactic (endt refine_exact_check)])
+      [proof_tac p; Equality.discrHyp hid])
   end }
 
 (* wrap everything *)
@@ -461,9 +448,9 @@ let cc_fail gls =
   user_err ~hdr:"Congruence" (Pp.str "congruence failed.")
 
 let congruence_tac depth l =
-  Tacticals.New.tclORELSE
+  (* Tacticals.New.tclORELSE *)
     (Tacticals.New.tclTHEN (Tacticals.New.tclREPEAT introf) (cc_tactic depth l))
-    (Proofview.V82.tactic cc_fail)
+    (* (Proofview.V82.tactic cc_fail) *)
 
 (* Beware: reflexivity = constructor 1 = apply refl_equal
    might be slow now, let's rather do something equivalent
