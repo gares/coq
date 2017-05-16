@@ -80,6 +80,7 @@ matrix:
           - ghostscript
           - transfig
           - imagemagick
+          - tipa
     - env:
       - TEST_TARGET="test-suite"
       - COMPILER="4.04.1"
@@ -105,6 +106,7 @@ matrix:
           - ghostscript
           - transfig
           - imagemagick
+          - tipa
 
 install:
 - opam init -j ${NJOBS} --compiler=${COMPILER} -n -y
