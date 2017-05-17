@@ -484,7 +484,7 @@ $(filter-out $(MLLIBFILES:.mllib=.cmxs) $(MLPACKFILES:.mlpack=.cmxs) $(addsuffix
 	$(SHOW)'[deprecated,use-mllib-or-mlpack] CAMLOPT -shared -o $@'
 	$(HIDE)$(CAMLOPTLINK) $(CAMLDEBUG) $(CAMLFLAGS) -shared -o $@ $<
 
-$(VOFILES): %.vo: %.v
+$(VOFILES): %.vo: %.v | %.v.d
 	$(SHOW)COQC $<
 	$(HIDE)$(COQC) $(COQDEBUG) $(COQFLAGS) $<
 
@@ -492,7 +492,7 @@ $(VOFILES): %.vo: %.v
 $(GLOBFILES): %.glob: %.v
 	$(COQC) $(COQDEBUG) $(COQFLAGS) $<
 
-$(VFILES:.v=.vio): %.vio: %.v
+$(VFILES:.v=.vio): %.vio: %.v | %.v.d
 	$(SHOW)COQC -quick $<
 	$(HIDE)$(COQC) -quick $(COQDEBUG) $(COQFLAGS) $<
 
@@ -523,10 +523,10 @@ $(GHTMLFILES): %.g.html: %.v %.glob
 # Dependency files ############################################################
 
 ifneq ($(filter-out archclean clean cleanall printenv,$(MAKECMDGOALS)),)
- include $(ALLDFILES)
+ -include $(ALLDFILES)
 else
  ifeq ($(MAKECMDGOALS),)
-  include $(ALLDFILES)
+  -include $(ALLDFILES)
  endif
 endif
 
