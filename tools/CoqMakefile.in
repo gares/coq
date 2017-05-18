@@ -484,7 +484,7 @@ $(filter-out $(MLLIBFILES:.mllib=.cmxs) $(MLPACKFILES:.mlpack=.cmxs) $(addsuffix
 	$(SHOW)'[deprecated,use-mllib-or-mlpack] CAMLOPT -shared -o $@'
 	$(HIDE)$(CAMLOPTLINK) $(CAMLDEBUG) $(CAMLFLAGS) -shared -o $@ $<
 
-$(VOFILES): %.vo: %.v | %.v.d
+$(VOFILES): %.vo: %.v
 	$(SHOW)COQC $<
 	$(HIDE)$(COQC) $(COQDEBUG) $(COQFLAGS) $<
 
@@ -492,7 +492,7 @@ $(VOFILES): %.vo: %.v | %.v.d
 $(GLOBFILES): %.glob: %.v
 	$(COQC) $(COQDEBUG) $(COQFLAGS) $<
 
-$(VFILES:.v=.vio): %.vio: %.v | %.v.d
+$(VFILES:.v=.vio): %.vio: %.v
 	$(SHOW)COQC -quick $<
 	$(HIDE)$(COQC) -quick $(COQDEBUG) $(COQFLAGS) $<
 
