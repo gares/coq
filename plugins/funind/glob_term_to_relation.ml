@@ -16,9 +16,8 @@ module RelDecl = Context.Rel.Declaration
 module NamedDecl = Context.Named.Declaration
 
 let observe strm =
-  if do_observe ()
-  then Feedback.msg_debug strm
-  else ()
+ Feedback.msg_debug strm
+
 (*let observennl strm =
   if do_observe ()
   then Pp.msg strm
@@ -534,6 +533,7 @@ let rec build_entry_lc env funnames avoid rt  : glob_constr build_entry_return =
 			 {args_res with value = mkGApp(f,args_res.value)})
 		      args_res.result
 		}
+
 	    | GApp _ -> assert false (* we have collected all the app in [glob_decompose_app] *)
        	    | GLetIn(_,n,t,b) ->
 		(* if we have [(let x := v in b) t1 ... tn] ,
@@ -889,7 +889,7 @@ exception Continue
    rebuild the globalized constructors expression.
    eliminates some meaningless equalities, applies some rewrites......
 *)
-let rec rebuild_cons env nb_args relname args crossed_types depth rt =
+let rec rebuild_cons evd env nb_args relname args crossed_types depth rt =
   observe (str "rebuilding : " ++ pr_glob_constr rt);
   let open Context.Rel.Declaration in
   match rt with
@@ -910,10 +910,10 @@ let rec rebuild_cons env nb_args relname args crossed_types depth rt =
 			let new_t =
 			  mkGApp(mkGVar(mk_rel_id this_relname),args'@[res_rt])
 			in
-			let t',ctx = Pretyping.understand env (Evd.from_env env) new_t in
+			let t' = Pretyping.understand_tcc_evars env evd new_t in
 			let new_env = Environ.push_rel (LocalAssum (n,t')) env in
 			let new_b,id_to_exclude =
-			  rebuild_cons new_env
+			  rebuild_cons evd new_env
 			    nb_args relname
 			    args new_crossed_types
 			    (depth + 1) b
@@ -944,8 +944,7 @@ let rec rebuild_cons env nb_args relname args crossed_types depth rt =
 		    in
 		    let new_env = Environ.push_rel (LocalAssum (n,t')) env in
 		    let new_b,id_to_exclude =
-		      rebuild_cons
-			new_env
+		      rebuild_cons evd			new_env
 			nb_args relname
 			new_args new_crossed_types
 			(depth + 1) subst_b
@@ -1027,7 +1026,7 @@ let rec rebuild_cons env nb_args relname args crossed_types depth rt =
 		      Environ.push_rel (LocalAssum (n,t')) env
 		    in
 		    let new_b,id_to_exclude =
-		      rebuild_cons
+		      rebuild_cons evd
 			new_env
 			nb_args relname
 			new_args new_crossed_types
@@ -1057,14 +1056,14 @@ let rec rebuild_cons env nb_args relname args crossed_types depth rt =
 			b
 			l
 		    in
-		    rebuild_cons env nb_args relname args crossed_types depth new_rt
+		    rebuild_cons evd env nb_args relname args crossed_types depth new_rt
 		  else raise Continue
 	      with Continue -> 
 		observe (str "computing new type for prod : " ++ pr_glob_constr rt);
 		let t',ctx = Pretyping.understand env (Evd.from_env env) t in
 		let new_env = Environ.push_rel (LocalAssum (n,t')) env in
 		let new_b,id_to_exclude =
-		  rebuild_cons new_env
+		  rebuild_cons evd new_env
 		    nb_args relname
 		    args new_crossed_types
 		    (depth + 1) b
@@ -1080,7 +1079,7 @@ let rec rebuild_cons env nb_args relname args crossed_types depth rt =
 		let t',ctx = Pretyping.understand env (Evd.from_env env) t in
 		let new_env = Environ.push_rel (LocalAssum (n,t')) env in
 		let new_b,id_to_exclude =
-		  rebuild_cons new_env
+		  rebuild_cons evd new_env
 		    nb_args relname
 		    args new_crossed_types
 		    (depth + 1) b
@@ -1101,7 +1100,7 @@ let rec rebuild_cons env nb_args relname args crossed_types depth rt =
 	    | Name id ->
 		let new_env = Environ.push_rel (LocalAssum (n,t')) env in
 		let new_b,id_to_exclude =
-		  rebuild_cons new_env
+		  rebuild_cons evd new_env
 		    nb_args relname
 		    (args@[mkGVar id])new_crossed_types
 		    (depth + 1 ) b
@@ -1118,13 +1117,11 @@ let rec rebuild_cons env nb_args relname args crossed_types depth rt =
     | GLetIn(_,n,t,b) ->
 	begin
 	  let not_free_in_t id = not (is_free_in id t) in
-	  let evd = (Evd.from_env env) in
-	  let t',ctx = Pretyping.understand env evd t in
-	  let evd = Evd.from_ctx ctx in
-	  let type_t' = Typing.unsafe_type_of env evd t' in
+	  let t' = Pretyping.understand_tcc_evars env evd t in
+	  let type_t' = Retyping.get_type_of env !evd t' in
 	  let new_env = Environ.push_rel (LocalDef (n,t',type_t')) env in
 	  let new_b,id_to_exclude =
-	    rebuild_cons new_env
+	    rebuild_cons evd new_env
 	      nb_args relname
 	      args (t::crossed_types)
 	      (depth + 1 ) b in
@@ -1139,16 +1136,16 @@ let rec rebuild_cons env nb_args relname args crossed_types depth rt =
 	begin
 	  let not_free_in_t id = not (is_free_in id t) in
 	  let new_t,id_to_exclude' =
-	    rebuild_cons env
+	    rebuild_cons evd env
 	      nb_args
 	      relname
 	      args (crossed_types)
 	      depth t
 	  in
-	  let t',ctx = Pretyping.understand env (Evd.from_env env) new_t in
+	  let t' = Pretyping.understand_tcc_evars env evd new_t in
 	  let new_env = Environ.push_rel (LocalAssum (na,t')) env in
 	  let new_b,id_to_exclude =
-	    rebuild_cons new_env
+	    rebuild_cons evd new_env
 	      nb_args relname
 	      args (t::crossed_types)
 	      (depth + 1) b
@@ -1166,11 +1163,11 @@ let rec rebuild_cons env nb_args relname args crossed_types depth rt =
 
 
 (* debugging wrapper *)
-let rebuild_cons env nb_args relname args crossed_types rt =
+let rebuild_cons evd env nb_args relname args crossed_types rt =
 (*   observennl  (str "rebuild_cons : rt := "++ pr_glob_constr rt ++  *)
 (* 		 str "nb_args := " ++ str (string_of_int nb_args)); *)
   let res =
-    rebuild_cons env nb_args relname args crossed_types 0 rt
+    rebuild_cons evd env nb_args relname args crossed_types 0 rt
   in
 (*   observe (str " leads to "++ pr_glob_constr (fst res)); *)
   res
@@ -1316,6 +1313,7 @@ let do_build_inductive
 			     Environ.push_named (LocalAssum (rel_name,
 						             fst (with_full_print (Constrintern.interp_constr env evd) rel_ar))) env) env relnames rel_arities
   in
+  let evd = ref (Evd.from_env (Global.env ())) in
   (* and of the real constructors*)
   let constr i res =
     List.map
@@ -1324,7 +1322,7 @@ let do_build_inductive
 	 let nb_args = List.length funsargs.(i) in
 	 (*  with_full_print (fun rt -> Pp.msgnl (str "glob constr " ++ pr_glob_constr rt)) rt; *)
 	 fst (
-	   rebuild_cons env_with_graphs nb_args relnames.(i)
+	   rebuild_cons evd env_with_graphs nb_args relnames.(i)
 	     []
 	     []
 	     rt
@@ -1419,26 +1417,26 @@ let do_build_inductive
   in
   let ext_rel_constructors = (Array.mapi rel_ind ext_rels_constructors) in
   let rel_inds = Array.to_list ext_rel_constructors in
-(*   let _ =  *)
-(*   Pp.msgnl  (\* observe *\) ( *)
-(*       str "Inductive" ++ spc () ++ *)
-(* 	prlist_with_sep  *)
-(* 	(fun () -> fnl ()++spc () ++ str "with" ++ spc ())  *)
-(* 	(function ((_,id),_,params,ar,constr) ->  *)
-(* 	   Ppconstr.pr_id id ++ spc () ++  *)
-(* 	     Ppconstr.pr_binders params ++ spc () ++ *)
-(* 	     str ":" ++ spc () ++  *)
-(* 	     Ppconstr.pr_lconstr_expr ar ++ spc () ++ str ":=" ++ *)
-(* 	     prlist_with_sep  *)
-(* 	     (fun _ -> fnl () ++ spc () ++ str "|" ++ spc ()) *)
-(* 	     (function (_,((_,id),t)) ->  *)
-(* 		Ppconstr.pr_id id ++ spc () ++ str ":" ++ spc () ++ *)
-(* 		  Ppconstr.pr_lconstr_expr t) *)
-(* 	     constr *)
-(* 	) *)
-(* 	rel_inds *)
-(*     ) *)
-(*   in *)
+  (* let _ = *)
+  (* Pp.msgnl  (\* observe *\) ( *)
+  (*     str "Inductive" ++ spc () ++ *)
+  (*       prlist_with_sep *)
+  (*       (fun () -> fnl ()++spc () ++ str "with" ++ spc ()) *)
+  (*       (function ((_,id),_,params,ar,constr) -> *)
+  (*          Ppconstr.pr_id id ++ spc () ++ *)
+  (*            Ppconstr.pr_binders params ++ spc () ++ *)
+  (*            str ":" ++ spc () ++ *)
+  (*            Ppconstr.pr_lconstr_expr ar ++ spc () ++ str ":=" ++ *)
+  (*            prlist_with_sep *)
+  (*            (fun _ -> fnl () ++ spc () ++ str "|" ++ spc ()) *)
+  (*            (function (_,((_,id),t)) -> *)
+  (*       	Ppconstr.pr_id id ++ spc () ++ str ":" ++ spc () ++ *)
+  (*       	  Ppconstr.pr_lconstr_expr t) *)
+  (*            constr *)
+  (*       ) *)
+  (*       rel_inds *)
+  (*   ) *)
+  (* in *)
   let _time2 = System.get_time () in
   try
     with_full_print (Flags.silently (Command.do_mutual_inductive rel_inds (Flags.is_universe_polymorphism ()) false)) Decl_kinds.Finite

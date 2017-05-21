@@ -1376,7 +1376,7 @@ let prove_princ_for_struct (evd:Evd.evar_map ref) interactive_proof fun_num fnam
 
 
 (* Proof of principles of general functions *)
-(* let  hrec_id =  Recdef.hrec_id *)
+(* let  hrec_id = Recdef.hrec_id *)
 (* and acc_inv_id = Recdef.acc_inv_id *)
 (* and ltof_ref = Recdef.ltof_ref *)
 (* and acc_rel = Recdef.acc_rel *)
@@ -1572,9 +1572,9 @@ let prove_principle_for_gen
       ((* observe_tac "prove_rec_arg_acc"  *)
 	 (tclCOMPLETE
 	    (tclTHEN
-	       (Proofview.V82.of_tactic (assert_by (Name wf_thm_id)
-		  (mkApp (delayed_force well_founded,[|input_type;relation|]))
-		  (Proofview.V82.tactic (fun g -> (* observe_tac "prove wf" *) (tclCOMPLETE (wf_tac is_mes)) g))))
+	       (check_poly_app (delayed_force well_founded) [|input_type;relation|]
+                (fun wf -> Proofview.V82.of_tactic (assert_by (Name wf_thm_id) wf
+		  (Proofview.V82.tactic (fun g -> (* observe_tac "prove wf" *) (tclCOMPLETE (wf_tac is_mes)) g)))))
 	       (
 		 (* observe_tac  *)
 (* 		   "apply wf_thm"  *)
@@ -1635,11 +1635,10 @@ let prove_principle_for_gen
 	(List.rev_map (get_name %> Nameops.out_name)
 	   (princ_info.args@princ_info.branches@princ_info.predicates@princ_info.params)
 	);
+      check_poly_app (delayed_force acc_rel) [|input_type;relation;mkVar rec_arg_id|] (fun term ->
       (* observe_tac "" *) Proofview.V82.of_tactic (assert_by
-	 (Name acc_rec_arg_id)
- 	 (mkApp (delayed_force acc_rel,[|input_type;relation;mkVar rec_arg_id|]))
-	 (Proofview.V82.tactic prove_rec_arg_acc)
-      );
+	 (Name acc_rec_arg_id) term 	 
+	 (Proofview.V82.tactic prove_rec_arg_acc)));
 (*       observe_tac "reverting" *) (revert (List.rev (acc_rec_arg_id::args_ids)));
 (*       (fun g -> observe (Printer.pr_goal (sig_it g) ++ fnl () ++  *)
 (* 			   str "fix arg num" ++ int (List.length args_ids + 1) ); tclIDTAC g); *)
@@ -1647,6 +1646,8 @@ let prove_principle_for_gen
 (*       (fun g -> observe (Printer.pr_goal (sig_it g) ++ fnl() ++ pr_lconstr_env (pf_env g ) (pf_unsafe_type_of g (mkVar fix_id) )); tclIDTAC g); *)
       h_intros (List.rev (acc_rec_arg_id::args_ids));
       Proofview.V82.of_tactic (Equality.rewriteLR (mkConst eq_ref));
+      check_poly_app (delayed_force acc_inv_id) 	       [|input_type;relation;mkVar rec_arg_id|]
+      (fun acc_inv ->
       (* observe_tac "finish" *) (fun gl' ->
 	 let body =
 	   let _,args = destApp (pf_concl gl') in
@@ -1660,14 +1661,7 @@ let prove_principle_for_gen
 	     info = body
 	   }
 	 in
-	 let acc_inv =
-	   lazy (
-	     mkApp (
-	       delayed_force acc_inv_id,
-	       [|input_type;relation;mkVar rec_arg_id|]
-	     )
-	   )
-	 in
+	 let acc_inv = lazy (acc_inv) in
 	 let acc_inv = lazy (mkApp(Lazy.force acc_inv, [|mkVar  acc_rec_arg_id|])) in
 	 let predicates_names =
 	   List.map (get_name %> Nameops.out_name) princ_info.predicates
@@ -1719,7 +1713,7 @@ let prove_principle_for_gen
 	      (List.rev args_ids)
 	   )
 	   gl'
-      )
+      ))
 
     ]
     gl

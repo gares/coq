@@ -11,6 +11,8 @@ Require Import PeanoNat.
 Require Compare_dec.
 Require Wf_nat.
 
+Unset Universe Polymorphism.
+
 Section Iter.
 Variable A : Type.
 

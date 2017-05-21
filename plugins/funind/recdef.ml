@@ -1023,7 +1023,7 @@ let prove_eq = travel equation_info
 (* wrappers *)
 (* [compute_terminate_type] computes the type of the Definition f_terminate from the type of f_F
 *)
-let compute_terminate_type nb_args func =
+let compute_terminate_type sigma nb_args func =
   let _,a_arrow_b,_ = destLambda(def_of_const (constr_of_global func)) in
   let rev_args,b = decompose_prod_n nb_args a_arrow_b in
   let left =
@@ -1048,11 +1048,13 @@ let compute_terminate_type nb_args func =
 		  delayed_force nat,
 		  (mkProd (Name k_id, delayed_force nat,
 			   mkArrow cond result))))|])in
-  let value = mkApp(constr_of_global (delayed_force coq_sig_ref),
+  let sigma, sigt = Evd.fresh_global (Global.env ()) sigma (delayed_force coq_sig_ref) in
+  let value = mkApp(sigt,
 		    [|b;
 		      (mkLambda (Name v_id, b, nb_iter))|]) in
-  compose_prod rev_args value
-
+  let ty = compose_prod rev_args value in
+  let sigma, _ = Typing.type_of (Global.env ()) sigma ty in
+  sigma, ty   
 
 let termination_proof_header is_mes input_type ids args_id relation
     rec_arg_num rec_arg_id tac wf_tac : tactic =
@@ -1073,24 +1075,23 @@ let termination_proof_header is_mes input_type ids args_id relation
       in
       let hrec = next_ident_away_in_goal hrec_id
 	(wf_rec_arg::wf_thm::ids) in
-      let acc_inv =
-	  lazy (
-	    mkApp (
-	      delayed_force acc_inv_id,
+      let acc_inv kont = pf_constr_of_global (delayed_force acc_inv_id) (fun acc_inv ->
+	kont (lazy (mkApp (acc_inv,
 	      [|input_type;relation;mkVar rec_arg_id|]
 	    )
-	  )
+	  )))
       in
       tclTHEN
 	(h_intros args_id)
 	(tclTHENS
 	   (observe_tac
 	      (str "first assert")
-	      (Proofview.V82.of_tactic (assert_before
-		 (Name wf_rec_arg)
-		 (mkApp (delayed_force acc_rel,
-			 [|input_type;relation;mkVar rec_arg_id|])
-		 )
+	      (pf_constr_of_global (delayed_force acc_rel)
+                 (fun accr -> 
+                 let term = mkApp (accr,
+			 [|input_type;relation;mkVar rec_arg_id|]) in
+                 tclTHEN (check_type term) 
+                 (Proofview.V82.of_tactic (assert_before (Name wf_rec_arg) term))
 	      ))
 	   )
 	   [
@@ -1098,9 +1099,10 @@ let termination_proof_header is_mes input_type ids args_id relation
 	     tclTHENS
 	       (observe_tac
 		  (str "second assert")
-		  (Proofview.V82.of_tactic (assert_before
+		  (pf_constr_of_global (delayed_force well_founded) (fun wf ->
+Proofview.V82.of_tactic (assert_before
 		     (Name wf_thm)
-		     (mkApp (delayed_force well_founded,[|input_type;relation|]))
+		     (mkApp (wf,[|input_type;relation|])))
 		  ))
 	       )
 	       [
@@ -1124,7 +1126,8 @@ let termination_proof_header is_mes input_type ids args_id relation
 		observe_tac (str "fix") (Proofview.V82.of_tactic (fix (Some hrec) (nargs+1)));
 		h_intros args_id;
 		Proofview.V82.of_tactic (Simple.intro wf_rec_arg);
-		observe_tac (str "tac") (tac wf_rec_arg hrec wf_rec_arg acc_inv)
+                acc_inv (fun acc_inv ->
+		observe_tac (str "tac") (tac wf_rec_arg hrec wf_rec_arg acc_inv))
 	       ]
 	   ]
 	) g
@@ -1216,7 +1219,7 @@ let build_and_l l =
       | Prod(_,_,t') -> is_well_founded t'
       | App(_,_) -> 
 	let (f,_) = decompose_app t in 
-	eq_constr f (well_founded ())
+        Globnames.is_global (well_founded ()) f
       | _ -> 
 	false
   in
@@ -1325,7 +1328,7 @@ let open_new_goal build_proof sigma using_lemmas ref_ goal_name (gls_type,decomp
 	     ] gls)
       (fun g ->
 	 match kind_of_term (pf_concl g) with
-	   | App(f,_) when eq_constr f (well_founded ()) ->
+	   | App(f,_) when Globnames.is_global (well_founded ()) f ->
 	       Proofview.V82.of_tactic (Auto.h_auto None [] (Some []))  g
 	   | _ ->
 	       incr h_num;
@@ -1394,11 +1397,12 @@ let com_terminate
     thm_name using_lemmas
     nb_args ctx
     hook =
-  let start_proof ctx (tac_start:tactic) (tac_end:tactic) =
-    let (evmap, env) = Lemmas.get_current_context() in
+  let start_proof sigma (tac_start:tactic) (tac_end:tactic) =
+    let (_, env) = Lemmas.get_current_context() in
+    let sigma, ty = compute_terminate_type sigma nb_args fonctional_ref in
     Lemmas.start_proof thm_name
       (Global, false (* FIXME *), Proof Lemma) ~sign:(Environ.named_context_val env)
-      ctx (compute_terminate_type nb_args fonctional_ref) hook;
+      sigma ty hook;
 
     ignore (by (Proofview.V82.tactic (observe_tac (str "starting_tac") tac_start)));
     ignore (by (Proofview.V82.tactic (observe_tac (str "whole_start") (whole_start tac_end nb_args is_mes fonctional_ref

@@ -93,7 +93,6 @@ let console_toploop_run () =
   end;
   Coqloop.loop();
   (* We remove the feeder but it could be ok not to do so *)
-  Feedback.del_feeder tl_feed;
   (* Initialise and launch the Ocaml toplevel *)
   Coqinit.init_ocaml_path();
   Mltop.ocaml_toploop()

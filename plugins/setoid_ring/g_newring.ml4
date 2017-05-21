@@ -79,8 +79,9 @@ END
 VERNAC COMMAND EXTEND AddSetoidRing CLASSIFIED AS SIDEFF
   | [ "Add" "Ring" ident(id) ":" constr(t) ring_mods_opt(l) ] ->
     [ let l = match l with None -> [] | Some l -> l in
-      let (k,set,cst,pre,post,power,sign, div) = process_ring_mods l in
-      add_theory id (ic t) set k cst (pre,post) power sign div]
+      let sigma, th = ic t in     
+      let sigma, (k,set,cst,pre,post,power,sign, div) = process_ring_mods sigma l in
+      add_theory id sigma th set k cst (pre,post) power sign div]
   | [ "Print" "Rings" ] => [Vernac_classifier.classify_as_query] -> [
     Feedback.msg_notice (strbrk "The following ring structures have been declared:");
     Spmap.iter (fun fn fi ->
@@ -116,8 +117,9 @@ END
 VERNAC COMMAND EXTEND AddSetoidField CLASSIFIED AS SIDEFF
 | [ "Add" "Field" ident(id) ":" constr(t) field_mods_opt(l) ] ->
   [ let l = match l with None -> [] | Some l -> l in
-    let (k,set,inj,cst_tac,pre,post,power,sign,div) = process_field_mods l in
-    add_field_theory id (ic t) set k cst_tac inj (pre,post) power sign div]
+    let sigma, t = ic t in
+    let sigma, (k,set,inj,cst_tac,pre,post,power,sign,div) = process_field_mods sigma l in
+    add_field_theory id sigma t set k cst_tac inj (pre,post) power sign div]
 | [ "Print" "Fields" ] => [Vernac_classifier.classify_as_query] -> [
     Feedback.msg_notice (strbrk "The following field structures have been declared:");
     Spmap.iter (fun fn fi ->

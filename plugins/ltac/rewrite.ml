@@ -176,7 +176,7 @@ end) = struct
   let proper_class = lazy (class_info (try_find_global_reference morphisms "Proper"))
   let proper_proxy_class = lazy (class_info (try_find_global_reference morphisms "ProperProxy"))
     
-  let proper_proj = lazy (mkConst (Option.get (pi3 (List.hd (Lazy.force proper_class).cl_projs))))
+  let proper_proj = find_reference morphisms "proper_prf"
     
   let proper_type = 
     let l = lazy (Lazy.force proper_class).cl_impl in
@@ -1853,13 +1853,13 @@ let declare_relation ?(binders=[]) a aeq n refl symm trans =
 
 let cHole = CHole (Loc.ghost, None, Misctypes.IntroAnonymous, None)
 
-let proper_projection r ty =
+let proper_projection env sigma r ty =
   let ctx, inst = decompose_prod_assum ty in
   let mor, args = destApp inst in
   let instarg = mkApp (r, rel_vect 0 (List.length ctx)) in
-  let app = mkApp (Lazy.force PropGlobal.proper_proj,
-		  Array.append args [| instarg |]) in
-    it_mkLambda_or_LetIn app ctx
+  let sigma, p = Evd.fresh_global env sigma (PropGlobal.proper_proj ()) in
+  let app = mkApp (p, Array.append args [| instarg |]) in
+  sigma, it_mkLambda_or_LetIn app ctx
 
 let declare_projection n instance_id r =
   let poly = Global.is_polymorphic r in
@@ -1867,7 +1867,7 @@ let declare_projection n instance_id r =
   let sigma = Evd.from_env env in
   let sigma,c = Evd.fresh_global env sigma r in
   let ty = Retyping.get_type_of env sigma c in
-  let term = proper_projection c ty in
+  let sigma, term = proper_projection env sigma c ty in
   let sigma, typ = Typing.type_of env sigma term in
   let ctx, typ = decompose_prod_assum typ in
   let typ =
@@ -1921,7 +1921,9 @@ let build_morphism_signature env sigma m =
     cstrs
   in
   let morph = e_app_poly env evd PropGlobal.proper_type [| t; sig_; m |] in
-  let evd = solve_constraints env !evd in
+  let evd, cstrs = !evd in
+  let evd, _ = Typing.type_of env evd morph in
+  let evd = solve_constraints env (evd,cstrs) in
   let evd = Evd.nf_constraints evd in
   let m = Evarutil.nf_evars_universes evd morph in
   Pretyping.check_evars env Evd.empty evd m;
@@ -1936,7 +1938,8 @@ let default_morphism sign m =
   in
   let evars, morph = app_poly_check env evars PropGlobal.proper_type [| t; sign; m |] in
   let evars, mor = resolve_one_typeclass env (goalevars evars) morph in
-    mor, proper_projection mor morph
+  let evars, proj = proper_projection env sigma mor morph in
+  mor, proj
 
 let add_setoid global binders a aeq t n =
   init_setoid ();

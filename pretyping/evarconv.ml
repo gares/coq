@@ -414,42 +414,74 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false) ts env evd pbty
     else evar_eqappr_x ts env' evd CONV out2 out1
   in
   let rigids env evd sk term sk' term' =
-    let fall_back cond u u' =
+    let check_strict cond u u' =
       if cond then
         Success (Evd.set_eq_instances ~flex:false (* called on rigids only *) evd u u')
+      else
+        UnifFailure (evd, NotSameHead)
+    in
+    let first_try_strict_check cond u u' try_subtyping_constraints =
+      if cond then
+        try Success (Evd.set_eq_instances ~flex:false (* called on rigids only *) evd u u') with
+          exc -> try_subtyping_constraints ()
       else
         UnifFailure (evd, NotSameHead)
     in
     let compare_heads evd = 
       match kind_of_term term, kind_of_term term' with
       | Const (c, u), Const (c', u') ->
-         fall_back (Constant.equal c c') u u'
+         check_strict (Constant.equal c c') u u'
       | Ind (ind, u), Ind (ind', u') ->
-         let nparamsaplied = Stack.args_size sk in
-         let nparamsaplied' = Stack.args_size sk' in
-         if Names.eq_ind ind ind' then
-         begin
-           let mind = Environ.lookup_mind (fst ind) env in
-           if mind.Declarations.mind_polymorphic then
-           begin
-             let num_param_arity =
-               Context.Rel.length (mind.Declarations.mind_packets.(snd ind).Declarations.mind_arity_ctxt)
-             in
-             if not (num_param_arity = nparamsaplied && num_param_arity = nparamsaplied') then
-                fall_back true u u'
-             else
-             begin
-               let uinfind = mind.Declarations.mind_universes in
-               let evd' = check_leq_inductives evd uinfind u u' in
-               Success (check_leq_inductives evd' uinfind u' u)
-             end
-           end
-           else
-             fall_back true u u'
-         end
-         else UnifFailure (evd, NotSameHead)
+        let check_subtyping_constraints () =
+          let nparamsaplied = Stack.args_size sk in
+          let nparamsaplied' = Stack.args_size sk' in
+          begin
+            let mind = Environ.lookup_mind (fst ind) env in
+            if mind.Declarations.mind_polymorphic then
+              begin
+                let num_param_arity =
+                  Context.Rel.length (mind.Declarations.mind_packets.(snd ind).Declarations.mind_arity_ctxt)
+                in
+                if not (num_param_arity = nparamsaplied && num_param_arity = nparamsaplied') then
+                  UnifFailure (evd, NotSameHead)
+                else
+                  begin
+                    let uinfind = mind.Declarations.mind_universes in
+                    let evd' = check_leq_inductives evd uinfind u u' in
+                    Success (check_leq_inductives evd' uinfind u' u)
+                  end
+              end
+            else
+              UnifFailure (evd, NotSameHead)
+          end
+        in
+        first_try_strict_check (Names.eq_ind ind ind') u u' check_subtyping_constraints
       | Construct (cons, u), Construct (cons', u') ->
-          fall_back (Names.eq_constructor cons cons') u u'
+        let check_subtyping_constraints () =
+          let ind, ind' = fst cons, fst cons' in
+          let j, j' = snd cons, snd cons' in
+          let nparamsaplied = Stack.args_size sk in
+          let nparamsaplied' = Stack.args_size sk' in
+          let mind = Environ.lookup_mind (fst ind) env in
+          if mind.Declarations.mind_polymorphic then
+            begin
+              let num_cnstr_args =
+                let nparamsctxt = Context.Rel.length mind.Declarations.mind_params_ctxt in
+                nparamsctxt + mind.Declarations.mind_packets.(snd ind).Declarations.mind_consnrealargs.(j - 1)
+              in
+              if not (num_cnstr_args = nparamsaplied && num_cnstr_args = nparamsaplied') then
+                UnifFailure (evd, NotSameHead)
+              else
+                begin
+                  let uinfind = mind.Declarations.mind_universes in
+                  let evd' = check_leq_inductives evd uinfind u u' in
+                  Success (check_leq_inductives evd' uinfind u' u)
+                end
+            end
+          else
+            UnifFailure (evd, NotSameHead)
+        in
+        first_try_strict_check (Names.eq_constructor cons cons') u u' check_subtyping_constraints
       | _, _ -> anomaly (Pp.str "")
     in
     ise_and evd [(fun i ->

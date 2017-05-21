@@ -8,6 +8,8 @@
 
 Require Import Setoid Morphisms BinPos BinNat.
 
+Unset Universe Polymorphism.
+
 Set Implicit Arguments.
 
 Module RingSyntax.
@@ -254,7 +256,10 @@ Section ALMOST_RING.
  Section SEMI_RING.
  Variable SReqe : sring_eq_ext radd rmul req.
 
-   Add Morphism radd : radd_ext1.  exact (SRadd_ext SReqe). Qed.
+Set Printing All.
+Set Printing Universes.
+
+   Add Morphism radd : radd_ext1. apply (SRadd_ext SReqe). Qed.
    Add Morphism rmul : rmul_ext1.  exact (SRmul_ext SReqe). Qed.
  Variable SRth : semi_ring_theory 0 1 radd rmul req.
 

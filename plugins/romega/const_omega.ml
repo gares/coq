@@ -231,7 +231,9 @@ let mk_list univ typ l =
   loop l
 
 let mk_plist = 
-  let type1lev = Universes.new_univ_level (Global.current_dirpath ()) in
+  let type1lev, ctx = Universes.new_global_univ () in
+  let () = Global.push_context false (Univ.ContextSet.to_context ctx) in
+  let type1lev = Option.get (Univ.Universe.level type1lev) in
     fun l -> mk_list type1lev Term.mkProp l
 
 let mk_list = mk_list Univ.Level.set

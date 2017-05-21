@@ -6,6 +6,8 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
+Unset Universe Polymorphism.
+
 Require Import Arith Max Min BinInt BinNat Znat Nnat.
 
 Local Open Scope Z_scope.

@@ -7,6 +7,8 @@
 
  *************************************************************************)
 
+Unset Universe Polymorphism.
+
 Require Import List Bool Sumbool EqNat Setoid Ring_theory Decidable ZArith_base.
 Delimit Scope Int_scope with I.
 
