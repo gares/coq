@@ -22,6 +22,11 @@ Standard Library
 - Real constants are now represented using IZR rather than R0 and R1;
   this might cause rewriting rules to fail to apply to constants.
 
+Universes
+- Cumulative inductive types. see prefixes "Cumulative", "NonCumulative"
+  for inductive definitions and the option "Set Inductive Cumulativity"
+  in the reference manual.
+
 Changes from V8.6beta1 to V8.6
 ==============================
 
