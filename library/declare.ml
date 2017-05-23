@@ -158,7 +158,20 @@ let cache_constant ((sp,kn), obj) =
   assert (eq_constant kn' (constant_of_kn kn));
   Nametab.push (Nametab.Until 1) sp (ConstRef (constant_of_kn kn));
   let cst = Global.lookup_constant kn' in
-  add_section_constant cst.const_polymorphic kn' cst.const_hyps;
+  let univs =
+    match Global.body_of_constant_body cst with
+    | None -> Univ.LSet.empty
+    | Some bd -> Univops.universes_of_constr bd
+  in
+  let univs =
+    let ctp = Declareops.type_of_constant cst in
+    let ctp = Typeops.type_of_constant_type (Global.env ()) ctp in
+    Univ.LSet.union univs (Univops.universes_of_constr ctp)
+  in
+  let cstcnt = Global.constraints_of_constant_body cst in
+  let cstcnt_univs = Univ.universes_of_constraints cstcnt in
+  let univs = Univ.LSet.union univs cstcnt_univs in
+  add_section_constant cst.const_polymorphic kn' cst.const_hyps univs;
   Dischargedhypsmap.set_discharged_hyps sp obj.cst_hyps;
   add_constant_kind (constant_of_kn kn) obj.cst_kind
 
@@ -325,7 +338,8 @@ let cache_inductive ((sp,kn),(dhyps,mie)) =
   let kn' = Global.add_mind dir id mie in
   assert (eq_mind kn' (mind_of_kn kn));
   let mind = Global.lookup_mind kn' in
-  add_section_kn mind.mind_polymorphic kn' mind.mind_hyps;
+  let univs = Univops.universes_of_inductive mind in
+  add_section_kn mind.mind_polymorphic kn' mind.mind_hyps univs;
   Dischargedhypsmap.set_discharged_hyps sp dhyps;
   List.iter (fun (sp, ref) -> Nametab.push (Nametab.Until 1) sp ref) names
 
@@ -334,8 +348,8 @@ let discharge_inductive ((sp,kn),(dhyps,mie)) =
   let mie = Global.lookup_mind mind in
   let repl = replacement_context () in
   let sechyps,usubst,uctx = section_segment_of_mutual_inductive mind in
-  Some (discharged_hyps kn sechyps,
-        Discharge.process_inductive (named_of_variable_context sechyps,uctx) repl mie)
+  let mib = Discharge.process_inductive (named_of_variable_context sechyps,uctx) repl mie in
+  Some (discharged_hyps kn sechyps, mib)
 
 let dummy_one_inductive_entry mie = {
   mind_entry_typename = mie.mind_entry_typename;

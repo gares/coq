@@ -177,9 +177,9 @@ val is_in_section : Globnames.global_reference -> bool
 val add_section_variable : Names.Id.t -> Decl_kinds.binding_kind -> Decl_kinds.polymorphic -> Univ.universe_context_set -> unit
 val add_section_context : Univ.universe_context_set -> unit
 val add_section_constant : Decl_kinds.polymorphic ->
-  Names.constant -> Context.Named.t -> unit
+  Names.constant -> Context.Named.t -> Univ.universe_set -> unit
 val add_section_kn : Decl_kinds.polymorphic ->
-  Names.mutual_inductive -> Context.Named.t -> unit
+  Names.mutual_inductive -> Context.Named.t -> Univ.universe_set -> unit
 val replacement_context : unit -> Opaqueproof.work_list
 
 (** {6 Discharge: decrease the section level if in the current section } *)
