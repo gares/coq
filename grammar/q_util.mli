@@ -6,8 +6,6 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
-open GramCompat (* necessary for camlp4 *)
-
 type argument_type =
 | ListArgType of argument_type
 | OptArgType of argument_type
@@ -25,7 +23,7 @@ type user_symbol =
 
 type extend_token =
 | ExtTerminal of string
-| ExtNonTerminal of user_symbol * string
+| ExtNonTerminal of user_symbol * string option
 
 val mlexpr_of_list :  ('a -> MLast.expr) -> 'a list -> MLast.expr
 

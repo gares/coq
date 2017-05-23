@@ -456,7 +456,7 @@ Proof.
   unfold Rpower; auto.
   rewrite Rpower_mult.
   rewrite Rinv_l.
-  replace 1 with (INR 1); auto.
+  change 1 with (INR 1).
   repeat rewrite Rpower_pow; simpl.
   pattern x at 1; rewrite <- (sqrt_sqrt x (Rlt_le _ _ H)).
   ring.
@@ -471,6 +471,20 @@ Proof.
   unfold Rpower.
   intros x y; rewrite Ropp_mult_distr_l_reverse.
   apply exp_Ropp.
+Qed.
+
+Lemma powerRZ_Rpower x z : (0 < x)%R -> powerRZ x z = Rpower x (IZR z).
+Proof.
+  intros Hx.
+  assert (x <> 0)%R
+    by now intros Habs; rewrite Habs in Hx; apply (Rlt_irrefl 0).
+  destruct (intP z).
+  - now rewrite Rpower_O.
+  - rewrite <- pow_powerRZ, <- Rpower_pow by assumption.
+    now rewrite INR_IZR_INZ.
+  - rewrite opp_IZR, Rpower_Ropp.
+    rewrite powerRZ_neg, powerRZ_inv by assumption.
+    now rewrite <- pow_powerRZ, <- INR_IZR_INZ, Rpower_pow.
 Qed.
 
 Theorem Rle_Rpower :

@@ -8,7 +8,7 @@ open Declare
 (**
    - Get types of existentials ;
    - Flatten dependency tree (prefix order) ;
-   - Replace existentials by De Bruijn indices in term, applied to the right arguments ;
+   - Replace existentials by de Bruijn indices in term, applied to the right arguments ;
    - Apply term prefixed by quantification on "existentials".
 *)
 
@@ -51,7 +51,7 @@ type oblinfo =
     ev_tac: unit Proofview.tactic option;
     ev_deps: Int.Set.t }
 
-(** Substitute evar references in t using De Bruijn indices,
+(** Substitute evar references in t using de Bruijn indices,
   where n binders were passed through. *)
 
 let subst_evar_constr evs n idf t =
@@ -102,7 +102,7 @@ let subst_evar_constr evs n idf t =
     t', !seen, !transparent
 
 
-(** Substitute variable references in t using De Bruijn indices,
+(** Substitute variable references in t using de Bruijn indices,
   where n binders were passed through. *)
 let subst_vars acc n t =
   let var_index id = Util.List.index Id.equal id acc in
@@ -144,10 +144,11 @@ let trunc_named_context n ctx =
     List.firstn (len - n) ctx
 
 let rec chop_product n t =
+  let pop t = Vars.lift (-1) t in
   if Int.equal n 0 then Some t
   else
     match kind_of_term t with
-      | Prod (_, _, b) ->  if noccurn 1 b then chop_product (pred n) (Termops.pop b) else None
+      | Prod (_, _, b) ->  if noccurn 1 b then chop_product (pred n) (pop b) else None
       | _ -> None
 
 let evar_dependencies evm oev =
@@ -266,7 +267,7 @@ let pperror cmd = CErrors.user_err ~hdr:"Program" cmd
 let error s = pperror (str s)
 
 let reduce c =
-  Reductionops.clos_norm_flags CClosure.betaiota (Global.env ()) Evd.empty c
+  EConstr.Unsafe.to_constr (Reductionops.clos_norm_flags CClosure.betaiota (Global.env ()) Evd.empty (EConstr.of_constr c))
 
 exception NoObligations of Id.t option
 
@@ -398,7 +399,7 @@ let subst_deps expand obls deps t =
     (Vars.replace_vars (List.map (fun (n, (_, b)) -> n, b) osubst) t)
 
 let rec prod_app t n =
-  match kind_of_term (Termops.strip_outer_cast t) with
+  match kind_of_term (EConstr.Unsafe.to_constr (Termops.strip_outer_cast Evd.empty (EConstr.of_constr t))) (** FIXME *) with
     | Prod (_,_,b) -> subst1 n b
     | LetIn (_, b, t, b') -> prod_app (subst1 b b') n
     | _ ->
@@ -523,7 +524,7 @@ let compute_possible_guardness_evidences (n,_) fixbody fixtype =
 	 but doing it properly involves delta-reduction, and it finally
          doesn't seem to worth the effort (except for huge mutual
 	 fixpoints ?) *)
-      let m = Termops.nb_prod fixtype in
+      let m = Termops.nb_prod Evd.empty (EConstr.of_constr fixtype) (** FIXME *) in
       let ctx = fst (decompose_prod_n_assum m fixtype) in
 	List.map_i (fun i _ -> i) 0 ctx
 
@@ -536,8 +537,10 @@ let declare_mutual_definition l =
     List.split3
       (List.map (fun x -> 
 	let subs, typ = (subst_body true x) in
-	let term = snd (Reductionops.splay_lam_n (Global.env ()) Evd.empty len subs) in
-	let typ = snd (Reductionops.splay_prod_n (Global.env ()) Evd.empty len typ) in
+	let term = snd (Reductionops.splay_lam_n (Global.env ()) Evd.empty len (EConstr.of_constr subs)) in
+	let typ = snd (Reductionops.splay_prod_n (Global.env ()) Evd.empty len (EConstr.of_constr typ)) in
+	let term = EConstr.Unsafe.to_constr term in
+	let typ = EConstr.Unsafe.to_constr typ in
 	  x.prg_reduce term, x.prg_reduce typ, x.prg_implicits) l)
   in
 (*   let fixdefs = List.map reduce_fix fixdefs in *)
@@ -628,6 +631,16 @@ let unfold_entry cst = Hints.HintsUnfoldEntry [EvalConstRef cst]
 let add_hint local prg cst =
   Hints.add_hints local [Id.to_string prg.prg_name] (unfold_entry cst)
 
+let it_mkLambda_or_LetIn_or_clean t ctx =
+  let open Context.Rel.Declaration in
+  let fold t decl =
+    if is_local_assum decl then mkLambda_or_LetIn decl t
+    else
+      if noccurn 1 t then subst1 mkProp t
+      else mkLambda_or_LetIn decl t
+  in
+  Context.Rel.fold_inside fold ctx ~init:t
+
 let declare_obligation prg obl body ty uctx =
   let body = prg.prg_reduce body in
   let ty = Option.map prg.prg_reduce ty in
@@ -661,7 +674,7 @@ let declare_obligation prg obl body ty uctx =
 	    if poly then
 	      Some (DefinedObl constant)
 	    else
-	      Some (TermObl (it_mkLambda_or_LetIn (mkApp (mkConst constant, args)) ctx)) }
+	      Some (TermObl (it_mkLambda_or_LetIn_or_clean (mkApp (mkConst constant, args)) ctx)) }
 
 let init_prog_info ?(opaque = false) sign n pl b t ctx deps fixkind
 		   notations obls impls kind reduce hook =
@@ -817,7 +830,7 @@ let rec string_of_list sep f = function
 
 let solve_by_tac name evi t poly ctx =
   let id = name in
-  let concl = evi.evar_concl in
+  let concl = EConstr.of_constr evi.evar_concl in
   (* spiwack: the status is dropped. *)
   let (entry,_,ctx') = Pfedit.build_constant_by_tactic 
     id ~goal_kind:(goal_kind poly) ctx evi.evar_hyps concl (Tacticals.New.tclCOMPLETE t) in
@@ -935,7 +948,7 @@ let rec solve_obligation prg num tac =
     Proof_global.make_terminator
       (obligation_terminator prg.prg_name num guard hook auto) in
   let hook ctx = Lemmas.mk_hook (obligation_hook prg obl num auto ctx) in
-  let () = Lemmas.start_proof_univs ~sign:prg.prg_sign obl.obl_name kind evd obl.obl_type ~terminator hook in
+  let () = Lemmas.start_proof_univs ~sign:prg.prg_sign obl.obl_name kind evd (EConstr.of_constr obl.obl_type) ~terminator hook in
   let _ = Pfedit.by !default_tactic in
   Option.iter (fun tac -> Pfedit.set_end_tac tac) tac
 
@@ -1085,7 +1098,7 @@ let add_definition n ?term t ctx ?pl ?(implicits=[]) ?(kind=Global,false,Definit
       Defined cst)
   else (
     let len = Array.length obls in
-    let _ = Flags.if_verbose Feedback.msg_info (info ++ str ", generating " ++ int len ++ str " obligation(s)") in
+    let _ = Flags.if_verbose Feedback.msg_info (info ++ str ", generating " ++ int len ++ str (String.plural len " obligation")) in
       progmap_add n (CEphemeron.create prg);
       let res = auto_solve_obligations (Some n) tactic in
 	match res with

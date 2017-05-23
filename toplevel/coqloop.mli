@@ -6,8 +6,6 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
-open Pp
-
 (** The Coq toplevel loop. *)
 
 (** A buffer for the character read from a channel. We store the command
@@ -26,17 +24,12 @@ type input_buffer = {
 val top_buffer : input_buffer
 val set_prompt : (unit -> string) -> unit
 
-(** Toplevel error explanation, dealing with locations, Drop, Ctrl-D
-  May raise only the following exceptions: [Drop] and [End_of_input],
-  meaning we get out of the Coq loop. *)
-
-val print_toplevel_error : Exninfo.iexn -> std_ppcmds
-
+(** Toplevel feedback printer. *)
 val coqloop_feed : Feedback.feedback -> unit
 
 (** Parse and execute one vernac command. *)
 
-val do_vernac : unit -> unit
+val do_vernac : Stateid.t -> Stateid.t
 
 (** Main entry point of Coq: read and execute vernac commands. *)
 

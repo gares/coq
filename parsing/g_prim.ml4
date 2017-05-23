@@ -6,10 +6,8 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
-open Compat
 open Names
 open Libnames
-open Tok (* necessary for camlp4 *)
 
 open Pcoq
 open Pcoq.Prim

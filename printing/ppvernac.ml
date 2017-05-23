@@ -107,7 +107,7 @@ open Decl_kinds
         | SearchString (s,sc) -> qs s ++ pr_opt (fun sc -> str "%" ++ str sc) sc
 
   let pr_search a gopt b pr_p =
-    pr_opt (fun g -> int g ++ str ":"++ spc()) gopt
+    pr_opt (fun g -> Proof_global.pr_goal_selector g ++ str ":"++ spc()) gopt
     ++
       match a with
       | SearchHead c -> keyword "SearchHead" ++ spc() ++ pr_p c ++ pr_in_out_modules b
@@ -386,18 +386,13 @@ open Decl_kinds
     ++ pr_opt (fun def -> str":=" ++ brk(1,2) ++ pr_pure_lconstr def) def
     ++ prlist (pr_decl_notation pr_constr) ntn
 
-  let pr_statement head (idpl,(bl,c,guard)) =
+  let pr_statement head (idpl,(bl,c)) =
     assert (not (Option.is_empty idpl));
     let id, pl = Option.get idpl in
     hov 2
       (head ++ spc() ++ pr_lident id ++ pr_univs pl ++ spc() ++
          (match bl with [] -> mt() | _ -> pr_binders bl ++ spc()) ++
-         pr_opt (pr_guard_annot pr_lconstr_expr bl) guard ++
          str":" ++ pr_spc_lconstr c)
-
-  let pr_priority = function
-    | None -> mt ()
-    | Some i -> spc () ++ str "|" ++ spc () ++ int i
 
 (**************************************)
 (* Pretty printer for vernac commands *)
@@ -497,7 +492,7 @@ open Decl_kinds
     | PrintVisibility s ->
       keyword "Print Visibility" ++ pr_opt str s
     | PrintAbout (qid,gopt) ->
-       pr_opt (fun g -> int g ++ str ":"++ spc()) gopt
+       pr_opt (fun g -> Proof_global.pr_goal_selector g ++ str ":"++ spc()) gopt
        ++ keyword "About" ++ spc()  ++ pr_smart_global qid
     | PrintImplicit qid ->
       keyword "Print Implicit" ++ spc()  ++ pr_smart_global qid
@@ -534,18 +529,8 @@ open Decl_kinds
       (* Stm *)
       | VernacStm JoinDocument ->
         return (keyword "Stm JoinDocument")
-      | VernacStm PrintDag ->
-        return (keyword "Stm PrintDag")
-      | VernacStm Finish ->
-        return (keyword "Stm Finish")
       | VernacStm Wait ->
         return (keyword "Stm Wait")
-      | VernacStm (Observe id) ->
-        return (keyword "Stm Observe " ++ str(Stateid.to_string id))
-      | VernacStm (Command v) ->
-        return (keyword "Stm Command " ++ pr_vernac_body v)
-      | VernacStm (PGLast v) ->
-        return (keyword "Stm PGLast " ++ pr_vernac_body v)
 
       (* Proof management *)
       | VernacAbortAll ->
@@ -629,8 +614,6 @@ open Decl_kinds
         return (keyword "Timeout " ++ int n ++ spc() ++ pr_vernac_body v)
       | VernacFail v ->
         return (keyword "Fail" ++ spc() ++ pr_vernac_body v)
-      | VernacError _ ->
-        return (keyword "No-parsing-rule for VernacError")
 
     (* Syntax *)
       | VernacOpenCloseScope (_,(opening,sc)) ->
@@ -1156,7 +1139,8 @@ open Decl_kinds
                      spc() ++ keyword "in" ++ spc () ++ pr_lconstr c)
           | None -> hov 2 (keyword "Check" ++ spc() ++ pr_lconstr c)
         in
-        let pr_i = match io with None -> mt () | Some i -> int i ++ str ": " in
+        let pr_i = match io with None -> mt ()
+                               | Some i -> Proof_global.pr_goal_selector i ++ str ": " in
         return (pr_i ++ pr_mayeval r c)
       | VernacGlobalCheck c ->
         return (hov 2 (keyword "Type" ++ pr_constrarg c))
@@ -1238,7 +1222,7 @@ open Decl_kinds
         | Egramml.GramTerminal s :: rl, cl -> str s :: aux rl cl
         | [], [] -> []
         | _ -> assert false in
-      hov 1 (pr_sequence (fun x -> x) (aux rl cl))
+      hov 1 (pr_sequence identity (aux rl cl))
     with Not_found ->
       hov 1 (str "TODO(" ++ str (fst s) ++ spc () ++ prlist_with_sep sep pr_arg cl ++ str ")")
 

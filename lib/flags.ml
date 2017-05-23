@@ -86,8 +86,6 @@ let in_toplevel = ref false
 let profile = false
 
 let print_emacs = ref false
-let coqtop_ui = ref false
-
 let xml_export = ref false
 
 let ide_slave = ref false
@@ -97,7 +95,6 @@ let time = ref false
 
 let raw_print = ref false
 
-let record_print = ref true
 
 let univ_print = ref false
 
@@ -146,16 +143,16 @@ let beautify = ref false
 let beautify_file = ref false
 
 (* Silent / Verbose *)
-let silent = ref false
-let make_silent flag = silent := flag; ()
-let is_silent () = !silent
-let is_verbose () = not !silent
+let quiet = ref false
+let silently f x = with_option quiet f x
+let verbosely f x = without_option quiet f x
 
-let silently f x = with_option silent f x
-let verbosely f x = without_option silent f x
+let if_silent f x = if !quiet then f x
+let if_verbose f x = if not !quiet then f x
 
-let if_silent f x = if !silent then f x
-let if_verbose f x = if not !silent then f x
+let make_silent flag = quiet := flag
+let is_silent () = !quiet
+let is_verbose () = not !quiet
 
 let auto_intros = ref true
 let make_auto_intros flag = auto_intros := flag
@@ -186,12 +183,6 @@ let is_program_mode () = !program_mode
 let warn = ref true
 let make_warn flag = warn := flag;  ()
 let if_warn f x = if !warn then f x
-
-(* The number of printed hypothesis in a goal *)
-
-let print_hyps_limit = ref (None : int option)
-let set_print_hyps_limit n = print_hyps_limit := n
-let print_hyps_limit () = !print_hyps_limit
 
 (* Flags for external tools *)
 

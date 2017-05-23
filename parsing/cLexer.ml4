@@ -9,7 +9,17 @@
 open Pp
 open Util
 open Tok
-open Compat
+
+let to_coqloc loc =
+  { Loc.fname = Ploc.file_name loc;
+    Loc.line_nb = Ploc.line_nb loc;
+    Loc.bol_pos = Ploc.bol_pos loc;
+    Loc.bp = Ploc.first_pos loc;
+    Loc.ep = Ploc.last_pos loc;
+    Loc.line_nb_last = Ploc.line_nb_last loc;
+    Loc.bol_pos_last = Ploc.bol_pos_last loc; }
+
+let (!@) = to_coqloc
 
 (* Dictionaries: trees annotated with string options, each node being a map
    from chars to dictionaries (the subtrees). A trie, in other words. *)
@@ -89,7 +99,6 @@ module Error = struct
     | Unterminated_string
     | Undefined_token
     | Bad_token of string
-    | UnsupportedUnicode of int
 
   exception E of t
 
@@ -100,21 +109,53 @@ module Error = struct
          | Unterminated_comment -> "Unterminated comment"
          | Unterminated_string -> "Unterminated string"
          | Undefined_token -> "Undefined token"
-         | Bad_token tok -> Format.sprintf "Bad token %S" tok
-         | UnsupportedUnicode x ->
-             Printf.sprintf "Unsupported Unicode character (0x%x)" x)
-
-  (* Require to fix the Camlp4 signature *)
-  let print ppf x = Pp.pp_with ppf (Pp.str (to_string x))
+         | Bad_token tok -> Format.sprintf "Bad token %S" tok)
 
 end
 open Error
 
-let err loc str = Loc.raise ~loc:(Compat.to_coqloc loc) (Error.E str)
+let err loc str = Loc.raise ~loc:(to_coqloc loc) (Error.E str)
 
 let bad_token str = raise (Error.E (Bad_token str))
 
-(* Lexer conventions on tokens *)
+(** Location utilities  *)
+let file_loc_of_file = function
+| None -> ""
+| Some f -> f
+
+let make_loc fname line_nb bol_pos bp ep =
+  Ploc.make_loc (file_loc_of_file fname) line_nb bol_pos (bp, ep) ""
+
+(* Update a loc without allocating an intermediate pair *)
+let set_loc_pos loc bp ep =
+  Ploc.sub loc (bp - Ploc.first_pos loc) (ep - bp)
+
+(* Increase line number by 1 and update position of beginning of line *)
+let bump_loc_line loc bol_pos =
+  Ploc.make_loc (Ploc.file_name loc) (Ploc.line_nb loc + 1) bol_pos
+		(Ploc.first_pos loc, Ploc.last_pos loc) (Ploc.comment loc)
+
+(* Same as [bump_loc_line], but for the last line in location *)
+(* For an obscure reason, camlp5 does not give an easy way to set line_nb_stop,
+   so we have to resort to a hack merging two locations. *)
+(* Warning: [bump_loc_line_last] changes the end position. You may need to call
+   [set_loc_pos] to fix it. *)
+let bump_loc_line_last loc bol_pos =
+  let loc' =
+    Ploc.make_loc (Ploc.file_name loc) (Ploc.line_nb_last loc + 1) bol_pos
+		  (Ploc.first_pos loc + 1, Ploc.last_pos loc + 1) (Ploc.comment loc)
+  in
+  Ploc.encl loc loc'
+
+(* For some reason, the [Ploc.after] function of Camlp5 does not update line
+   numbers, so we define our own function that does it. *)
+let after loc =
+  let line_nb = Ploc.line_nb_last loc in
+  let bol_pos = Ploc.bol_pos_last loc in
+  Ploc.make_loc (Ploc.file_name loc) line_nb bol_pos
+		(Ploc.last_pos loc, Ploc.last_pos loc) (Ploc.comment loc)
+
+(** Lexer conventions on tokens *)
 
 type token_kind =
   | Utf8Token of (Unicode.status * int)
@@ -186,7 +227,7 @@ let check_keyword str =
   let rec loop_symb = parser
     | [< ' (' ' | '\n' | '\r' | '\t' | '"') >] -> bad_token str
     | [< s >] ->
-        match unlocated lookup_utf8 Compat.CompatLoc.ghost s with
+        match unlocated lookup_utf8 Ploc.dummy s with
         | Utf8Token (_,n) -> njunk n s; loop_symb s
         | AsciiChar -> Stream.junk s; loop_symb s
         | EmptyStream -> ()
@@ -200,7 +241,7 @@ let check_ident str =
     | [< ' ('0'..'9' | ''') when intail; s >] ->
         loop_id true s
     | [< s >] ->
-        match unlocated lookup_utf8 Compat.CompatLoc.ghost s with
+        match unlocated lookup_utf8 Ploc.dummy s with
         | Utf8Token (Unicode.Letter, n) -> njunk n s; loop_id true s
         | Utf8Token (Unicode.IdentPart, n) when intail ->
           njunk n s;
@@ -233,10 +274,10 @@ let remove_keyword str =
 let keywords () = ttree_elements !token_tree
 
 (* Freeze and unfreeze the state of the lexer *)
-type frozen_t = ttree
+type keyword_state = ttree
 
-let freeze () = !token_tree
-let unfreeze tt = (token_tree := tt)
+let get_keyword_state () = !token_tree
+let set_keyword_state tt = (token_tree := tt)
 
 (* The string buffering machinery *)
 
@@ -294,13 +335,13 @@ let rec string loc ~comm_level bp len = parser
       if esc then string loc ~comm_level bp (store len '"') s else (loc, len)
   | [< ''('; s >] ->
       (parser
-        | [< ''*'; s >] ->
-            string loc
-              (Option.map succ comm_level)
+      | [< ''*'; s >] ->
+        let comm_level = Option.map succ comm_level in
+            string loc ~comm_level
               bp (store (store len '(') '*')
               s
         | [< >] ->
-            string loc comm_level bp (store len '(') s) s
+            string loc ~comm_level bp (store len '(') s) s
   | [< ''*'; s >] ->
       (parser
         | [< '')'; s >] ->
@@ -310,9 +351,9 @@ let rec string loc ~comm_level bp len = parser
             | _ -> ()
             in
             let comm_level = Option.map pred comm_level in
-            string loc comm_level bp (store (store len '*') ')') s
+            string loc ~comm_level bp (store (store len '*') ')') s
         | [< >] ->
-            string loc comm_level bp (store len '*') s) s
+            string loc ~comm_level bp (store len '*') s) s
   | [< ''\n' as c; s >] ep ->
      (* If we are parsing a comment, the string if not part of a token so we
      update the first line of the location. Otherwise, we update the last
@@ -321,8 +362,8 @@ let rec string loc ~comm_level bp len = parser
        if Option.has_some comm_level then bump_loc_line loc ep
        else bump_loc_line_last loc ep
      in
-     string loc comm_level bp (store len c) s
-  | [< 'c; s >] -> string loc comm_level bp (store len c) s
+     string loc ~comm_level bp (store len c) s
+  | [< 'c; s >] -> string loc ~comm_level bp (store len c) s
   | [< _ = Stream.empty >] ep ->
      let loc = set_loc_pos loc bp ep in
      err loc Unterminated_string
@@ -383,7 +424,6 @@ let push_char c =
     real_push_char c
 
 let push_string s = Buffer.add_string current_comment s
-let push_bytes s = Buffer.add_bytes current_comment s
 
 let null_comment s =
   let rec null i =
@@ -562,7 +602,7 @@ let rec next_token loc = parser bp
   | [< ' ('0'..'9' as c); len = number (store 0 c) >] ep ->
       comment_stop bp;
       (INT (get_buff len), set_loc_pos loc bp ep)
-  | [< ''\"'; (loc,len) = string loc None bp 0 >] ep ->
+  | [< ''\"'; (loc,len) = string loc ~comm_level:None bp 0 >] ep ->
       comment_stop bp;
       (STRING (get_buff len), set_loc_pos loc bp ep)
   | [< ' ('(' as c);
@@ -621,8 +661,6 @@ let loct_add loct i loc = Hashtbl.add loct i loc
    we unfreeze the state of the lexer. This restores the behaviour of the
    lexer. B.B. *)
 
-IFDEF CAMLP5 THEN
-
 type te = Tok.t
 
 (** Names of tokens, for this lexer, used in Grammar error messages *)
@@ -640,12 +678,12 @@ let token_text = function
 
 let func cs =
   let loct = loct_create () in
-  let cur_loc = ref (Compat.make_loc !current_file 1 0 0 0) in
+  let cur_loc = ref (make_loc !current_file 1 0 0 0) in
   let ts =
     Stream.from
       (fun i ->
          let (tok, loc) = next_token !cur_loc cs in
-	 cur_loc := Compat.after loc;
+	 cur_loc := after loc;
          loct_add loct i loc; Some tok)
   in
   (ts, loct_func loct)
@@ -660,41 +698,6 @@ let lexer = {
   Token.tok_match = Tok.match_pattern;
   Token.tok_comm = None;
   Token.tok_text = token_text }
-
-ELSE (* official camlp4 for ocaml >= 3.10 *)
-
-module M_ = Camlp4.ErrorHandler.Register (Error)
-
-module Loc = Compat.CompatLoc
-module Token = struct
-  include Tok (* Cf. tok.ml *)
-  module Loc = Compat.CompatLoc
-  module Error = Camlp4.Struct.EmptyError
-  module Filter = struct
-    type token_filter = (Tok.t * Loc.t) Stream.t -> (Tok.t * Loc.t) Stream.t
-    type t = unit
-    let mk _is_kwd = ()
-    let keyword_added () kwd _ = add_keyword kwd
-    let keyword_removed () _ = ()
-    let filter () x = x
-    let define_filter () _ = ()
-  end
-end
-
-let mk () =
-  let loct = loct_create () in
-  let cur_loc = ref (Compat.make_loc !current_file 1 0 0 0) in
-  let rec self init_loc (* FIXME *) =
-    parser i
-       [< (tok, loc) = next_token !cur_loc; s >] ->
-            cur_loc := Compat.set_loc_file loc !current_file;
-	    loct_add loct i loc;
-            [< '(tok, loc); self init_loc s >]
-      | [< >] -> [< >]
-  in
-  self
-
-END
 
 (** Terminal symbols interpretation *)
 

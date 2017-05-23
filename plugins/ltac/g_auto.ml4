@@ -45,11 +45,15 @@ let eval_uconstrs ist cs =
   let flags = {
     Pretyping.use_typeclasses = false;
     solve_unification_constraints = true;
-    use_hook = Some Pfedit.solve_by_implicit_tactic;
+    use_hook = Pfedit.solve_by_implicit_tactic ();
     fail_evar = false;
     expand_evars = true
   } in
-  List.map (fun c -> Pretyping.type_uconstr ~flags ist c) cs
+  let map c = { delayed = fun env sigma ->
+    let Sigma.Sigma (c, sigma, p) = c.delayed env sigma in
+    Sigma.Sigma (c, sigma, p)
+  } in
+  List.map (fun c -> map (Pretyping.type_uconstr ~flags ist c)) cs
 
 let pr_auto_using_raw _ _ _  = Pptactic.pr_auto_using Ppconstr.pr_constr_expr
 let pr_auto_using_glob _ _ _ = Pptactic.pr_auto_using (fun (c,_) -> Printer.pr_glob_constr c)

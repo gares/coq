@@ -28,11 +28,52 @@ module CompactedDecl = Context.Compacted.Declaration
 
 let emacs_str s =
   if !Flags.print_emacs then s else ""
-let delayed_emacs_cmd s =
-  if !Flags.print_emacs then s () else str ""
 
 let get_current_context () =
   Pfedit.get_current_context ()
+
+let enable_unfocused_goal_printing = ref false
+let enable_goal_tags_printing = ref false
+let enable_goal_names_printing = ref false
+
+let should_tag() = !enable_goal_tags_printing
+let should_unfoc() = !enable_unfocused_goal_printing
+let should_gname() = !enable_goal_names_printing
+
+
+let _ =
+  let open Goptions in
+  declare_bool_option
+    { optsync  = true;
+      optdepr  = false;
+      optname  = "printing of unfocused goal";
+      optkey   = ["Printing";"Unfocused"];
+      optread  = (fun () -> !enable_unfocused_goal_printing);
+      optwrite = (fun b -> enable_unfocused_goal_printing:=b) }
+
+(* This is set on by proofgeneral proof-tree mode. But may be used for
+   other purposes *)
+let _ =
+  let open Goptions in
+  declare_bool_option
+    { optsync  = true;
+      optdepr  = false;
+      optname  = "printing of goal tags";
+      optkey   = ["Printing";"Goal";"Tags"];
+      optread  = (fun () -> !enable_goal_tags_printing);
+      optwrite = (fun b -> enable_goal_tags_printing:=b) }
+
+
+let _ =
+  let open Goptions in
+  declare_bool_option
+    { optsync  = true;
+      optdepr  = false;
+      optname  = "printing of goal names";
+      optkey   = ["Printing";"Goal";"Names"];
+      optread  = (fun () -> !enable_goal_names_printing);
+      optwrite = (fun b -> enable_goal_names_printing:=b) }
+
 
 (**********************************************************************)
 (** Terms                                                             *)
@@ -60,7 +101,10 @@ let pr_constr_goal_style_env env = pr_constr_core true env
 let pr_open_lconstr_env env sigma (_,c) = pr_lconstr_env env sigma c
 let pr_open_constr_env env sigma (_,c) = pr_constr_env env sigma c
 
-  (* NB do not remove the eta-redexes! Global.env() has side-effects... *)
+let pr_leconstr_env env sigma c = pr_lconstr_env env sigma (EConstr.to_constr sigma c)
+let pr_econstr_env env sigma c = pr_constr_env env sigma (EConstr.to_constr sigma c)
+
+(* NB do not remove the eta-redexes! Global.env() has side-effects... *)
 let pr_lconstr t =
   let (sigma, env) = get_current_context () in
   pr_lconstr_env env sigma t
@@ -71,6 +115,9 @@ let pr_constr t =
 let pr_open_lconstr (_,c) = pr_lconstr c
 let pr_open_constr (_,c) = pr_constr c
 
+let pr_leconstr c = pr_lconstr (EConstr.Unsafe.to_constr c)
+let pr_econstr c = pr_constr (EConstr.Unsafe.to_constr c)
+
 let pr_constr_under_binders_env_gen pr env sigma (ids,c) =
   (* Warning: clashes can occur with variables of same name in env but *)
   (* we also need to preserve the actual names of the patterns *)
@@ -78,8 +125,8 @@ let pr_constr_under_binders_env_gen pr env sigma (ids,c) =
   let assums = List.map (fun id -> (Name id,(* dummy *) mkProp)) ids in
   pr (Termops.push_rels_assum assums env) sigma c
 
-let pr_constr_under_binders_env = pr_constr_under_binders_env_gen pr_constr_env
-let pr_lconstr_under_binders_env = pr_constr_under_binders_env_gen pr_lconstr_env
+let pr_constr_under_binders_env = pr_constr_under_binders_env_gen pr_econstr_env
+let pr_lconstr_under_binders_env = pr_constr_under_binders_env_gen pr_leconstr_env
 
 let pr_constr_under_binders c =
   let (sigma, env) = get_current_context () in
@@ -93,7 +140,6 @@ let pr_type_core goal_concl_style env sigma t =
 let pr_ltype_core goal_concl_style env sigma t =
   pr_lconstr_expr (extern_type goal_concl_style env sigma t)
 
-let pr_goal_concl_style_env env = pr_ltype_core true env
 let pr_ltype_env env = pr_ltype_core false env
 let pr_type_env env = pr_type_core false env
 
@@ -104,8 +150,13 @@ let pr_type t =
     let (sigma, env) = get_current_context () in
     pr_type_env env sigma t
 
+let pr_etype_env env sigma c = pr_type_env env sigma (EConstr.to_constr sigma c)
+let pr_letype_env env sigma c = pr_ltype_env env sigma (EConstr.to_constr sigma c)
+let pr_goal_concl_style_env env sigma c =
+  pr_ltype_core true env sigma (EConstr.to_constr sigma c)
+
 let pr_ljudge_env env sigma j =
-  (pr_lconstr_env env sigma j.uj_val, pr_lconstr_env env sigma j.uj_type)
+  (pr_leconstr_env env sigma j.uj_val, pr_leconstr_env env sigma j.uj_type)
 
 let pr_ljudge j =
   let (sigma, env) = get_current_context () in
@@ -147,7 +198,7 @@ let pr_constr_pattern t =
 let pr_sort sigma s = pr_glob_sort (extern_sort sigma s)
 
 let _ = Termops.set_print_constr 
-  (fun env t -> pr_lconstr_expr (extern_constr ~lax:true false env Evd.empty t))
+  (fun env sigma t -> pr_lconstr_expr (extern_constr ~lax:true false env sigma (EConstr.Unsafe.to_constr t)))
 
 let pr_in_comment pr x = str "(* " ++ pr x ++ str " *)"
 
@@ -213,14 +264,14 @@ let safe_pr_constr t =
 let pr_universe_ctx sigma c =
   if !Detyping.print_universes && not (Univ.UContext.is_empty c) then
     fnl()++pr_in_comment (fun c -> v 0 
-      (Univ.pr_universe_context (Evd.pr_evd_level sigma) c)) c
+      (Univ.pr_universe_context (Termops.pr_evd_level sigma) c)) c
   else
     mt()
 
 let pr_universe_info_ind sigma uii =
   if !Detyping.print_universes && not (Univ.UInfoInd.is_empty uii) then
     fnl()++pr_in_comment (fun uii -> v 0 
-      (Univ.pr_universe_info_ind (Evd.pr_evd_level sigma) uii)) uii
+      (Univ.pr_universe_info_ind (Termops.pr_evd_level sigma) uii)) uii
   else
     mt()
 
@@ -237,7 +288,7 @@ let pr_puniverses f env (c,u) =
    else mt ())
 
 let pr_constant env cst = pr_global_env (Termops.vars_of_env env) (ConstRef cst)
-let pr_existential_key = Evd.pr_existential_key
+let pr_existential_key = Termops.pr_existential_key
 let pr_existential env sigma ev = pr_lconstr_env env sigma (mkEvar ev)
 let pr_inductive env ind = pr_lconstr_env env Evd.empty (mkInd ind)
 let pr_constructor env cstr = pr_lconstr_env env Evd.empty (mkConstruct cstr)
@@ -258,6 +309,13 @@ let pr_pattern t = pr_pattern_env (Global.env()) empty_names_context t*)
 
 (**********************************************************************)
 (* Contexts and declarations                                          *)
+
+
+(* Flag for compact display of goals *)
+
+let get_compact_context,set_compact_context =
+  let compact_context = ref false in
+  (fun () -> !compact_context),(fun b  -> compact_context := b)
 
 let pr_compacted_decl env sigma decl =
   let ids, pbody, typ = match decl with
@@ -339,15 +397,40 @@ let pr_ne_context_of header env sigma =
     List.is_empty (Environ.named_context env)  then (mt ())
   else let penv = pr_context_unlimited env sigma in (header ++ penv ++ fnl ())
 
+(* Heuristic for horizontalizing hypothesis that the user probably
+   considers as "variables": An hypothesis H:T where T:S and S<>Prop. *)
+let should_compact env sigma typ =
+  get_compact_context() &&
+    let type_of_typ = Retyping.get_type_of env sigma (EConstr.of_constr typ) in
+    not (is_Prop (EConstr.to_constr sigma type_of_typ))
+
+
+(* If option Compact Contexts is set, we pack "simple" hypothesis in a
+   hov box (with three sapaces as a separator), the global box being a
+   v box *)
 let rec bld_sign_env env sigma ctxt pps =
   match ctxt with
   | [] -> pps
+  | CompactedDecl.LocalAssum (ids,typ)::ctxt' when should_compact env sigma typ ->
+    let pps',ctxt' = bld_sign_env_id env sigma ctxt (mt ()) true in
+    (* putting simple hyps in a more horizontal flavor *)
+    bld_sign_env env sigma ctxt' (pps ++ brk (0,0) ++ hov 0 pps')
   | d:: ctxt' ->
-     let pidt = pr_var_list_decl env sigma d in
-     let pps' = pps ++ brk (0,0) ++ pidt in
-     bld_sign_env env sigma ctxt' pps'
+    let pidt = pr_var_list_decl env sigma d in
+    let pps' = pps ++ brk (0,0) ++ pidt in
+    bld_sign_env env sigma ctxt' pps'
+and bld_sign_env_id env sigma ctxt pps is_start =
+  match ctxt with
+  | [] -> pps,ctxt
+ | CompactedDecl.LocalAssum(ids,typ) as d :: ctxt' when should_compact env sigma typ ->
+    let pidt = pr_var_list_decl env sigma d in
+    let pps' = pps ++ (if not is_start then brk (3,0) else (mt ())) ++ pidt in
+    bld_sign_env_id env sigma ctxt' pps' false
+  | _ -> pps,ctxt
 
 
+(* compact printing an env (variables and de Bruijn). Separator: three
+   spaces between simple hyps, and newline otherwise *)
 let pr_context_limit_compact ?n env sigma =
   let ctxt = Termops.compact_named_context (named_context env) in
   let lgth = List.length ctxt in
@@ -357,23 +440,30 @@ let pr_context_limit_compact ?n env sigma =
     | Some n when n > lgth -> lgth
     | Some n -> n in
   let ctxt_chopped,ctxt_hidden = Util.List.chop n_capped ctxt in
-  (* a dot line hinting the number of hiden hyps. *)
+  (* a dot line hinting the number of hidden hyps. *)
   let hidden_dots = String.make (List.length ctxt_hidden) '.' in
   let sign_env = v 0 (str hidden_dots ++ (mt ())
                  ++ bld_sign_env env sigma (List.rev ctxt_chopped) (mt ())) in
   let db_env =
-    fold_rel_context
-      (fun env d pps -> pps ++ fnl () ++ pr_rel_decl env sigma d)
+    fold_rel_context (fun env d pps -> pps ++ fnl () ++ pr_rel_decl env sigma d)
       env ~init:(mt ()) in
-  (sign_env ++ db_env)
+  sign_env ++ db_env
 
-(* compact printing an env (variables and de Bruijn). Separator: three
-   spaces between simple hyps, and newline otherwise *)
-let pr_context_unlimited_compact env sigma =
-  pr_context_limit_compact env sigma
+(* The number of printed hypothesis in a goal *)
+(* If [None], no limit *)
+let print_hyps_limit = ref (None : int option)
 
-let pr_context_of env sigma =
-  match Flags.print_hyps_limit () with
+let _ =
+  let open Goptions in
+  declare_int_option
+    { optsync  = false;
+      optdepr  = false;
+      optname  = "the hypotheses limit";
+      optkey   = ["Hyps";"Limit"];
+      optread  = (fun () -> !print_hyps_limit);
+      optwrite = (fun x -> print_hyps_limit := x) }
+
+let pr_context_of env sigma = match !print_hyps_limit with
   | None -> hv 0 (pr_context_limit_compact env sigma)
   | Some n -> hv 0 (pr_context_limit_compact ~n env sigma)
 
@@ -408,23 +498,25 @@ let default_pr_goal gs =
 (* display a goal tag *)
 let pr_goal_tag g =
   let s = " (ID " ^ Goal.uid g ^ ")" in
-  str (emacs_str s)
-
-let display_name = false
+  str s
 
 (* display a goal name *)
 let pr_goal_name sigma g =
-  if display_name then str " " ++ Pp.surround (pr_existential_key sigma g)
+  if should_gname() then str " " ++ Pp.surround (pr_existential_key sigma g)
   else mt ()
+
+let pr_goal_header nme sigma g =
+  let (g,sigma) = Goal.V82.nf_evar sigma g in
+  str "subgoal " ++ nme ++ (if should_tag() then pr_goal_tag g else str"")
+  ++ (if should_gname() then str " " ++ Pp.surround (pr_existential_key sigma g) else mt ())  
 
 (* display the conclusion of a goal *)
 let pr_concl n sigma g =
   let (g,sigma) = Goal.V82.nf_evar sigma g in
   let env = Goal.V82.env sigma g in
   let pc = pr_goal_concl_style_env env sigma (Goal.V82.concl sigma g) in
-    str (emacs_str "")  ++
-      str "subgoal " ++ int n ++ pr_goal_tag g ++ pr_goal_name sigma g ++
-      str " is:" ++ cut () ++ str" "  ++ pc
+  let header = pr_goal_header (int n) sigma g in
+  header ++ str " is:" ++ cut () ++ str" "  ++ pc
 
 (* display evar type: a context and a type *)
 let pr_evgl_sign sigma evi =
@@ -480,8 +572,8 @@ let pr_ne_evar_set hd tl sigma l =
 
 let pr_selected_subgoal name sigma g =
   let pg = default_pr_goal { sigma=sigma ; it=g; } in
-  v 0 (str "subgoal " ++ name ++ pr_goal_tag g ++ pr_goal_name sigma g
-       ++ str " is:" ++ cut () ++ pg)
+  let header = pr_goal_header name sigma g in
+  v 0 (header ++ str " is:" ++ cut () ++ pg)
 
 let default_pr_subgoal n sigma =
   let rec prrec p = function
@@ -503,15 +595,15 @@ let print_evar_constraints gl sigma =
     | Some g ->
        let env = Goal.V82.env sigma g in fun e' ->
        begin
-         if Context.Named.equal (named_context env) (named_context e') then
-           if Context.Rel.equal (rel_context env) (rel_context e') then mt ()
+         if Context.Named.equal Constr.equal (named_context env) (named_context e') then
+           if Context.Rel.equal Constr.equal (rel_context env) (rel_context e') then mt ()
            else pr_rel_context_of e' sigma ++ str " |-" ++ spc ()
          else pr_context_of e' sigma ++ str " |-" ++ spc ()
        end
   in
   let pr_evconstr (pbty,env,t1,t2) =
-    let t1 = Evarutil.nf_evar sigma t1
-    and t2 = Evarutil.nf_evar sigma t2 in
+    let t1 = Evarutil.nf_evar sigma (EConstr.of_constr t1)
+    and t2 = Evarutil.nf_evar sigma (EConstr.of_constr t2) in
     let env =
       (** We currently allow evar instances to refer to anonymous de Bruijn
           indices, so we protect the error printing code in this case by giving
@@ -519,13 +611,13 @@ let print_evar_constraints gl sigma =
           problem. MS: we should rather stop depending on anonymous variables, they
           can be used to indicate independency. Also, this depends on a strategy for 
           naming/renaming *)
-      Namegen.make_all_name_different env in
+      Namegen.make_all_name_different env sigma in
     str" " ++
-      hov 2 (pr_env env ++ pr_lconstr_env env sigma t1 ++ spc () ++
+      hov 2 (pr_env env ++ pr_leconstr_env env sigma t1 ++ spc () ++
              str (match pbty with
                   | Reduction.CONV -> "=="
                   | Reduction.CUMUL -> "<=") ++
-             spc () ++ pr_lconstr_env env sigma t2)
+             spc () ++ pr_leconstr_env env sigma t2)
   in
   let pr_candidate ev evi (candidates,acc) =
     if Option.has_some evi.evar_candidates then
@@ -574,27 +666,27 @@ let print_dependent_evars gl sigma seeds =
 	      end i (str ",")
 	end evars (str "")
     in
-    fnl () ++
-    str "(dependent evars:" ++ evars ++ str ")" ++ fnl ()
-    else
-      fnl () ++
-	str "(dependent evars: (printing disabled) )" ++ fnl ()
+    cut () ++ cut () ++
+    str "(dependent evars:" ++ evars ++ str ")"
+    else if !Flags.print_emacs then
+      (* IDEs prefer something dummy instead of nothing *)
+      cut () ++ cut () ++ str "(dependent evars: (printing disabled) )"
+    else mt ()
   in
-  constraints ++ delayed_emacs_cmd evars
+  constraints ++ evars ()
 
 (* Print open subgoals. Checks for uninstantiated existential variables *)
 (* spiwack: [seeds] is for printing dependent evars in emacs mode. *)
 (* spiwack: [pr_first] is true when the first goal must be singled out
    and printed in its entirety. *)
-(* courtieu: in emacs mode, even less cases where the first goal is printed
-   in its entirety *)
-let default_pr_subgoals ?(pr_first=true) close_cmd sigma seeds shelf stack goals =
+let default_pr_subgoals ?(pr_first=true)
+                        close_cmd sigma seeds shelf stack unfocused goals =
   (** Printing functions for the extra informations. *)
   let rec print_stack a = function
     | [] -> Pp.int a
     | b::l -> Pp.int a ++ str"-" ++ print_stack b l
   in
-  let print_unfocused l =
+  let print_unfocused_nums l =
     match l with
     | [] -> None
     | a::l -> Some (str"unfocused: " ++ print_stack a l)
@@ -614,7 +706,7 @@ let default_pr_subgoals ?(pr_first=true) close_cmd sigma seeds shelf stack goals
     | [] -> Pp.mt ()
     | a::l -> Pp.spc () ++ str"(" ++ print_comma_separated_list a l ++ str")"
   in
-  let extra = Option.List.flatten [ print_unfocused stack ; print_shelf shelf ] in
+  let extra = Option.List.flatten [ print_unfocused_nums stack ; print_shelf shelf ] in
   let print_extra = print_extra_list extra in
   let focused_if_needed =
     let needed = not (CList.is_empty extra) && pr_first in
@@ -631,8 +723,9 @@ let default_pr_subgoals ?(pr_first=true) close_cmd sigma seeds shelf stack goals
   in
   let print_multiple_goals g l =
     if pr_first then
-      default_pr_goal { it = g ; sigma = sigma; } ++ fnl () ++
-      pr_rec 2 l
+      default_pr_goal { it = g ; sigma = sigma; }
+      ++ (if l=[] then mt () else cut ())
+      ++ pr_rec 2 l
     else 
       pr_rec 1 (g::l)
   in
@@ -647,32 +740,27 @@ let default_pr_subgoals ?(pr_first=true) close_cmd sigma seeds shelf stack goals
       begin
 	let exl = Evarutil.non_instantiated sigma in
 	if Evar.Map.is_empty exl then
-	  (str"No more subgoals."
-	   ++ print_dependent_evars None sigma seeds)
+	  (str"No more subgoals." ++ print_dependent_evars None sigma seeds)
 	else
 	  let pei = pr_evars_int sigma 1 exl in
-	  (str "No more subgoals, but there are non-instantiated existential variables:"
-	   ++ fnl () ++ (hov 0 pei)
-	   ++ print_dependent_evars None sigma seeds ++ fnl () ++
-           str "You can use Grab Existential Variables.")
+	  v 0 ((str "No more subgoals,"
+                ++ str " but there are non-instantiated existential variables:"
+	        ++ cut () ++ (hov 0 pei)
+                ++ print_dependent_evars None sigma seeds
+                ++ cut () ++ str "You can use Grab Existential Variables."))
       end
-  | [g] when not !Flags.print_emacs && pr_first ->
-      let pg = default_pr_goal { it = g ; sigma = sigma; } in
-      v 0 (
-	str "1" ++ focused_if_needed ++ str"subgoal" ++ print_extra
-        ++ pr_goal_tag g ++ pr_goal_name sigma g ++ cut () ++ pg
-	++ print_dependent_evars (Some g) sigma seeds
-      )
   | g1::rest ->
       let goals = print_multiple_goals g1 rest in
       let ngoals = List.length rest+1 in
       v 0 (
-	int ngoals ++ focused_if_needed ++ str(String.plural ngoals "subgoal") ++
-          print_extra ++
-          str ((if display_name then (fun x -> x) else emacs_str) ", subgoal 1")
-        ++ pr_goal_tag g1
-        ++ pr_goal_name sigma g1 ++ cut ()
-	++ goals
+	int ngoals ++ focused_if_needed ++ str(String.plural ngoals "subgoal")
+        ++ print_extra
+        ++ str (if (should_gname()) then ", subgoal 1" else "")
+        ++ (if should_tag() then pr_goal_tag g1 else str"")
+        ++ pr_goal_name sigma g1 ++ cut () ++ goals
+        ++ (if unfocused=[] then str ""
+           else (cut() ++ cut() ++ str "*** Unfocused goals:" ++ cut()
+                 ++ pr_rec (List.length rest + 2) unfocused))
 	++ print_dependent_evars (Some g1) sigma seeds
       )
 
@@ -681,7 +769,7 @@ let default_pr_subgoals ?(pr_first=true) close_cmd sigma seeds shelf stack goals
 
 
 type printer_pr = {
- pr_subgoals            : ?pr_first:bool -> std_ppcmds option -> evar_map -> evar list -> Goal.goal list -> int list -> goal list -> std_ppcmds;
+ pr_subgoals            : ?pr_first:bool -> std_ppcmds option -> evar_map -> evar list -> Goal.goal list -> int list -> goal list -> goal list -> std_ppcmds;
  pr_subgoal             : int -> evar_map -> goal list -> std_ppcmds;
  pr_goal                : goal sigma -> std_ppcmds;
 }
@@ -715,16 +803,16 @@ let pr_open_subgoals ?(proof=Proof_global.give_me_the_proof ()) () =
   begin match goals with
   | [] -> let { Evd.it = bgoals ; sigma = bsigma } = Proof.V82.background_subgoals p in
           begin match bgoals,shelf,given_up with
-	  | [] , [] , [] -> pr_subgoals None sigma seeds shelf stack goals
+	  | [] , [] , [] -> pr_subgoals None sigma seeds shelf stack [] goals
           | [] , [] , _ ->
 	     Feedback.msg_info (str "No more subgoals, but there are some goals you gave up:");
 	     fnl ()
-            ++ pr_subgoals ~pr_first:false None bsigma seeds [] [] given_up
+            ++ pr_subgoals ~pr_first:false None bsigma seeds [] [] [] given_up
             ++ fnl () ++ str "You need to go back and solve them."
           | [] , _ , _ ->
 	    Feedback.msg_info (str "All the remaining goals are on the shelf.");
 	    fnl ()
-            ++ pr_subgoals ~pr_first:false None bsigma seeds [] [] shelf
+            ++ pr_subgoals ~pr_first:false None bsigma seeds [] [] [] shelf
 	  | _ , _, _ ->
             let end_cmd =
               str "This subproof is complete, but there are some unfocused goals." ++
@@ -732,9 +820,13 @@ let pr_open_subgoals ?(proof=Proof_global.give_me_the_proof ()) () =
                if Pp.ismt s then s else fnl () ++ s) ++
               fnl ()
             in
-	    pr_subgoals ~pr_first:false (Some end_cmd) bsigma seeds shelf [] bgoals
+	    pr_subgoals ~pr_first:false (Some end_cmd) bsigma seeds shelf [] [] bgoals
 	  end
-  | _ -> pr_subgoals None sigma seeds shelf stack goals
+  | _ -> 
+     let { Evd.it = bgoals ; sigma = bsigma } = Proof.V82.background_subgoals p in
+     let bgoals_focused, bgoals_unfocused = List.partition (fun x -> List.mem x goals) bgoals in
+     let unfocused_if_needed = if should_unfoc() then bgoals_unfocused else [] in
+     pr_subgoals ~pr_first:true None bsigma seeds shelf [] unfocused_if_needed bgoals_focused
   end
 
 let pr_nth_open_subgoal n =
@@ -774,7 +866,8 @@ let pr_prim_rule = function
         str ";[" ++ cl ++ str"intro " ++ pr_id id ++ str"|idtac]")
 
   | Refine c ->
-      str(if Termops.occur_meta c then "refine " else "exact ") ++
+      (** FIXME *)
+      str(if Termops.occur_meta Evd.empty (EConstr.of_constr c) then "refine " else "exact ") ++
       Constrextern.with_meta_as_hole pr_constr c
 
 (* Backwards compatibility *)
@@ -930,4 +1023,4 @@ let pr_polymorphic b =
 
 let pr_universe_instance evd ctx =
   let inst = Univ.UContext.instance ctx in
-    str"@{" ++ Univ.Instance.pr (Evd.pr_evd_level evd) inst ++ str"}"
+    str"@{" ++ Univ.Instance.pr (Termops.pr_evd_level evd) inst ++ str"}"

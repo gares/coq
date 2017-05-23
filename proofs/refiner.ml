@@ -10,7 +10,6 @@ open Pp
 open CErrors
 open Util
 open Evd
-open Environ
 open Proof_type
 open Logic
 
@@ -22,7 +21,7 @@ let project x = x.sigma
 (* Getting env *)
 
 let pf_env gls = Global.env_of_context (Goal.V82.hyps (project gls) (sig_it gls))
-let pf_hyps gls = named_context_of_val (Goal.V82.hyps (project gls) (sig_it gls))
+let pf_hyps gls = EConstr.named_context_of_val (Goal.V82.hyps (project gls) (sig_it gls))
 
 let refiner pr goal_sigma =
   let (sgl,sigma') = prim_refiner pr goal_sigma.sigma goal_sigma.it in
@@ -162,30 +161,10 @@ let tclMAP tacfun l =
 
 (* PROGRESS tac ptree applies tac to the goal ptree and fails if tac leaves
 the goal unchanged *)
-let tclWEAK_PROGRESS tac ptree =
-  let rslt = tac ptree in
-  if Goal.V82.weak_progress rslt ptree then rslt
-  else user_err ~hdr:"Refiner.WEAK_PROGRESS" (str"Failed to progress.")
-
-(* PROGRESS tac ptree applies tac to the goal ptree and fails if tac leaves
-the goal unchanged *)
 let tclPROGRESS tac ptree =
   let rslt = tac ptree in
   if Goal.V82.progress rslt ptree then rslt
   else user_err ~hdr:"Refiner.PROGRESS" (str"Failed to progress.")
-
-(* Same as tclWEAK_PROGRESS but fails also if tactics generates several goals,
-   one of them being identical to the original goal *)
-let tclNOTSAMEGOAL (tac : tactic) goal =
-  let same_goal gls1 evd2 gl2 =
-    Goal.V82.same_goal gls1.sigma gls1.it evd2 gl2
-  in
-  let rslt = tac goal in
-  let {it=gls;sigma=sigma} = rslt in
-  if List.exists (same_goal goal sigma) gls
-  then user_err ~hdr:"Refiner.tclNOTSAMEGOAL"
-      (str"Tactic generated a subgoal identical to the original goal.")
-  else rslt
 
 (* Execute tac, show the names of new hypothesis names created by tac
    in the "as" format and then forget everything. From the logical
@@ -198,10 +177,10 @@ let tclNOTSAMEGOAL (tac : tactic) goal =
    destruct), this is not detected by this tactical. *)
 let tclSHOWHYPS (tac : tactic) (goal: Goal.goal Evd.sigma)
     :Proof_type.goal list Evd.sigma =
-  let oldhyps:Context.Named.t = pf_hyps goal in
+  let oldhyps = pf_hyps goal in
   let rslt:Proof_type.goal list Evd.sigma = tac goal in
   let { it = gls; sigma = sigma; } = rslt in
-  let hyps:Context.Named.t list =
+  let hyps =
     List.map (fun gl -> pf_hyps { it = gl; sigma=sigma; }) gls in
   let cmp d1 d2 = Names.Id.equal (NamedDecl.get_id d1) (NamedDecl.get_id d2) in
   let newhyps =

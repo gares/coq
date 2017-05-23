@@ -28,10 +28,8 @@ open Pretyping
 open Termops
 open Namegen
 open Reductionops
-open Constrexpr
 open Constrintern
 open Impargs
-open Context.Rel.Declaration
 
 module RelDecl = Context.Rel.Declaration
 module NamedDecl = Context.Named.Declaration
@@ -88,27 +86,11 @@ let adjust_guardness_conditions const = function
 
 let find_mutually_recursive_statements thms =
     let n = List.length thms in
-    let inds = List.map (fun (id,(t,impls,annot)) ->
+    let inds = List.map (fun (id,(t,impls)) ->
       let (hyps,ccl) = decompose_prod_assum t in
       let x = (id,(t,impls)) in
-      match annot with
-      (* Explicit fixpoint decreasing argument is given *)
-      | Some (Some (_,id),CStructRec) ->
-          let i,b,typ = lookup_rel_id id hyps in
-          (match kind_of_term t with
-          | Ind ((kn,_ as ind), u) when
-              let mind = Global.lookup_mind kn in
-              mind.mind_finite == Decl_kinds.Finite && Option.is_empty b ->
-              [ind,x,i],[]
-          | _ ->
-              error "Decreasing argument is not an inductive assumption.")
-      (* Unsupported cases *)
-      | Some (_,(CWfRec _|CMeasureRec _)) ->
-          error "Only structural decreasing is supported for mutual statements."
-      (* Cofixpoint or fixpoint w/o explicit decreasing argument *)
-      | None | Some (None, CStructRec) ->
       let whnf_hyp_hds = map_rel_context_in_env
-        (fun env c -> fst (whd_all_stack env Evd.empty c))
+        (fun env c -> EConstr.Unsafe.to_constr (fst (whd_all_stack env Evd.empty (EConstr.of_constr c))))
         (Global.env()) hyps in
       let ind_hyps =
         List.flatten (List.map_i (fun i decl ->
@@ -116,14 +98,14 @@ let find_mutually_recursive_statements thms =
           match kind_of_term t with
           | Ind ((kn,_ as ind),u) when
                 let mind = Global.lookup_mind kn in
-                mind.mind_finite <> Decl_kinds.CoFinite && is_local_assum decl ->
+                mind.mind_finite <> Decl_kinds.CoFinite ->
               [ind,x,i]
           | _ ->
-              []) 0 (List.rev whnf_hyp_hds)) in
+              []) 0 (List.rev (List.filter RelDecl.is_local_assum whnf_hyp_hds))) in
       let ind_ccl =
         let cclenv = push_rel_context hyps (Global.env()) in
-        let whnf_ccl,_ = whd_all_stack cclenv Evd.empty ccl in
-        match kind_of_term whnf_ccl with
+        let whnf_ccl,_ = whd_all_stack cclenv Evd.empty (EConstr.of_constr ccl) in
+        match kind_of_term (EConstr.Unsafe.to_constr whnf_ccl) with
         | Ind ((kn,_ as ind),u) when
               let mind = Global.lookup_mind kn in
               Int.equal mind.mind_ntypes n && mind.mind_finite == Decl_kinds.CoFinite ->
@@ -178,7 +160,7 @@ let find_mutually_recursive_statements thms =
     (finite,guard,None), ordered_inds
 
 let look_for_possibly_mutual_statements = function
-  | [id,(t,impls,None)] ->
+  | [id,(t,impls)] ->
       (* One non recursively proved theorem *)
       None,[id,(t,impls)],None
   | _::_ as thms ->
@@ -393,7 +375,7 @@ let start_proof_univs id ?pl kind sigma ?terminator ?sign c ?init_tac ?(compute_
 
 let rec_tac_initializer finite guard thms snl =
   if finite then
-    match List.map (fun ((id,_),(t,_)) -> (id,t)) thms with
+    match List.map (fun ((id,_),(t,_)) -> (id,EConstr.of_constr t)) thms with
     | (id,_)::l -> Tactics.mutual_cofix id l 0
     | _ -> assert false
   else
@@ -401,7 +383,7 @@ let rec_tac_initializer finite guard thms snl =
     let nl = match snl with 
      | None -> List.map succ (List.map List.last guard)
      | Some nl -> nl
-    in match List.map2 (fun ((id,_),(t,_)) n -> (id,n,t)) thms nl with
+    in match List.map2 (fun ((id,_),(t,_)) n -> (id,n, EConstr.of_constr t)) thms nl with
        | (id,n,_)::l -> Tactics.mutual_fix id n l 0
        | _ -> assert false
 
@@ -449,7 +431,7 @@ let start_proof_with_initialization kind ctx recguard thms snl hook =
         List.iter (fun (strength,ref,imps) ->
 	  maybe_declare_manual_implicits false ref imps;
 	  call_hook (fun exn -> exn) hook strength ref) thms_data in
-      start_proof_univs id ?pl kind ctx t ?init_tac (fun ctx -> mk_hook (hook ctx)) ~compute_guard:guard
+      start_proof_univs id ?pl kind ctx (EConstr.of_constr t) ?init_tac (fun ctx -> mk_hook (hook ctx)) ~compute_guard:guard
 
 let start_proof_com ?inference_hook kind thms hook =
   let env0 = Global.env () in
@@ -458,17 +440,16 @@ let start_proof_com ?inference_hook kind thms hook =
 		    | None -> Evd.from_env env0
 		    | Some l -> Evd.from_ctx (Evd.make_evar_universe_context env0 l))
   in
-  let thms = List.map (fun (sopt,(bl,t,guard)) ->
+  let thms = List.map (fun (sopt,(bl,t)) ->
     let impls, ((env, ctx), imps) = interp_context_evars env0 evdref bl in
     let t', imps' = interp_type_evars_impls ~impls env evdref t in
     let flags = all_and_fail_flags in
     let flags = { flags with use_hook = inference_hook } in
-    evdref := solve_remaining_evars flags env !evdref (Evd.empty,!evdref);
+    evdref := solve_remaining_evars flags env !evdref Evd.empty;
     let ids = List.map RelDecl.get_name ctx in
       (compute_proof_name (pi1 kind) sopt,
-      (nf_evar !evdref (it_mkProd_or_LetIn t' ctx),
-       (ids, imps @ lift_implicits (List.length ids) imps'),
-       guard)))
+      (EConstr.Unsafe.to_constr (nf_evar !evdref (EConstr.it_mkProd_or_LetIn t' ctx)),
+       (ids, imps @ lift_implicits (Context.Rel.nhyps ctx) imps'))))
     thms in
   let recguard,thms,snl = look_for_possibly_mutual_statements thms in
   let evd, nf = Evarutil.nf_evars_and_universes !evdref in
@@ -518,6 +499,7 @@ let save_proof ?proof = function
         | None ->
             let pftree = Pfedit.get_pftreestate () in
             let id, k, typ = Pfedit.current_proof_statement () in
+            let typ = EConstr.Unsafe.to_constr typ in
             let universes = Proof.initial_euctx pftree in
             (* This will warn if the proof is complete *)
             let pproofs, _univs =

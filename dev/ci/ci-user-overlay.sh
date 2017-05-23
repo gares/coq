@@ -20,3 +20,12 @@
 #   the name of the branch from which the PR originated. "" if the
 #   current job is a push build.
 
+echo $TRAVIS_PULL_REQUEST_BRANCH
+echo $TRAVIS_PULL_REQUEST
+echo $TRAVIS_BRANCH
+echo $TRAVIS_COMMIT
+
+if [ $TRAVIS_PULL_REQUEST == "568" ] || [ $TRAVIS_BRANCH == "remove-tactic-compat" ]; then
+    fiat_parsers_CI_BRANCH=fix-ml
+    fiat_parsers_CI_GITURL=https://github.com/ppedrot/fiat.git
+fi

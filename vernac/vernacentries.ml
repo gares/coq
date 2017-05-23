@@ -60,15 +60,14 @@ let show_proof () =
   (* spiwack: this would probably be cooler with a bit of polishing. *)
   let p = Proof_global.give_me_the_proof () in
   let pprf = Proof.partial_proof p in
-  Feedback.msg_notice (Pp.prlist_with_sep Pp.fnl Printer.pr_constr pprf)
+  Feedback.msg_notice (Pp.prlist_with_sep Pp.fnl Printer.pr_econstr pprf)
 
 let show_node () =
   (* spiwack: I'm have little clue what this function used to do. I deactivated it, 
       could, possibly, be cleaned away. (Feb. 2010) *)
   ()
 
-let show_thesis () =
-     Feedback.msg_error (anomaly (Pp.str "TODO") )
+let show_thesis () = CErrors.anomaly (Pp.str "Show Thesis: TODO")
 
 let show_top_evars () =
   (* spiwack: new as of Feb. 2010: shows goal evars in addition to non-goal evars. *)
@@ -82,33 +81,20 @@ let show_universes () =
   let gls = Proof.V82.subgoals pfts in
   let sigma = gls.Evd.sigma in
   let ctx = Evd.universe_context_set (Evd.nf_constraints sigma) in
-    Feedback.msg_notice (Evd.pr_evar_universe_context (Evd.evar_universe_context sigma));
-    Feedback.msg_notice (str"Normalized constraints: " ++ Univ.pr_universe_context_set (Evd.pr_evd_level sigma) ctx)
+    Feedback.msg_notice (Termops.pr_evar_universe_context (Evd.evar_universe_context sigma));
+    Feedback.msg_notice (str"Normalized constraints: " ++ Univ.pr_universe_context_set (Termops.pr_evd_level sigma) ctx)
 
-let show_prooftree () =
-  (* Spiwack: proof tree is currently not working *)
-  ()
+(* Spiwack: proof tree is currently not working *)
+let show_prooftree () = ()
 
-let enable_goal_printing = ref true
-
-let print_subgoals () =
-  if !enable_goal_printing && is_verbose ()
-  then begin
-    Feedback.msg_notice (pr_open_subgoals ())
-  end
-
-let try_print_subgoals () =
-  try print_subgoals () with Proof_global.NoCurrentProof | UserError _ -> ()
-
-
-  (* Simulate the Intro(s) tactic *)
-
+(* Simulate the Intro(s) tactic *)
 let show_intro all =
+  let open EConstr in
   let pf = get_pftreestate() in
   let {Evd.it=gls ; sigma=sigma; } = Proof.V82.subgoals pf in
   if not (List.is_empty gls) then begin
     let gl = {Evd.it=List.hd gls ; sigma = sigma; } in
-    let l,_= decompose_prod_assum (Termops.strip_outer_cast (pf_concl gl)) in
+    let l,_= decompose_prod_assum sigma (Termops.strip_outer_cast sigma (pf_concl gl)) in
     if all then
       let lid = Tactics.find_intro_names l gl in
       Feedback.msg_notice (hov 0 (prlist_with_sep  spc pr_id lid))
@@ -458,11 +444,12 @@ let start_proof_and_print k l hook =
         let env = Evd.evar_filtered_env evi in
         try
           let concl = Evarutil.nf_evars_universes sigma evi.Evd.evar_concl in
+          let concl = EConstr.of_constr concl in
           if Evarutil.has_undefined_evars sigma concl then raise Exit;
           let c, _, ctx =
             Pfedit.build_by_tactic env (Evd.evar_universe_context sigma)
                                    concl (Tacticals.New.tclCOMPLETE tac)
-          in Evd.set_universe_context sigma ctx, c
+          in Evd.set_universe_context sigma ctx, EConstr.of_constr c
         with Logic_monad.TacticFailure e when Logic.catchable_exception e ->
           error "The statement obligations could not be resolved \
                  automatically, write a statement definition first."
@@ -490,7 +477,7 @@ let vernac_definition locality p (local,k) ((loc,id as lid),pl) def =
   (match def with
     | ProveBody (bl,t) ->   (* local binders, typ *)
 	  start_proof_and_print (local,p,DefinitionBody k)
-	    [Some (lid,pl), (bl,t,None)] hook
+	    [Some (lid,pl), (bl,t)] hook
     | DefineBody (bl,red_option,c,typ_opt) ->
  	let red_option = match red_option with
           | None -> None
@@ -511,8 +498,6 @@ let vernac_start_proof locality p kind l lettop =
       user_err ~hdr:"Vernacentries.StartProof"
 	(str "Let declarations can only be used in proof editing mode.");
   start_proof_and_print (local, p, Proof kind) l no_hook
-
-let qed_display_script = ref true
 
 let vernac_end_proof ?proof = function
   | Admitted          -> save_proof ?proof Admitted
@@ -795,7 +780,7 @@ let vernac_require from import qidl =
   in
   let locate (loc, qid) =
     try
-      let warn = Flags.is_verbose () in
+      let warn = not !Flags.quiet in
       let (_, dir, f) = Library.locate_qualified_library ?root ~warn qid in
       (dir, f)
     with
@@ -870,6 +855,7 @@ let vernac_set_used_variables e =
   let env = Global.env () in
   let tys =
     List.map snd (Proof.initial_goals (Proof_global.give_me_the_proof ())) in
+  let tys = List.map EConstr.Unsafe.to_constr tys in
   let l = Proof_using.process_expr env e tys in
   let vars = Environ.named_context env in
   List.iter (fun id -> 
@@ -1231,7 +1217,7 @@ let vernac_reserve bl =
     let env = Global.env() in
     let sigma = Evd.from_env env in
     let t,ctx = Constrintern.interp_type env sigma c in
-    let t = Detyping.detype false [] env (Evd.from_ctx ctx) t in
+    let t = Detyping.detype false [] env (Evd.from_ctx ctx) (EConstr.of_constr t) in
     let t,_ = Notation_ops.notation_constr_of_glob_constr (default_env ()) t in
     Reserve.declare_reserved_type idl t)
   in List.iter sb_decl bl
@@ -1246,8 +1232,8 @@ let _ =
       optdepr  = false;
       optname  = "silent";
       optkey   = ["Silent"];
-      optread  = is_silent;
-      optwrite = make_silent }
+      optread  = (fun () -> !Flags.quiet);
+      optwrite = ((:=) Flags.quiet) }
 
 let _ =
   declare_bool_option
@@ -1379,15 +1365,6 @@ let _ =
   declare_bool_option
     { optsync  = true;
       optdepr  = false;
-      optname  = "record printing";
-      optkey   = ["Printing";"Records"];
-      optread  = (fun () -> !Flags.record_print);
-      optwrite = (fun b -> Flags.record_print := b) }
-
-let _ =
-  declare_bool_option
-    { optsync  = true;
-      optdepr  = false;
       optname  = "use of the program extension";
       optkey   = ["Program";"Mode"];
       optread  = (fun () -> !Flags.program_mode);
@@ -1444,13 +1421,13 @@ let _ =
       optwrite = (fun _ -> ()) }
 
 let _ =
-  declare_int_option
-    { optsync  = false;
+  declare_bool_option
+    { optsync  = true;
       optdepr  = false;
-      optname  = "the hypotheses limit";
-      optkey   = ["Hyps";"Limit"];
-      optread  = Flags.print_hyps_limit;
-      optwrite = Flags.set_print_hyps_limit }
+      optname  = "display compact goal contexts";
+      optkey   = ["Printing";"Compact";"Contexts"];
+      optread  = (fun () -> Printer.get_compact_context());
+      optwrite = (fun b -> Printer.set_compact_context b) }
 
 let _ =
   declare_int_option
@@ -1574,9 +1551,17 @@ let get_current_context_of_args = function
   | Some n -> get_goal_context n
   | None -> get_current_context ()
 
-let vernac_check_may_eval redexp glopt rc =
+let query_command_selector ~loc = function
+  | None -> None
+  | Some (SelectNth n) -> Some n
+  | _ -> user_err ~loc ~hdr:"query_command_selector"
+      (str "Query commands only support the single numbered goal selector.")
+
+let vernac_check_may_eval ~loc redexp glopt rc =
+  let glopt = query_command_selector ~loc glopt in
   let (sigma, env) = get_current_context_of_args glopt in
   let sigma', c = interp_open_constr env sigma rc in
+  let c = EConstr.Unsafe.to_constr c in
   let sigma' = Evarconv.solve_unif_constraints_with_heuristics env sigma' in
   Evarconv.check_problems_are_solved env sigma';
   let sigma',nf = Evarutil.nf_evars_and_universes sigma' in
@@ -1584,14 +1569,16 @@ let vernac_check_may_eval redexp glopt rc =
   let env = Environ.push_context uctx (Evarutil.nf_env_evar sigma' env) in
   let c = nf c in
   let j =
-    if Evarutil.has_undefined_evars sigma' c then
-      Evarutil.j_nf_evar sigma' (Retyping.get_judgment_of env sigma' c)
+    if Evarutil.has_undefined_evars sigma' (EConstr.of_constr c) then
+      Evarutil.j_nf_evar sigma' (Retyping.get_judgment_of env sigma' (EConstr.of_constr c))
     else
       (* OK to call kernel which does not support evars *)
-      Arguments_renaming.rename_typing env c in
+      Termops.on_judgment EConstr.of_constr (Arguments_renaming.rename_typing env c)
+  in
   match redexp with
     | None ->
-        let l = Evar.Set.union (Evd.evars_of_term j.Environ.uj_val) (Evd.evars_of_term j.Environ.uj_type) in
+        let evars_of_term c = Evarutil.undefined_evars_of_term sigma' c in
+        let l = Evar.Set.union (evars_of_term j.Environ.uj_val) (evars_of_term j.Environ.uj_type) in
         let j = { j with Environ.uj_type = Reductionops.nf_betaiota sigma' j.Environ.uj_type } in
 	Feedback.msg_notice (print_judgment env sigma' j ++
                     pr_ne_evar_set (fnl () ++ str "where" ++ fnl ()) (mt ()) sigma' l ++
@@ -1633,9 +1620,10 @@ exception NoHyp
 (* Printing "About" information of a hypothesis of the current goal.
    We only print the type and a small statement to this comes from the
    goal. Precondition: there must be at least one current goal. *)
-let print_about_hyp_globs ref_or_by_not glnumopt =
+let print_about_hyp_globs ~loc ref_or_by_not glopt =
   let open Context.Named.Declaration in
   try
+    let glnumopt = query_command_selector ~loc glopt in
     let gl,id =
       match glnumopt,ref_or_by_not with
       | None,AN (Ident (_loc,id)) -> (* goal number not given, catch any failure *)
@@ -1643,21 +1631,21 @@ let print_about_hyp_globs ref_or_by_not glnumopt =
       | Some n,AN (Ident (_loc,id)) ->  (* goal number given, catch if wong *)
 	 (try get_nth_goal n,id
 	  with
-	    Failure _ -> user_err ~hdr:"print_about_hyp_globs"
-                           (str "No such goal: " ++ int n ++ str "."))
+	    Failure _ -> user_err ~loc ~hdr:"print_about_hyp_globs"
+                          (str "No such goal: " ++ int n ++ str "."))
       | _ , _ -> raise NoHyp in
     let hyps = pf_hyps gl in
     let decl = Context.Named.lookup id hyps in
     let natureofid = match decl with
                      | LocalAssum _ -> "Hypothesis"
                      | LocalDef (_,bdy,_) ->"Constant (let in)" in
-    v 0 (pr_id id ++ str":" ++ pr_constr (NamedDecl.get_type decl) ++ fnl() ++ fnl()
+    v 0 (pr_id id ++ str":" ++ pr_econstr (NamedDecl.get_type decl) ++ fnl() ++ fnl()
 	 ++ str natureofid ++ str " of the goal context.")
   with (* fallback to globals *)
     | NoHyp | Not_found -> print_about ref_or_by_not
 
 	       
-let vernac_print = let open Feedback in function
+let vernac_print ~loc = let open Feedback in function
   | PrintTables -> msg_notice (print_tables ())
   | PrintFullContext-> msg_notice (print_full_context_typ ())
   | PrintSectionContext qid -> msg_notice (print_sec_context_typ qid)
@@ -1702,7 +1690,7 @@ let vernac_print = let open Feedback in function
   | PrintVisibility s ->
       msg_notice (Notation.pr_visibility (Constrextern.without_symbols pr_lglob_constr) s)
   | PrintAbout (ref_or_by_not,glnumopt) ->
-     msg_notice (print_about_hyp_globs ref_or_by_not glnumopt)
+     msg_notice (print_about_hyp_globs ~loc ref_or_by_not glnumopt)
   | PrintImplicit qid ->
     dump_global qid; msg_notice (print_impargs qid)
   | PrintAssumptions (o,t,r) ->
@@ -1767,7 +1755,8 @@ let _ =
       optread  = (fun () -> !search_output_name_only);
       optwrite = (:=) search_output_name_only }
 
-let vernac_search s gopt r =
+let vernac_search ~loc s gopt r =
+  let gopt = query_command_selector ~loc gopt in
   let r = interp_search_restriction r in
   let env,gopt =
     match gopt with | None ->
@@ -1903,7 +1892,7 @@ let vernac_check_guard () =
     try
       let { Evd.it=gl ; sigma=sigma } = Proof.V82.top_goal pts in
       Inductiveops.control_only_guard (Goal.V82.env sigma gl)
-	pfterm;
+	(EConstr.Unsafe.to_constr pfterm);
       (str "The condition holds up to here")
     with UserError(_,s) ->
       (str ("Condition violated: ") ++s)
@@ -1972,9 +1961,6 @@ let interp ?proof ~loc locality poly c =
   | VernacResetInitial -> anomaly (str "VernacResetInitial not handled by Stm")
   | VernacBack _       -> anomaly (str "VernacBack not handled by Stm")
   | VernacBackTo _     -> anomaly (str "VernacBackTo not handled by Stm")
-
-  (* Horrible Hack that should die. *)
-  | VernacError e -> raise e
 
   (* This one is possible to handle here *)
   | VernacAbort id    -> CErrors.user_err  (str "Abort cannot be used through the Load command")
@@ -2077,17 +2063,17 @@ let interp ?proof ~loc locality poly c =
   | VernacAddOption (key,v) -> vernac_add_option key v
   | VernacMemOption (key,v) -> vernac_mem_option key v
   | VernacPrintOption key -> vernac_print_option key
-  | VernacCheckMayEval (r,g,c) -> vernac_check_may_eval r g c
+  | VernacCheckMayEval (r,g,c) -> vernac_check_may_eval ~loc r g c
   | VernacDeclareReduction (s,r) -> vernac_declare_reduction locality s r
   | VernacGlobalCheck c -> vernac_global_check c
-  | VernacPrint p -> vernac_print p
-  | VernacSearch (s,g,r) -> vernac_search s g r
+  | VernacPrint p -> vernac_print ~loc p
+  | VernacSearch (s,g,r) -> vernac_search ~loc s g r
   | VernacLocate l -> vernac_locate l
   | VernacRegister (id, r) -> vernac_register id r
   | VernacComments l -> if_verbose Feedback.msg_info (str "Comments ok\n")
 
   (* Proof management *)
-  | VernacGoal t -> vernac_start_proof locality poly Theorem [None,([],t,None)] false
+  | VernacGoal t -> vernac_start_proof locality poly Theorem [None,([],t)] false
   | VernacFocus n -> vernac_focus n
   | VernacUnfocus -> vernac_unfocus ()
   | VernacUnfocused -> vernac_unfocused ()
@@ -2217,7 +2203,7 @@ let with_fail b f =
       | HasNotFailed ->
           user_err ~hdr:"Fail" (str "The command has not failed!")
       | HasFailed msg ->
-          if is_verbose () || !test_mode || !ide_slave then Feedback.msg_info
+          if not !Flags.quiet || !test_mode || !ide_slave then Feedback.msg_info
             (str "The command has indeed failed with message:" ++ fnl () ++ msg)
       | _ -> assert false
   end
@@ -2225,6 +2211,11 @@ let with_fail b f =
 let interp ?(verbosely=true) ?proof (loc,c) =
   let orig_program_mode = Flags.is_program_mode () in
   let rec aux ?locality ?polymorphism isprogcmd = function
+
+    (* This assert case will be removed when fake_ide can understand
+       completion feedback *)
+    | VernacStm _ -> assert false (* Done by Stm *)
+
     | VernacProgram c when not isprogcmd -> aux ?locality ?polymorphism true c
     | VernacProgram _ -> CErrors.error "Program mode specified twice"
     | VernacLocal (b, c) when Option.is_empty locality -> 
@@ -2233,16 +2224,13 @@ let interp ?(verbosely=true) ?proof (loc,c) =
       aux ?locality ~polymorphism:b isprogcmd c
     | VernacPolymorphic (b, c) -> CErrors.error "Polymorphism specified twice"
     | VernacLocal _ -> CErrors.error "Locality specified twice"
-    | VernacStm (Command c) -> aux ?locality ?polymorphism isprogcmd c
-    | VernacStm (PGLast c) -> aux ?locality ?polymorphism isprogcmd c
-    | VernacStm _ -> assert false (* Done by Stm *)
     | VernacFail v ->
         with_fail true (fun () -> aux ?locality ?polymorphism isprogcmd v)
     | VernacTimeout (n,v) ->
         current_timeout := Some n;
         aux ?locality ?polymorphism isprogcmd v
     | VernacRedirect (s, (_,v)) ->
-         Topfmt.with_output_to_file s (aux false) v
+         Topfmt.with_output_to_file s (aux ?locality ?polymorphism isprogcmd) v
     | VernacTime (_,v) ->
         System.with_time !Flags.time
           (aux ?locality ?polymorphism isprogcmd) v;

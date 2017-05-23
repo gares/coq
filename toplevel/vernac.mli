@@ -8,30 +8,20 @@
 
 (** Parsing of vernacular. *)
 
-(** Read a vernac command on the specified input (parse only).
-   Raises [End_of_file] if EOF (or Ctrl-D) is reached. *)
+(** [process_expr sid cmd] Executes vernac command [cmd]. Callers are
+    expected to handle and print errors in form of exceptions, however
+    care is taken so the state machine is left in a consistent
+    state. *)
+val process_expr : Stateid.t -> Vernacexpr.vernac_expr Loc.located -> Stateid.t
 
-val parse_sentence : Pcoq.Gram.coq_parsable * in_channel option ->
- Loc.t * Vernacexpr.vernac_expr
+(** [load_vernac echo sid file] Loads [file] on top of [sid], will
+    echo the commands if [echo] is set. Callers are expected to handle
+    and print errors in form of exceptions. *)
+val load_vernac : bool -> Stateid.t -> string -> Stateid.t
 
-(** Reads and executes vernac commands from a stream. *)
-
-exception End_of_input
-
-val process_expr : Pcoq.Gram.coq_parsable -> Loc.t * Vernacexpr.vernac_expr -> unit
+(** Compile a vernac file, (f is assumed without .v suffix) *)
+val compile : bool -> string -> unit
 
 (** Set XML hooks *)
 val xml_start_library : (unit -> unit) Hook.t
 val xml_end_library   : (unit -> unit) Hook.t
-
-(** Load a vernac file, verbosely or not. Errors are annotated with file
-   and location *)
-
-val load_vernac : bool -> string -> unit
-
-
-(** Compile a vernac file, verbosely or not (f is assumed without .v suffix) *)
-
-val compile : bool -> string -> unit
-
-val is_navigation_vernac : Vernacexpr.vernac_expr -> bool

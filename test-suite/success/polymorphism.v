@@ -326,7 +326,8 @@ Type)) eq_refl.
 
 End Hurkens'.
 
-  Set Printing Universes.
+
+Set Printing Universes.
 
 Set Universe Polymorphism.
 Module Type Foo.
@@ -366,3 +367,33 @@ Section test_letin_subtyping.
   Qed.
 
 End test_letin_subtyping.
+
+Module Anonymous.
+  Set Universe Polymorphism.
+
+  Definition defaultid := (fun x => x) : Type -> Type.
+  Definition collapseid := defaultid@{_ _}.
+  Check collapseid@{_}.
+
+  Definition anonid := (fun x => x) : Type -> Type@{_}.
+  Check anonid@{_}.
+
+  Definition defaultalg := (fun x : Type => x) (Type : Type).
+  Definition usedefaultalg := defaultalg@{_ _ _}.
+  Check usedefaultalg@{_ _}.
+
+  Definition anonalg := (fun x : Type@{_} => x) (Type : Type).
+  Check anonalg@{_ _}.
+
+  Definition unrelated@{i j} := nat.
+  Definition useunrelated := unrelated@{_ _}.
+  Check useunrelated@{_ _}.
+
+  Definition inthemiddle@{i j k} :=
+    let _ := defaultid@{i j} in
+    anonalg@{k j}.
+  (* i <= j < k *)
+  Definition collapsethemiddle := inthemiddle@{i _ j}.
+  Check collapsethemiddle@{_ _}.
+
+End Anonymous.

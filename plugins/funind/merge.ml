@@ -19,7 +19,6 @@ open Pp
 open Names
 open Term
 open Vars
-open Termops
 open Declarations
 open Glob_term
 open Glob_termops
@@ -32,6 +31,7 @@ module RelDecl = Context.Rel.Declaration
 
 (** {2 Useful operations on constr and glob_constr} *)
 
+let pop c = Vars.lift (-1) c
 let rec popn i c = if i<=0 then c else pop (popn (i-1) c)
 
 (** Substitutions in constr *)
@@ -135,13 +135,14 @@ let prNamedRLDecl s lc =
 
 let showind (id:Id.t) =
   let cstrid = Constrintern.global_reference id in
-  let ind1,cstrlist = Inductiveops.find_inductive (Global.env()) Evd.empty cstrid in
-  let mib1,ib1 = Inductive.lookup_mind_specif (Global.env()) (fst ind1) in
+  let (ind1, u),cstrlist = Inductiveops.find_inductive (Global.env()) Evd.empty (EConstr.of_constr cstrid) in
+  let mib1,ib1 = Inductive.lookup_mind_specif (Global.env()) ind1 in
+  let u = EConstr.Unsafe.to_instance u in
   List.iter (fun decl ->
     print_string (string_of_name (Context.Rel.Declaration.get_name decl) ^ ":");
     prconstr (RelDecl.get_type decl); print_string "\n")
     ib1.mind_arity_ctxt;
-    Printf.printf "arity :"; prconstr (Inductiveops.type_of_inductive (Global.env ()) ind1);
+    Printf.printf "arity :"; prconstr (Inductiveops.type_of_inductive (Global.env ()) (ind1, u));
   Array.iteri
     (fun i x -> Printf.printf"type constr %d :" i ; prconstr x)
     ib1.mind_user_lc
@@ -510,14 +511,14 @@ let rec merge_app c1 c2 id1 id2 shift filter_shift_stable =
         let args = filter_shift_stable lnk (arr1 @ arr2) in
         GApp (Loc.ghost,GVar (Loc.ghost,shift.ident) , args)
     | GApp(_,f1, arr1), GApp(_,f2,arr2)  -> raise NoMerge
-    | GLetIn(_,nme,bdy,trm) , _ ->
+    | GLetIn(_,nme,bdy,typ,trm) , _ ->
         let _ = prstr "\nICI2!\n" in
         let newtrm = merge_app trm c2 id1 id2 shift filter_shift_stable in
-        GLetIn(Loc.ghost,nme,bdy,newtrm)
-    | _, GLetIn(_,nme,bdy,trm) ->
+        GLetIn(Loc.ghost,nme,bdy,typ,newtrm)
+    | _, GLetIn(_,nme,bdy,typ,trm) ->
         let _ = prstr "\nICI3!\n" in
         let newtrm = merge_app c1 trm id1 id2 shift filter_shift_stable in
-        GLetIn(Loc.ghost,nme,bdy,newtrm)
+        GLetIn(Loc.ghost,nme,bdy,typ,newtrm)
     | _ -> let _ = prstr "\nICI4!\n" in
            raise NoMerge
 
@@ -528,14 +529,14 @@ let rec merge_app_unsafe c1 c2 shift filter_shift_stable =
         let args = filter_shift_stable lnk (arr1 @ arr2) in
         GApp (Loc.ghost,GVar(Loc.ghost,shift.ident) , args)
           (* FIXME: what if the function appears in the body of the let? *)
-    | GLetIn(_,nme,bdy,trm) , _ ->
+    | GLetIn(_,nme,bdy,typ,trm) , _ ->
       let _ = prstr "\nICI2 '!\n" in
         let newtrm = merge_app_unsafe trm c2 shift filter_shift_stable in
-        GLetIn(Loc.ghost,nme,bdy,newtrm)
-    | _, GLetIn(_,nme,bdy,trm) ->
+        GLetIn(Loc.ghost,nme,bdy,typ,newtrm)
+    | _, GLetIn(_,nme,bdy,typ,trm) ->
         let _ = prstr "\nICI3 '!\n" in
         let newtrm = merge_app_unsafe c1 trm shift filter_shift_stable in
-        GLetIn(Loc.ghost,nme,bdy,newtrm)
+        GLetIn(Loc.ghost,nme,bdy,typ,newtrm)
     | _ -> let _ = prstr "\nICI4 '!\n" in raise NoMerge
 
 
@@ -776,6 +777,7 @@ let merge_inductive_body (shift:merge_infos) avoid (oib1:one_inductive_body)
   let mkrawcor nme avoid typ =
     (* first replace rel 1 by a varname *)
     let substindtyp = substitterm 0 (mkRel 1) (mkVar nme) typ in
+    let substindtyp = EConstr.of_constr substindtyp in
     Detyping.detype false (Id.Set.elements avoid) (Global.env()) Evd.empty substindtyp in
   let lcstr1: glob_constr list =
     Array.to_list (Array.map (mkrawcor ind1name avoid) oib1.mind_user_lc) in
@@ -822,7 +824,7 @@ let merge_rec_params_and_arity prms1 prms2 shift (concl:constr) =
         let _ = prNamedRConstr (string_of_name nme) tp in
         let _ = prstr "  ;  " in
         let typ = glob_constr_to_constr_expr tp in
-        LocalRawAssum ([(Loc.ghost,nme)], Constrexpr_ops.default_binder_kind, typ) :: acc)
+        CLocalAssum ([(Loc.ghost,nme)], Constrexpr_ops.default_binder_kind, typ) :: acc)
       [] params in
   let concl = Constrextern.extern_constr false (Global.env()) Evd.empty concl in
   let arity,_ =
@@ -859,6 +861,7 @@ let glob_constr_list_to_inductive_expr prms1 prms2 mib1 mib2 shift
 let mkProd_reldecl (rdecl:Context.Rel.Declaration.t) (t2:glob_constr) =
   match rdecl with
     | LocalAssum (nme,t) ->
+        let t = EConstr.of_constr t in
         let traw = Detyping.detype false [] (Global.env()) Evd.empty t in
         GProd (Loc.ghost,nme,Explicit,traw,t2)
     | LocalDef _ -> assert false
@@ -975,23 +978,24 @@ let funify_branches relinfo nfuns branch =
       | Rel i -> let reali = i-shift in (reali>=0 && reali<relinfo.nbranches)
       | _ -> false in
   (* FIXME: *)
-  LocalDef (Anonymous,mkProp,mkProp)
+  LocalDef (Anonymous,EConstr.mkProp,EConstr.mkProp)
 
 
 let relprinctype_to_funprinctype relprinctype nfuns =
-  let relinfo = compute_elim_sig relprinctype in
+  let relprinctype = EConstr.of_constr relprinctype in
+  let relinfo = compute_elim_sig Evd.empty (** FIXME*) relprinctype in
   assert (not relinfo.farg_in_concl);
   assert (relinfo.indarg_in_concl);
   (* first remove indarg and indarg_in_concl *)
   let relinfo_noindarg = { relinfo with
     indarg_in_concl = false; indarg = None;
-    concl = remove_last_arg (pop relinfo.concl); } in
+    concl = EConstr.of_constr (remove_last_arg (pop (EConstr.Unsafe.to_constr relinfo.concl))); } in
   (* the nfuns last induction arguments are functional ones: remove them *)
   let relinfo_argsok = { relinfo_noindarg with
     nargs = relinfo_noindarg.nargs - nfuns;
     (* args is in reverse order, so remove fst *)
     args = remove_n_fst_list nfuns relinfo_noindarg.args;
-    concl = popn nfuns relinfo_noindarg.concl
+    concl = EConstr.of_constr (popn nfuns (EConstr.Unsafe.to_constr relinfo_noindarg.concl));
   } in
   let new_branches =
     List.map (funify_branches relinfo_argsok nfuns) relinfo_argsok.branches in

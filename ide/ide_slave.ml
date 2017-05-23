@@ -8,6 +8,7 @@
 (************************************************************************)
 
 open Vernacexpr
+open Vernacprop
 open CErrors
 open Util
 open Pp
@@ -53,50 +54,36 @@ let coqide_known_option table = List.mem table [
   ["Printing";"All"];
   ["Printing";"Records"];
   ["Printing";"Existential";"Instances"];
-  ["Printing";"Universes"]]
+  ["Printing";"Universes"];
+  ["Printing";"Unfocused"]]
 
 let is_known_option cmd = match cmd with
   | VernacSetOption (o,BoolValue true)
   | VernacUnsetOption o -> coqide_known_option o
   | _ -> false
 
-let is_debug cmd = match cmd with
-  | VernacSetOption (["Ltac";"Debug"], _) -> true
-  | _ -> false
-
-let is_query cmd = match cmd with
-  | VernacChdir None
-  | VernacMemOption _
-  | VernacPrintOption _
-  | VernacCheckMayEval _
-  | VernacGlobalCheck _
-  | VernacPrint _
-  | VernacSearch _
-  | VernacLocate _ -> true
-  | _ -> false
-
-let is_undo cmd = match cmd with
-  | VernacUndo _ | VernacUndoTo _ -> true
-  | _ -> false
-
 (** Check whether a command is forbidden in the IDE *)
 
-let ide_cmd_checks (loc,ast) =
+let ide_cmd_checks ~id (loc,ast) =
   let user_error s = CErrors.user_err ~loc ~hdr:"CoqIde" (str s) in
+  let warn msg = Feedback.(feedback ~id (Message (Warning, Some loc, strbrk msg))) in
   if is_debug ast then
     user_error "Debug mode not available in the IDE";
   if is_known_option ast then
-    Feedback.msg_warning (strbrk "Set this option from the IDE menu instead");
-  if Vernac.is_navigation_vernac ast || is_undo ast then
-    Feedback.msg_warning (strbrk "Use IDE navigation instead");
+    warn "Set this option from the IDE menu instead";
+  if is_navigation_vernac ast || is_undo ast then
+    warn "Use IDE navigation instead";
   if is_query ast then
-    Feedback.msg_warning (strbrk "Query commands should not be inserted in scripts")
+    warn "Query commands should not be inserted in scripts"
 
 (** Interpretation (cf. [Ide_intf.interp]) *)
 
 let add ((s,eid),(sid,verbose)) =
-  let newid, rc = Stm.add ~ontop:sid verbose ~check:ide_cmd_checks eid s in
+  let pa = Pcoq.Gram.parsable (Stream.of_string s) in
+  let loc_ast = Stm.parse_sentence sid pa in
+  let newid, rc = Stm.add ~ontop:sid verbose loc_ast in
   let rc = match rc with `NewTip -> CSig.Inl () | `Unfocus id -> CSig.Inr id in
+  ide_cmd_checks ~id:newid loc_ast;
   (* TODO: the "" parameter is a leftover of the times the protocol
    * used to include stderr/stdout output.
    *
@@ -122,12 +109,14 @@ let edit_at id =
  * as not to break the core protocol for this minor change, but it should
  * be removed in the next version of the protocol.
  *)
-let query (s,id) = Stm.query ~at:id s; ""
+let query (s,id) =
+  let pa = Pcoq.Gram.parsable (Stream.of_string s) in
+  Stm.query ~at:id pa; ""
 
 let annotate phrase =
   let (loc, ast) =
     let pa = Pcoq.Gram.parsable (Stream.of_string phrase) in
-    Vernac.parse_sentence (pa,None)
+    Stm.parse_sentence (Stm.get_current_state ()) pa
   in
   (* XXX: Width should be a parameter of annotate... *)
   Richpp.richpp_of_pp 78 (Ppvernac.pr_vernac ast)
@@ -193,7 +182,7 @@ let process_goal sigma g =
     pr_goal_concl_style_env env sigma norm_constr
   in
   let process_hyp d (env,l) =
-    let d = CompactedDecl.map_constr (Reductionops.nf_evar sigma) d in
+    let d = CompactedDecl.map_constr (fun c -> EConstr.Unsafe.to_constr (Reductionops.nf_evar sigma (EConstr.of_constr c))) d in
     let d' = CompactedDecl.to_named_context d in
       (List.fold_right Environ.push_named d' env,
        (pr_compacted_decl env sigma d) :: l) in
@@ -370,43 +359,28 @@ let init =
   fun file ->
    if !initialized then anomaly (str "Already initialized")
    else begin
+     let init_sid = Stm.get_current_state () in
      initialized := true;
      match file with
-     | None -> Stm.get_current_state ()
+     | None -> init_sid
      | Some file ->
          let dir = Filename.dirname file in
          let open Loadpath in let open CUnix in
          let initial_id, _ =
-           if not (is_in_load_paths (physical_path_of_string dir)) then
-             Stm.add false ~ontop:(Stm.get_current_state ())
-               0 (Printf.sprintf "Add LoadPath \"%s\". " dir)
-           else Stm.get_current_state (), `NewTip in
+           if not (is_in_load_paths (physical_path_of_string dir)) then begin
+             let pa = Pcoq.Gram.parsable (Stream.of_string (Printf.sprintf "Add LoadPath \"%s\". " dir)) in
+             let loc_ast = Stm.parse_sentence init_sid pa in
+             Stm.add false ~ontop:init_sid loc_ast
+           end else init_sid, `NewTip in
          if Filename.check_suffix file ".v" then
            Stm.set_compilation_hints file;
          Stm.finish ();
          initial_id
    end
 
-(* Retrocompatibility stuff *)
+(* Retrocompatibility stuff, disabled since 8.7 *)
 let interp ((_raw, verbose), s) =
-  let vernac_parse s =
-    let pa = Pcoq.Gram.parsable (Stream.of_string s) in
-    Flags.with_option Flags.we_are_parsing (fun () ->
-      match Pcoq.Gram.entry_parse Pcoq.main_entry pa with
-      | None -> raise (Invalid_argument "vernac_parse")
-      | Some ast -> ast)
-    () in
-  Stm.interp verbose (vernac_parse s);
-  (* TODO: the "" parameter is a leftover of the times the protocol
-   * used to include stderr/stdout output.
-   *
-   * Currently, we force all the output meant for the to go via the
-   * feedback mechanism, and we don't manipulate stderr/stdout, which
-   * are left to the client's discrection. The parameter is still there
-   * as not to break the core protocol for this minor change, but it should
-   * be removed in the next version of the protocol.
-   *)
-  Stm.get_current_state (), CSig.Inl ""
+  Stateid.dummy, CSig.Inr "The interp call has been disabled, please use Add."
 
 (** When receiving the Quit call, we don't directly do an [exit 0],
     but rather set this reference, in order to send a final answer
@@ -414,14 +388,8 @@ let interp ((_raw, verbose), s) =
 
 let quit = ref false
 
-(** Serializes the output of Stm.get_ast  *)
-let print_ast id =
-  match Stm.get_ast id with
-  | Some (expr, loc) -> begin
-      try  Texmacspp.tmpp expr loc
-      with e -> Xml_datatype.PCData ("ERROR " ^ Printexc.to_string e)
-    end
-  | None     -> Xml_datatype.PCData "ERROR"
+(** Disabled *)
+let print_ast id = Xml_datatype.PCData "ERROR"
 
 (** Grouping all call handlers together + error handling *)
 
@@ -494,9 +462,6 @@ let loop () =
   let xml_ic        = Xml_parser.make (Xml_parser.SLexbuf in_lb) in
   let () = Xml_parser.check_eof xml_ic false in
   ignore (Feedback.add_feeder (slave_feeder (!msg_format ()) xml_oc));
-  (* We'll handle goal fetching and display in our own way *)
-  Vernacentries.enable_goal_printing := false;
-  Vernacentries.qed_display_script := false;
   while not !quit do
     try
       let xml_query = Xml_parser.parse xml_ic in
@@ -535,12 +500,12 @@ let rec parse = function
 
 let () = Coqtop.toploop_init := (fun args ->
         let args = parse args in
-        Flags.make_silent true;
+        Flags.quiet := true;
         CoqworkmgrApi.(init Flags.High);
         args)
 
 let () = Coqtop.toploop_run := loop
 
 let () = Usage.add_to_usage "coqidetop"
-"  --xml_format=Ppcmds    serialize pretty printing messages using the std_ppcmds format
-  --help-XML-protocol    print the documentation of the XML protocol used by CoqIDE\n"
+"  --xml_format=Ppcmds    serialize pretty printing messages using the std_ppcmds format\
+\n  --help-XML-protocol    print the documentation of the XML protocol used by CoqIDE\n"

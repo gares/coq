@@ -10,6 +10,7 @@
 
 open Evd
 open Proof_type
+open EConstr
 
 (** The refiner (handles primitive rules and high-level tactics). *)
 
@@ -17,7 +18,7 @@ val sig_it  : 'a sigma -> 'a
 val project : 'a sigma -> evar_map
 
 val pf_env  : goal sigma -> Environ.env
-val pf_hyps : goal sigma -> Context.Named.t
+val pf_hyps : goal sigma -> named_context
 
 val unpackage : 'a sigma -> evar_map ref * 'a
 val repackage : evar_map ref -> 'a -> 'a sigma
@@ -118,10 +119,8 @@ val tclAT_LEAST_ONCE : tactic -> tactic
 val tclFAIL          : int -> Pp.std_ppcmds -> tactic
 val tclFAIL_lazy     : int -> Pp.std_ppcmds Lazy.t -> tactic
 val tclDO            : int -> tactic -> tactic
-val tclWEAK_PROGRESS : tactic -> tactic
 val tclPROGRESS      : tactic -> tactic
 val tclSHOWHYPS      : tactic -> tactic
-val tclNOTSAMEGOAL   : tactic -> tactic
 
 (** [tclIFTHENELSE tac1 tac2 tac3 gls] first applies [tac1] to [gls] then,
    if it succeeds, applies [tac2] to the resulting subgoals,

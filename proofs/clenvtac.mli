@@ -8,8 +8,8 @@
 
 (** Legacy components of the previous proof engine. *)
 
-open Term
 open Clenv
+open EConstr
 open Unification
 open Misctypes
 

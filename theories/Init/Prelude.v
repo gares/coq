@@ -19,9 +19,8 @@ Require Export Coq.Init.Tauto.
 (* Initially available plugins
    (+ nat_syntax_plugin loaded in Datatypes) *)
 Declare ML Module "extraction_plugin".
-Declare ML Module "decl_mode_plugin".
 Declare ML Module "cc_plugin".
 Declare ML Module "ground_plugin".
 Declare ML Module "recdef_plugin".
 (* Default substrings not considered by queries like SearchAbout *)
-Add Search Blacklist "_subproof" "Private_".
+Add Search Blacklist "_subproof" "_subterm" "Private_".

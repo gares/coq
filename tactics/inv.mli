@@ -7,7 +7,7 @@
 (************************************************************************)
 
 open Names
-open Term
+open EConstr
 open Misctypes
 open Tactypes
 

@@ -92,9 +92,8 @@ let print_backtrace e = match Backtrace.get_backtrace e with
 
 let print_anomaly askreport e =
   if askreport then
-    hov 0 (raw_anomaly e ++ spc () ++
-           strbrk "Please report at " ++ str Coq_config.wwwbugtracker ++
-           str ".")
+    hov 0 (str "Anomaly" ++ spc () ++ quote (raw_anomaly e) ++ spc ()) ++
+    hov 0 (str "Please report at " ++ str Coq_config.wwwbugtracker ++ str ".")
   else
     hov 0 (raw_anomaly e)
 
@@ -122,12 +121,14 @@ end
     by inner functions during a [vernacinterp]. They should be handled
     only at the very end of interp, to be displayed to the user. *)
 
+[@@@ocaml.warning "-52"]
 let noncritical = function
   | Sys.Break | Out_of_memory | Stack_overflow
   | Assert_failure _ | Match_failure _ | Anomaly _
   | Timeout | Drop | Quit -> false
   | Invalid_argument "equal: functional value" -> false
   | _ -> true
+[@@@ocaml.warning "+52"]
 
 (** Check whether an exception is handled *)
 

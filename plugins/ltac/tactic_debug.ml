@@ -51,7 +51,7 @@ let db_pr_goal gl =
   let env = Proofview.Goal.env gl in
   let concl = Proofview.Goal.concl gl in
   let penv = print_named_context env in
-  let pc = print_constr_env env concl in
+  let pc = print_constr_env env (Tacmach.New.project gl) concl in
     str"  " ++ hv 0 (penv ++ fnl () ++
                    str "============================" ++ fnl ()  ++
                    str" "  ++ pc) ++ fnl ()
@@ -85,6 +85,19 @@ let skipped = Proofview.NonLogical.run (Proofview.NonLogical.ref 0)
 let skip = Proofview.NonLogical.run (Proofview.NonLogical.ref 0)
 let breakpoint = Proofview.NonLogical.run (Proofview.NonLogical.ref None)
 
+let batch = ref false
+
+open Goptions
+
+let _ =
+  declare_bool_option
+    { optsync  = false;
+      optdepr  = false;
+      optname  = "Ltac batch debug";
+      optkey   = ["Ltac";"Batch";"Debug"];
+      optread  = (fun () -> !batch);
+      optwrite = (fun x -> batch := x) }
+
 let rec drop_spaces inst i =
   if String.length inst > i && inst.[i] == ' ' then drop_spaces inst (i+1)
   else i
@@ -108,6 +121,8 @@ let string_get s i =
   try Proofview.NonLogical.return (String.get s i)
   with e -> Proofview.NonLogical.raise e
 
+let run_invalid_arg () = Proofview.NonLogical.raise (Invalid_argument "run_com")
+
 (* Gives the number of steps or next breakpoint of a run command *)
 let run_com inst =
   let open Proofview.NonLogical in
@@ -118,14 +133,14 @@ let run_com inst =
       let s = String.sub inst i (String.length inst - i) in
       if inst.[0] >= '0' && inst.[0] <= '9' then
         int_of_string s >>= fun num ->
-        (if num<0 then invalid_arg "run_com" else return ()) >>
+        (if num<0 then run_invalid_arg () else return ()) >>
         (skip:=num) >> (skipped:=0)
       else
         breakpoint:=Some (possibly_unquote s)
     else
-      invalid_arg "run_com"
+      run_invalid_arg ()
   else
-    invalid_arg "run_com"
+    run_invalid_arg ()
 
 (* Prints the run counter *)
 let run ini =
@@ -148,6 +163,7 @@ let rec prompt level =
   begin
     let open Proofview.NonLogical in
     Proofview.NonLogical.print_notice (fnl () ++ str "TcDebug (" ++ int level ++ str ") > ") >>
+    if Pervasives.(!batch) then return (DebugOn (level+1)) else
     let exit = (skip:=0) >> (skipped:=0) >> raise Sys.Break in
     Proofview.NonLogical.catch Proofview.NonLogical.read_line
       begin function (e, info) -> match e with
@@ -223,11 +239,11 @@ let is_debug db =
       return (Int.equal skip 0)
 
 (* Prints a constr *)
-let db_constr debug env c =
+let db_constr debug env sigma c =
   let open Proofview.NonLogical in
   is_debug debug >>= fun db ->
   if db then
-    msg_tac_debug (str "Evaluated term: " ++ print_constr_env env c)
+    msg_tac_debug (str "Evaluated term: " ++ print_constr_env env sigma c)
   else return ()
 
 (* Prints the pattern rule *)
@@ -247,20 +263,20 @@ let hyp_bound = function
   | Name id -> str " (bound to " ++ pr_id id ++ str ")"
 
 (* Prints a matched hypothesis *)
-let db_matched_hyp debug env (id,_,c) ido =
+let db_matched_hyp debug env sigma (id,_,c) ido =
   let open Proofview.NonLogical in
   is_debug debug >>= fun db ->
   if db then
     msg_tac_debug (str "Hypothesis " ++ pr_id id ++ hyp_bound ido ++
-                str " has been matched: " ++ print_constr_env env c)
+                str " has been matched: " ++ print_constr_env env sigma c)
   else return ()
 
 (* Prints the matched conclusion *)
-let db_matched_concl debug env c =
+let db_matched_concl debug env sigma c =
   let open Proofview.NonLogical in
   is_debug debug >>= fun db ->
   if db then
-    msg_tac_debug (str "Conclusion has been matched: " ++ print_constr_env env c)
+    msg_tac_debug (str "Conclusion has been matched: " ++ print_constr_env env sigma c)
   else return ()
 
 (* Prints a success message when the goal has been matched *)

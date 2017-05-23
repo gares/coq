@@ -21,12 +21,9 @@ let get_name avoid ?(default="H") = function
   | Name n -> Name n
 
 let array_get_start a =
-  try
-    Array.init
-      (Array.length a - 1)
-      (fun i -> a.(i))
-  with Invalid_argument "index out of bounds" ->
-    invalid_arg "array_get_start"
+  Array.init
+    (Array.length a - 1)
+    (fun i -> a.(i))
 
 let id_of_name = function
     Name id -> id
@@ -70,8 +67,8 @@ let chop_rlambda_n  =
       then List.rev acc,rt
       else
 	match rt with
-	  | Glob_term.GLambda(_,name,k,t,b) -> chop_lambda_n ((name,t,false)::acc) (n-1) b
-	  | Glob_term.GLetIn(_,name,v,b) -> chop_lambda_n ((name,v,true)::acc) (n-1) b
+	  | Glob_term.GLambda(_,name,k,t,b) -> chop_lambda_n ((name,t,None)::acc) (n-1) b
+	  | Glob_term.GLetIn(_,name,v,t,b) -> chop_lambda_n ((name,v,t)::acc) (n-1) b
 	  | _ ->
 	      raise (CErrors.UserError(Some "chop_rlambda_n",
 				    str "chop_rlambda_n: Not enough Lambdas"))
@@ -134,8 +131,8 @@ let find_reference sl s =
   let dp = Names.DirPath.make (List.rev_map Id.of_string sl) in
   Nametab.locate (make_qualid dp (Id.of_string s))
 
-let eq = lazy(coq_constant "eq")
-let refl_equal = lazy(coq_constant "eq_refl")
+let eq = lazy(EConstr.of_constr (coq_constant "eq"))
+let refl_equal = lazy(EConstr.of_constr (coq_constant "eq_refl"))
 
 (*****************************************************************)
 (* Copy of the standart save mechanism but without the much too  *)
@@ -479,13 +476,13 @@ exception ToShow of exn
 let jmeq () =
   try
     Coqlib.check_required_library Coqlib.jmeq_module_name;
-    Coqlib.gen_constant "Function" ["Logic";"JMeq"] "JMeq"
+    EConstr.of_constr (Coqlib.gen_constant "Function" ["Logic";"JMeq"] "JMeq")
   with e when CErrors.noncritical e -> raise (ToShow e)
 
 let jmeq_refl () =
   try
     Coqlib.check_required_library Coqlib.jmeq_module_name;
-    Coqlib.gen_constant "Function" ["Logic";"JMeq"] "JMeq_refl"
+    EConstr.of_constr (Coqlib.gen_constant "Function" ["Logic";"JMeq"] "JMeq_refl")
   with e when CErrors.noncritical e -> raise (ToShow e)
 
 let h_intros l =
@@ -496,7 +493,8 @@ let hrec_id = Id.of_string "hrec"
 let well_founded = function () -> (coq_reference "well_founded")
 let acc_rel = function () -> (coq_reference "Acc")
 let acc_inv_id = function () -> (coq_reference "Acc_inv")
-let well_founded_ltof = function () ->  (Coqlib.coq_constant "" ["Arith";"Wf_nat"] "well_founded_ltof")
+(* let well_founded_ltof = function () ->  (Coqlib.coq_constant "" ["Arith";"Wf_nat"] "well_founded_ltof") *)
+let well_founded_ltof = function () ->  EConstr.of_constr (Coqlib.coq_constant "" ["Arith";"Wf_nat"] "well_founded_ltof")
 let ltof_ref = function  () -> (find_reference ["Coq";"Arith";"Wf_nat"] "ltof")
 
 let evaluable_of_global_reference r = (* Tacred.evaluable_of_global_reference (Global.env ()) *)
@@ -505,11 +503,53 @@ let evaluable_of_global_reference r = (* Tacred.evaluable_of_global_reference (G
     | VarRef id -> EvalVarRef id
     | _ -> assert false;;
 
-let list_rewrite (rev:bool) (eqs: (constr*bool) list) =
+let list_rewrite (rev:bool) (eqs: (EConstr.constr*bool) list) =
   tclREPEAT
     (List.fold_right
        (fun (eq,b) i -> tclORELSE (Proofview.V82.of_tactic ((if b then Equality.rewriteLR else Equality.rewriteRL) eq)) i)
        (if rev then (List.rev eqs) else eqs) (tclFAIL 0 (mt())));;
+
+let decompose_lam_n sigma n =
+  if n < 0 then CErrors.error "decompose_lam_n: integer parameter must be positive";
+  let rec lamdec_rec l n c =
+    if Int.equal n 0 then l,c
+    else match EConstr.kind sigma c with
+      | Lambda (x,t,c) -> lamdec_rec ((x,t)::l) (n-1) c
+      | Cast (c,_,_)     -> lamdec_rec l n c
+      | _ -> CErrors.error "decompose_lam_n: not enough abstractions"
+  in
+  lamdec_rec [] n
+
+let lamn n env b =
+  let open EConstr in
+  let rec lamrec = function
+    | (0, env, b)        -> b
+    | (n, ((v,t)::l), b) -> lamrec (n-1,  l, mkLambda (v,t,b))
+    | _ -> assert false
+  in
+  lamrec (n,env,b)
+
+(* compose_lam [xn:Tn;..;x1:T1] b = [x1:T1]..[xn:Tn]b *)
+let compose_lam l b = lamn (List.length l) l b
+
+(* prodn n [xn:Tn;..;x1:T1;Gamma] b = (x1:T1)..(xn:Tn)b *)
+let prodn n env b =
+  let open EConstr in
+  let rec prodrec = function
+    | (0, env, b)        -> b
+    | (n, ((v,t)::l), b) -> prodrec (n-1,  l, mkProd (v,t,b))
+    | _ -> assert false
+  in
+  prodrec (n,env,b)
+
+(* compose_prod [xn:Tn;..;x1:T1] b = (x1:T1)..(xn:Tn)b *)
+let compose_prod l b = prodn (List.length l) l b
+
+type tcc_lemma_value = 
+  | Undefined
+  | Value of Constr.constr
+  | Not_needed
+
 
 let check_type t = fun gls ->
   let sigma = project gls in
@@ -519,6 +559,5 @@ let check_type t = fun gls ->
 
 let check_poly_app hd args k = 
   Tacticals.pf_constr_of_global hd (fun hdc ->
-  let term = mkApp (hdc, args) in
+  let term = EConstr.mkApp (hdc, args) in
   tclTHEN (check_type term) (k term) )
-

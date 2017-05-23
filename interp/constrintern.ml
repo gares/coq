@@ -65,8 +65,6 @@ type var_internalization_data =
 type internalization_env =
     (var_internalization_data) Id.Map.t
 
-type glob_binder = (Name.t * binding_kind * glob_constr option * glob_constr)
-
 type ltac_sign = {
   ltac_vars : Id.Set.t;
   ltac_bound : Id.Set.t;
@@ -306,12 +304,12 @@ let reset_tmp_scope env = {env with tmp_scope = None}
 
 let rec it_mkGProd loc2 env body =
   match env with
-      (loc1, (na, bk, _, t)) :: tl -> it_mkGProd loc2 tl (GProd (Loc.merge loc1 loc2, na, bk, t, body))
+      (loc1, (na, bk, t)) :: tl -> it_mkGProd loc2 tl (GProd (Loc.merge loc1 loc2, na, bk, t, body))
     | [] -> body
 
 let rec it_mkGLambda loc2 env body =
   match env with
-      (loc1, (na, bk, _, t)) :: tl -> it_mkGLambda loc2 tl (GLambda (Loc.merge loc1 loc2, na, bk, t, body))
+      (loc1, (na, bk, t)) :: tl -> it_mkGLambda loc2 tl (GLambda (Loc.merge loc1 loc2, na, bk, t, body))
     | [] -> body
 
 (**********************************************************************)
@@ -399,7 +397,7 @@ let intern_generalized_binder ?(global_level=false) intern_type lvar
     env fvs in
   let bl = List.map
     (fun (id, loc) ->
-      (loc, (Name id, b, None, GHole (loc, Evar_kinds.BinderType (Name id), Misctypes.IntroAnonymous, None))))
+      (loc, (Name id, b, GHole (loc, Evar_kinds.BinderType (Name id), Misctypes.IntroAnonymous, None))))
     fvs
   in
   let na = match na with
@@ -414,7 +412,7 @@ let intern_generalized_binder ?(global_level=false) intern_type lvar
 	    in Implicit_quantifiers.make_fresh ids' (Global.env ()) id
 	  in Name name
     | _ -> na
-  in (push_name_env ~global_level lvar (impls_type_list ty')(*?*) env' (loc,na)), (loc,(na,b',None,ty')) :: List.rev bl
+  in (push_name_env ~global_level lvar (impls_type_list ty')(*?*) env' (loc,na)), (loc,(na,b',ty')) :: List.rev bl
 
 let intern_assumption intern lvar env nal bk ty =
   let intern_type env = intern (set_type_scope env) in
@@ -426,78 +424,55 @@ let intern_assumption intern lvar env nal bk ty =
       List.fold_left
 	(fun (env, bl) (loc, na as locna) ->
           (push_name_env lvar impls env locna,
-           (loc,(na,k,None,locate_if_hole loc na ty))::bl))
+           (loc,(na,k,locate_if_hole loc na ty))::bl))
 	(env, []) nal
   | Generalized (b,b',t) ->
      let env, b = intern_generalized_binder intern_type lvar env (List.hd nal) b b' t ty in
      env, b
 
-let rec free_vars_of_pat il =
-  function
-  | CPatCstr (loc, c, l1, l2) ->
-      let il = List.fold_left free_vars_of_pat il (Option.default [] l1) in
-      List.fold_left free_vars_of_pat il l2
-  | CPatAtom (loc, ro) ->
-      begin match ro with
-      | Some (Ident (loc, i)) -> (loc, i) :: il
-      | Some _ | None -> il
-      end
-  | CPatNotation (loc, n, l1, l2) ->
-      let il = List.fold_left free_vars_of_pat il (fst l1) in
-      List.fold_left (List.fold_left free_vars_of_pat) il (snd l1)
-  | _ -> anomaly (str "free_vars_of_pat")
-
-let intern_local_pattern intern lvar env p =
-  List.fold_left
-    (fun env (loc, i) ->
-       let bk = Default Implicit in
-       let ty = CHole (loc, None, Misctypes.IntroAnonymous, None) in
-       let n = Name i in
-       let env, _ = intern_assumption intern lvar env [(loc, n)] bk ty in
-       env)
-    env (free_vars_of_pat [] p)
-
-type binder_data =
-  | BDRawDef of (Loc.t * glob_binder)
-  | BDPattern of
-      (Loc.t * (cases_pattern * Id.t list) *
-         (bool ref *
-          (Notation_term.tmp_scope_name option *
-           Notation_term.tmp_scope_name list)
-          option ref * Notation_term.notation_var_internalization_type)
-         Names.Id.Map.t *
-       intern_env * constr_expr)
+let glob_local_binder_of_extended = function
+  | GLocalAssum (loc,na,bk,t) -> (na,bk,None,t)
+  | GLocalDef (loc,na,bk,c,Some t) -> (na,bk,Some c,t)
+  | GLocalDef (loc,na,bk,c,None) ->
+      let t = GHole(loc,Evar_kinds.BinderType na,Misctypes.IntroAnonymous,None) in
+      (na,bk,Some c,t)
+  | GLocalPattern (loc,_,_,_,_) ->
+      Loc.raise ~loc (Stream.Error "pattern with quote not allowed here.")
 
 let intern_cases_pattern_fwd = ref (fun _ -> failwith "intern_cases_pattern_fwd")
 
 let intern_local_binder_aux ?(global_level=false) intern lvar (env,bl) = function
-  | LocalRawAssum(nal,bk,ty) ->
+  | CLocalAssum(nal,bk,ty) ->
       let env, bl' = intern_assumption intern lvar env nal bk ty in
-      let bl' = List.map (fun a -> BDRawDef a) bl' in
+      let bl' = List.map (fun (loc,(na,c,t)) -> GLocalAssum (loc,na,c,t)) bl' in
       env, bl' @ bl
-  | LocalRawDef((loc,na as locna),def) ->
-     let indef = intern env def in
-     let term, ty =
-       match indef with
-       | GCast (loc, b, Misctypes.CastConv t) -> b, t
-       | _ -> indef, GHole(loc,Evar_kinds.BinderType na,Misctypes.IntroAnonymous,None)
-     in
-      (push_name_env lvar (impls_term_list indef) env locna,
-       (BDRawDef ((loc,(na,Explicit,Some(term),ty))))::bl)
-  | LocalPattern (loc,p,ty) ->
+  | CLocalDef((loc,na as locna),def,ty) ->
+     let term = intern env def in
+     let ty = Option.map (intern env) ty in
+      (push_name_env lvar (impls_term_list term) env locna,
+       GLocalDef (loc,na,Explicit,term,ty) :: bl)
+  | CLocalPattern (loc,p,ty) ->
       let tyc =
         match ty with
         | Some ty -> ty
         | None -> CHole(loc,None,Misctypes.IntroAnonymous,None)
       in
-      let env = intern_local_pattern intern lvar env p in
-      let cp =
+      let il,cp =
         match !intern_cases_pattern_fwd (None,env.scopes) p with
-        | (_, [(_, cp)]) -> cp
+        | (il, [(subst,cp)]) ->
+           if not (Id.Map.equal Id.equal subst Id.Map.empty) then
+             user_err ~loc (str "Unsupported nested \"as\" clause.");
+           il,cp
         | _ -> assert false
       in
-      let il = List.map snd (free_vars_of_pat [] p) in
-      (env, BDPattern(loc,(cp,il),lvar,env,tyc) :: bl)
+      let env = {env with ids = List.fold_right Id.Set.add il env.ids} in
+      let ienv = Id.Set.elements env.ids in
+      let id = Namegen.next_ident_away (Id.of_string "pat") ienv in
+      let na = (loc, Name id) in
+      let bk = Default Explicit in
+      let _, bl' = intern_assumption intern lvar env [na] bk tyc in
+      let _,(_,bk,t) = List.hd bl' in
+      (env, GLocalPattern(loc,(cp,il),id,bk,t) :: bl)
 
 let intern_generalization intern env lvar loc bk ak c =
   let c = intern {env with unb = true} c in
@@ -567,35 +542,29 @@ let traverse_binder (terms,_,_ as subst) avoid (renaming,env) = function
     (renaming',env), Name id'
 
 type letin_param =
-  | LPLetIn of Loc.t * (Name.t * glob_constr)
+  | LPLetIn of Loc.t * (Name.t * glob_constr * glob_constr option)
   | LPCases of Loc.t * (cases_pattern * Id.t list) * Id.t
 
 let make_letins =
   List.fold_right
     (fun a c ->
      match a with
-     | LPLetIn (loc,(na,b)) ->
-         GLetIn(loc,na,b,c)
+     | LPLetIn (loc,(na,b,t)) ->
+         GLetIn(loc,na,b,t,c)
      | LPCases (loc,(cp,il),id) ->
          let tt = (GVar(loc,id),(Name id,None)) in
          GCases(loc,Misctypes.LetPatternStyle,None,[tt],[(loc,il,[cp],c)]))
 
-let rec subordinate_letins intern letins = function
+let rec subordinate_letins letins = function
   (* binders come in reverse order; the non-let are returned in reverse order together *)
   (* with the subordinated let-in in writing order *)
-  | BDRawDef (loc,(na,_,Some b,t))::l ->
-      subordinate_letins intern (LPLetIn (loc,(na,b))::letins) l
-  | BDRawDef (loc,(na,bk,None,t))::l ->
-      let letins',rest = subordinate_letins intern [] l in
+  | GLocalDef (loc,na,_,b,t)::l ->
+      subordinate_letins (LPLetIn (loc,(na,b,t))::letins) l
+  | GLocalAssum (loc,na,bk,t)::l ->
+      let letins',rest = subordinate_letins [] l in
       letins',((loc,(na,bk,t)),letins)::rest
-  | BDPattern (loc,u,lvar,env,tyc) :: l ->
-      let ienv = Id.Set.elements env.ids in
-      let id = Namegen.next_ident_away (Id.of_string "pat") ienv in
-      let na = (loc, Name id) in
-      let bk = Default Explicit in
-      let _, bl' = intern_assumption intern lvar env [na] bk tyc in
-      let bl' = List.map (fun a -> BDRawDef a) bl' in
-      subordinate_letins intern (LPCases (loc,u,id)::letins) (bl'@ l)
+  | GLocalPattern (loc,u,id,bk,t) :: l ->
+      subordinate_letins (LPCases (loc,u,id)::letins) ([GLocalAssum (loc,Name id,bk,t)] @ l)
   | [] ->
       letins,[]
 
@@ -609,10 +578,11 @@ let terms_of_binders bl =
        let params = List.make (Inductiveops.inductive_nparams (fst c)) hole in
        CAppExpl (loc,(None,r,None),params @ List.map term_of_pat l) in
   let rec extract_variables = function
-    | BDRawDef (loc,(Name id,_,None,_))::l -> CRef (Ident (loc,id), None) :: extract_variables l
-    | BDRawDef (loc,(Name id,_,Some _,_))::l -> extract_variables l
-    | BDRawDef (loc,(Anonymous,_,_,_))::l -> error "Cannot turn \"_\" into a term."
-    | BDPattern (loc,(u,_),lvar,env,tyc) :: l -> term_of_pat u :: extract_variables l
+    | GLocalAssum (loc,Name id,_,_)::l -> CRef (Ident (loc,id), None) :: extract_variables l
+    | GLocalDef (loc,Name id,_,_,_)::l -> extract_variables l
+    | GLocalDef (loc,Anonymous,_,_,_)::l
+    | GLocalAssum (loc,Anonymous,_,_)::l -> error "Cannot turn \"_\" into a term."
+    | GLocalPattern (loc,(u,_),_,_,_) :: l -> term_of_pat u :: extract_variables l
     | [] -> [] in
   extract_variables bl
 
@@ -674,7 +644,7 @@ let instantiate_notation_constr loc intern ntnvars subst infos c =
         (* All elements of the list are in scopes (scopt,subscopes) *)
 	let (bl,(scopt,subscopes)) = Id.Map.find x binders in
 	let env,bl = List.fold_left (intern_local_binder_aux intern ntnvars) (env,[]) bl in
-	let letins,bl = subordinate_letins intern [] bl in
+	let letins,bl = subordinate_letins [] bl in
         let termin = aux (terms,None,None) (renaming,env) terminator in
 	let res = List.fold_left (fun t binder ->
 	    aux (terms,Some(y,binder),Some t) subinfos iter)
@@ -862,9 +832,9 @@ let intern_qualid loc qid intern env lvar us args =
       | Some _, GApp (loc, GRef (loc', ref, None), arg) ->
          GApp (loc, GRef (loc', ref, us), arg)
       | Some _, _ ->
-        user_err ~loc  (str "Notation " ++ pr_qualid qid ++
-          str " cannot have a universe instance, its expanded head
-               does not start with a reference")
+        user_err ~loc  (str "Notation " ++ pr_qualid qid
+                        ++ str " cannot have a universe instance,"
+                        ++ str " its expanded head does not start with a reference")
       in
       c, projapp, args2
 
@@ -907,7 +877,22 @@ let interp_reference vars r =
 (**********************************************************************)
 (** {5 Cases }                                                        *)
 
-(** {6 Elemtary bricks } *)
+(** Private internalization patterns *)
+type raw_cases_pattern_expr =
+  | RCPatAlias of Loc.t * raw_cases_pattern_expr * Id.t
+  | RCPatCstr  of Loc.t * Globnames.global_reference
+    * raw_cases_pattern_expr list * raw_cases_pattern_expr list
+  (** [RCPatCstr (loc, c, l1, l2)] represents ((@c l1) l2) *)
+  | RCPatAtom  of Loc.t * Id.t option
+  | RCPatOr    of Loc.t * raw_cases_pattern_expr list
+
+let raw_cases_pattern_expr_loc = function
+  | RCPatAlias (loc,_,_) -> loc
+  | RCPatCstr (loc,_,_,_) -> loc
+  | RCPatAtom (loc,_) -> loc
+  | RCPatOr (loc,_) -> loc
+
+(** {6 Elementary bricks } *)
 let apply_scope_env env = function
   | [] -> {env with tmp_scope = None}, []
   | sc::scl -> {env with tmp_scope = sc}, scl
@@ -936,17 +921,6 @@ let find_remaining_scopes pl1 pl2 ref =
     |_::t,h::tt -> h :: aux (t,tt)
   in ((try List.firstn len_pl1 allscs with Failure _ -> simple_adjust_scopes len_pl1 allscs),
       simple_adjust_scopes len_pl2 (aux (impl_list,scope_list)))
-
-let merge_subst s1 s2 = Id.Map.fold Id.Map.add s1 s2
-
-let product_of_cases_patterns ids idspl =
-  List.fold_right (fun (ids,pl) (ids',ptaill) ->
-    (ids @ ids',
-     (* Cartesian prod of the or-pats for the nth arg and the tail args *)
-     List.flatten (
-       List.map (fun (subst,p) ->
-	 List.map (fun (subst',ptail) -> (merge_subst subst subst',p::ptail)) ptaill) pl)))
-    idspl (ids,[Id.Map.empty,[]])
 
 (* @return the first variable that occurs twice in a pattern
 
@@ -1201,12 +1175,23 @@ let alias_of als = match als.alias_ids with
 
 *)
 
+let merge_subst s1 s2 = Id.Map.fold Id.Map.add s1 s2
+
+let product_of_cases_patterns aliases idspl =
+  List.fold_right (fun (ids,pl) (ids',ptaill) ->
+    (ids @ ids',
+     (* Cartesian prod of the or-pats for the nth arg and the tail args *)
+     List.flatten (
+       List.map (fun (subst,p) ->
+	 List.map (fun (subst',ptail) -> (merge_subst subst subst',p::ptail)) ptaill) pl)))
+    idspl (aliases.alias_ids,[aliases.alias_map,[]])
+
 let rec subst_pat_iterator y t p = match p with
   | RCPatAtom (_,id) ->
     begin match id with Some x when Id.equal x y -> t | _ -> p end
   | RCPatCstr (loc,id,l1,l2) ->
-     RCPatCstr (loc,id,List.map (subst_pat_iterator y t) l1,
-	       List.map (subst_pat_iterator y t) l2)
+    RCPatCstr (loc,id,List.map (subst_pat_iterator y t) l1,
+ 	       List.map (subst_pat_iterator y t) l2)
   | RCPatAlias (l,p,a) -> RCPatAlias (l,subst_pat_iterator y t p,a)
   | RCPatOr (l,pl) -> RCPatOr (l,List.map (subst_pat_iterator y t) pl)
 
@@ -1222,6 +1207,14 @@ let drop_notations_pattern looked_for =
   in
   let test_kind top =
     if top then looked_for else function ConstructRef _ -> () | _ -> raise Not_found
+  in
+  (** [rcp_of_glob] : from [glob_constr] to [raw_cases_pattern_expr] *)
+  let rec rcp_of_glob = function
+    | GVar (loc,id) -> RCPatAtom (loc,Some id)
+    | GHole (loc,_,_,_) -> RCPatAtom (loc,None)
+    | GRef (loc,g,_) -> RCPatCstr (loc, g,[],[])
+    | GApp (loc,GRef (_,g,_),l) -> RCPatCstr (loc, g, List.map rcp_of_glob l,[])
+    | _ -> CErrors.anomaly Pp.(str "Invalid return pattern from Notation.interp_prim_token_cases_pattern_expr ")
   in
   let rec drop_syndef top scopes re pats =
     let (loc,qid) = qualid_of_reference re in
@@ -1292,8 +1285,9 @@ let drop_notations_pattern looked_for =
         let (argscs1,_) = find_remaining_scopes expl_pl pl g in
         RCPatCstr (loc, g, List.map2 (in_pat_sc scopes) argscs1 expl_pl @ List.map (in_pat false scopes) pl, [])
     | CPatNotation (loc,"- _",([CPatPrim(_,Numeral p)],[]),[])
-	when Bigint.is_strictly_pos p ->
-      fst (Notation.interp_prim_token_cases_pattern_expr loc (ensure_kind false loc) (Numeral (Bigint.neg p)) scopes)
+      when Bigint.is_strictly_pos p ->
+      let (pat, _df) = Notation.interp_prim_token_cases_pattern_expr loc (ensure_kind false loc) (Numeral (Bigint.neg p)) scopes in
+      rcp_of_glob pat
     | CPatNotation (_,"( _ )",([a],[]),[]) ->
       in_pat top scopes a
     | CPatNotation (loc, ntn, fullargs,extrargs) ->
@@ -1306,7 +1300,9 @@ let drop_notations_pattern looked_for =
       in_not top loc scopes (subst,substlist) extrargs c
     | CPatDelimiters (loc, key, e) ->
       in_pat top (None,find_delimiters_scope loc key::snd scopes) e
-    | CPatPrim (loc,p) -> fst (Notation.interp_prim_token_cases_pattern_expr loc (test_kind false) p scopes)
+    | CPatPrim (loc,p) ->
+      let (pat, _df) = Notation.interp_prim_token_cases_pattern_expr loc (test_kind false) p scopes in
+      rcp_of_glob pat
     | CPatAtom (loc, Some id) ->
       begin
 	match drop_syndef top scopes id [] with
@@ -1316,8 +1312,21 @@ let drop_notations_pattern looked_for =
     | CPatAtom (loc,None) -> RCPatAtom (loc,None)
     | CPatOr (loc, pl) ->
       RCPatOr (loc,List.map (in_pat top scopes) pl)
-    | CPatCast _ ->
-      assert false
+    | CPatCast (loc,_,_) ->
+      (* We raise an error if the pattern contains a cast, due to
+         current restrictions on casts in patterns. Cast in patterns
+         are supportted only in local binders and only at top
+         level. In fact, they are currently eliminated by the
+         parser. The only reason why they are in the
+         [cases_pattern_expr] type is that the parser needs to factor
+         the "(c : t)" notation with user defined notations (such as
+         the pair). In the long term, we will try to support such
+         casts everywhere, and use them to print the domains of
+         lambdas in the encoding of match in constr. This check is
+         here and not in the parser because it would require
+         duplicating the levels of the [pattern] rule. *)
+      CErrors.user_err ~loc ~hdr:"drop_notations_pattern"
+                            (Pp.strbrk "Casts are not supported in this pattern.")
   and in_pat_sc scopes x = in_pat false (x,snd scopes)
   and in_not top loc scopes (subst,substlist as fullsubst) args = function
     | NVar id ->
@@ -1365,7 +1374,7 @@ let drop_notations_pattern looked_for =
 let rec intern_pat genv aliases pat =
   let intern_cstr_with_all_args loc c with_letin idslpl1 pl2 =
     let idslpl2 = List.map (intern_pat genv empty_alias) pl2 in
-    let (ids',pll) = product_of_cases_patterns aliases.alias_ids (idslpl1@idslpl2) in
+    let (ids',pll) = product_of_cases_patterns aliases (idslpl1@idslpl2) in
     let pl' = List.map (fun (asubst,pl) ->
       (asubst, PatCstr (loc,c,chop_params_pattern loc (fst c) pl with_letin,alias_of aliases))) pll in
     ids',pl' in
@@ -1399,40 +1408,7 @@ let rec intern_pat genv aliases pat =
       check_or_pat_variables loc ids (List.tl idsl);
       (ids,List.flatten pl')
 
-(* [check_no_patcast p] raises an error if [p] contains a cast. This code is a
-   bit ad-hoc, and is due to current restrictions on casts in patterns. We
-   support them only in local binders and only at top level. In fact, they are
-   currently eliminated by the parser. The only reason why they are in the
-   [cases_pattern_expr] type is that the parser needs to factor the "(c : t)"
-   notation with user defined notations (such as the pair). In the long term, we
-   will try to support such casts everywhere, and use them to print the domains
-   of lambdas in the encoding of match in constr. We put this check here and not
-   in the parser because it would require to duplicate the levels of the
-   [pattern] rule. *)
-let rec check_no_patcast = function
-  | CPatCast (loc,_,_) ->
-     CErrors.user_err ~loc ~hdr:"check_no_patcast"
-                           (Pp.strbrk "Casts are not supported here.")
-  | CPatDelimiters(_,_,p)
-  | CPatAlias(_,p,_) -> check_no_patcast p
-  | CPatCstr(_,_,opl,pl) ->
-     Option.iter (List.iter check_no_patcast) opl;
-     List.iter check_no_patcast pl
-  | CPatOr(_,pl) ->
-     List.iter check_no_patcast pl
-  | CPatNotation(_,_,subst,pl) ->
-     check_no_patcast_subst subst;
-     List.iter check_no_patcast pl
-  | CPatRecord(_,prl) ->
-     List.iter (fun (_,p) -> check_no_patcast p) prl
-  | CPatAtom _ | CPatPrim _ -> ()
-
-and check_no_patcast_subst (pl,pll) =
-  List.iter check_no_patcast pl;
-  List.iter (List.iter check_no_patcast) pll
-
 let intern_cases_pattern genv scopes aliases pat =
-  check_no_patcast pat;
   intern_pat genv aliases
     (drop_notations_pattern (function ConstructRef _ -> () | _ -> raise Not_found) scopes pat)
 
@@ -1441,7 +1417,6 @@ let _ =
     fun scopes p -> intern_cases_pattern (Global.env ()) scopes empty_alias p
 
 let intern_ind_pattern genv scopes pat =
-  check_no_patcast pat;
   let no_not =
     try
       drop_notations_pattern (function (IndRef _ | ConstructRef _) -> () | _ -> raise Not_found) scopes pat
@@ -1455,7 +1430,7 @@ let intern_ind_pattern genv scopes pat =
       let idslpl1 = List.rev_map (intern_pat genv empty_alias) expl_pl in
       let idslpl2 = List.map (intern_pat genv empty_alias) pl2 in
       (with_letin,
-       match product_of_cases_patterns [] (List.rev_append idslpl1 idslpl2) with
+       match product_of_cases_patterns empty_alias (List.rev_append idslpl1 idslpl2) with
        | _,[_,pl] -> (c,chop_params_pattern loc c pl with_letin)
        | _ -> error_bad_inductive_type ~loc)
     | x -> error_bad_inductive_type ~loc:(raw_cases_pattern_expr_loc x)
@@ -1545,10 +1520,8 @@ let internalize globalenv env allow_patvar (_, ntnvars as lvar) c =
 	     let intern_ro_arg f =
 	       let before, after = split_at_annot bl n in
 	       let (env',rbefore) = List.fold_left intern_local_binder (env,[]) before in
-               let rbefore = List.map (function BDRawDef a -> a | BDPattern _ -> assert false) rbefore in
 	       let ro = f (intern env') in
-	       let n' = Option.map (fun _ -> List.count (fun (_,(_,_,b,_)) -> (* remove let-ins *) b = None) rbefore) n in
-               let rbefore = List.map (fun a -> BDRawDef a) rbefore in
+	       let n' = Option.map (fun _ -> List.count (function GLocalAssum _ -> true | _ -> false (* remove let-ins *)) rbefore) n in
 		 n', ro, List.fold_left intern_local_binder (env',rbefore) after
 	     in
 	     let n, ro, (env',rbl) =
@@ -1560,24 +1533,19 @@ let internalize globalenv env allow_patvar (_, ntnvars as lvar) c =
 	       | CMeasureRec (m,r) ->
 		   intern_ro_arg (fun f -> GMeasureRec (f m, Option.map f r))
 	     in
-	     let bl =
-               List.rev_map
-                 (function
-                  | BDRawDef a -> a
-                  | BDPattern (loc,_,_,_,_) ->
-                      Loc.raise ~loc (Stream.Error "pattern with quote not allowed after fix")) rbl in
-	       ((n, ro), bl, intern_type env' ty, env')) dl in
+	     let bl = List.rev (List.map glob_local_binder_of_extended rbl) in
+             ((n, ro), bl, intern_type env' ty, env')) dl in
         let idl = Array.map2 (fun (_,_,_,_,bd) (a,b,c,env') ->
 	     let env'' = List.fold_left_i (fun i en name -> 
 					     let (_,bli,tyi,_) = idl_temp.(i) in
-					     let fix_args = (List.map (fun (_,(na, bk, _, _)) -> (build_impls bk na)) bli) in
+					     let fix_args = (List.map (fun (na, bk, _, _) -> (build_impls bk na)) bli) in
 					       push_name_env ntnvars (impls_type_list ~args:fix_args tyi)
 					    en (Loc.ghost, Name name)) 0 env' lf in
              (a,b,c,intern {env'' with tmp_scope = None} bd)) dl idl_temp in
 	GRec (loc,GFix
 	      (Array.map (fun (ro,_,_,_) -> ro) idl,n),
               Array.of_list lf,
-              Array.map (fun (_,bl,_,_) -> List.map snd bl) idl,
+              Array.map (fun (_,bl,_,_) -> bl) idl,
               Array.map (fun (_,_,ty,_) -> ty) idl,
               Array.map (fun (_,_,_,bd) -> bd) idl)
     | CCoFix (loc, (locid,iddef), dl) ->
@@ -1591,20 +1559,18 @@ let internalize globalenv env allow_patvar (_, ntnvars as lvar) c =
         let idl_tmp = Array.map
           (fun ((loc,id),bl,ty,_) ->
             let (env',rbl) = List.fold_left intern_local_binder (env,[]) bl in
-            let rbl = List.map (function BDRawDef a -> a | BDPattern _ -> 
-                      Loc.raise ~loc (Stream.Error "pattern with quote not allowed after cofix")) rbl in
-            (List.rev rbl,
+            (List.rev (List.map glob_local_binder_of_extended rbl),
              intern_type env' ty,env')) dl in
 	let idl = Array.map2 (fun (_,_,_,bd) (b,c,env') ->
 	     let env'' = List.fold_left_i (fun i en name ->
 					     let (bli,tyi,_) = idl_tmp.(i) in
-					     let cofix_args =  List.map (fun (_, (na, bk, _, _)) -> (build_impls bk na)) bli in
+					     let cofix_args =  List.map (fun (na, bk, _, _) -> (build_impls bk na)) bli in
 	       push_name_env ntnvars (impls_type_list ~args:cofix_args tyi)
 					    en (Loc.ghost, Name name)) 0 env' lf in
              (b,c,intern {env'' with tmp_scope = None} bd)) dl idl_tmp in
 	GRec (loc,GCoFix n,
               Array.of_list lf,
-              Array.map (fun (bl,_,_) -> List.map snd bl) idl,
+              Array.map (fun (bl,_,_) -> bl) idl,
               Array.map (fun (_,ty,_) -> ty) idl,
               Array.map (fun (_,_,bd) -> bd) idl)
     | CProdN (loc,[],c2) ->
@@ -1615,9 +1581,10 @@ let internalize globalenv env allow_patvar (_, ntnvars as lvar) c =
         intern env c2
     | CLambdaN (loc,(nal,bk,ty)::bll,c2) ->
 	iterate_lam loc (reset_tmp_scope env) bk ty (CLambdaN (loc, bll, c2)) nal
-    | CLetIn (loc,na,c1,c2) ->
+    | CLetIn (loc,na,c1,t,c2) ->
 	let inc1 = intern (reset_tmp_scope env) c1 in
-	GLetIn (loc, snd na, inc1,
+	let int = Option.map (intern_type env) t in
+	GLetIn (loc, snd na, inc1, int,
           intern (push_name_env ntnvars (impls_term_list inc1) env na) c2)
     | CNotation (loc,"- _",([CPrim (_,Numeral p)],[],[]))
 	when Bigint.is_strictly_pos p ->
@@ -1787,7 +1754,7 @@ let internalize globalenv env allow_patvar (_, ntnvars as lvar) c =
   and intern_multiple_pattern env n (loc,pl) =
     let idsl_pll = List.map (intern_cases_pattern globalenv (None,env.scopes) empty_alias) pl in
     check_number_of_pattern loc n pl;
-    product_of_cases_patterns [] idsl_pll
+    product_of_cases_patterns empty_alias idsl_pll
 
   (* Expands a disjunction of multiple pattern *)
   and intern_disjunctive_multiple_pattern env loc n mpl =
@@ -1846,7 +1813,7 @@ let internalize globalenv env allow_patvar (_, ntnvars as lvar) c =
 		  (add_name match_acc (loc,x)) ((loc,x)::var_acc)
 	      | (LocalAssum (cano_name,ty) | LocalDef (cano_name,_,ty)) :: t, c::tt ->
 		let fresh =
-		  Namegen.next_name_away_with_default_using_types "iV" cano_name forbidden_names ty in
+		  Namegen.next_name_away_with_default_using_types "iV" cano_name forbidden_names (EConstr.of_constr ty) in
 		canonize_args t tt (fresh::forbidden_names)
 		  ((fresh,c)::match_acc) ((cases_pattern_loc c,Name fresh)::var_acc)
 	      | _ -> assert false in
@@ -1940,7 +1907,7 @@ let extract_ids env =
 
 let scope_of_type_kind = function
   | IsType -> Notation.current_type_scope_name ()
-  | OfType typ -> compute_type_scope typ
+  | OfType typ -> compute_type_scope (EConstr.Unsafe.to_constr typ)
   | WithoutTypeConstraint -> None
 
 let empty_ltac_sign = {
@@ -2019,7 +1986,7 @@ let interp_constr_evars env evdref ?(impls=empty_internalization_env) c =
   interp_constr_evars_gen env evdref WithoutTypeConstraint ~impls c
 
 let interp_casted_constr_evars env evdref ?(impls=empty_internalization_env) c typ =
-  interp_constr_evars_gen env evdref ~impls (OfType typ) c
+  interp_constr_evars_gen env evdref ~impls (OfType (EConstr.of_constr typ)) c
 
 let interp_type_evars env evdref ?(impls=empty_internalization_env) c =
   interp_constr_evars_gen env evdref IsType ~impls c
@@ -2060,8 +2027,6 @@ let interp_binder_evars env evdref na t =
   let t' = locate_if_hole (loc_of_glob_constr t) na t in
   understand_tcc_evars env evdref ~expected_type:IsType t'
 
-open Environ
-
 let my_intern_constr env lvar acc c =
   internalize env acc false lvar c
 
@@ -2070,22 +2035,16 @@ let intern_context global_level env impl_env binders =
   let lvar = (empty_ltac_sign, Id.Map.empty) in
   let lenv, bl = List.fold_left
 	    (fun (lenv, bl) b ->
-               let bl = List.map (fun a -> BDRawDef a) bl in
 	       let (env, bl) = intern_local_binder_aux ~global_level (my_intern_constr env lvar) Id.Map.empty (lenv, bl) b in
-               let bl =
-                 List.map
-                   (function
-                    | BDRawDef a -> a
-                    | BDPattern (loc,_,_,_,_) ->
-                        Loc.raise ~loc (Stream.Error "pattern with quote not allowed here")) bl in
 	       (env, bl))
 	    ({ids = extract_ids env; unb = false;
 	      tmp_scope = None; scopes = []; impls = impl_env}, []) binders in
-  (lenv.impls, List.map snd bl)
+  (lenv.impls, List.map glob_local_binder_of_extended bl)
   with InternalizationError (loc,e) ->
     user_err ~loc ~hdr:"internalize" (explain_internalization_error e)
 
 let interp_rawcontext_evars env evdref k bl =
+  let open EConstr in
   let (env, par, _, impls) =
     List.fold_left
       (fun (env,params,n,impls) (na, k, b, t) ->

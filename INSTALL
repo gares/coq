@@ -39,8 +39,7 @@ WHAT DO YOU NEED ?
      probably available in your distribution and for sure at
      http://projects.camlcity.org/projects/findlib.html)
 
-   - Camlp5 (version >= 6.02) (Coq compiles with Camlp4 but might be
-     less well supported)
+   - Camlp5 (version >= 6.02)
 
    - GNU Make version 3.81 or later
 
@@ -74,11 +73,10 @@ INSTALLATION PROCEDURE IN DETAILS (NORMAL USERS).
    bigger), you will also need the "ocamlopt" (or its native code version
    "ocamlopt.opt") command.
 
-2- Check that you have Camlp5 (or a supported Camlp4) installed on your
-   computer and that the command "camlp5" lies in a directory which
-   is present in your $PATH environment variable path.
-   (You need Camlp5/4 in both bytecode and native versions if
-   your platform supports it).
+2- Check that you have Camlp5 installed on your computer and that the
+   command "camlp5" lies in a directory which is present in your $PATH
+   environment variable path.  (You need Camlp5 in both bytecode and
+   native versions if your platform supports it).
 
 3- The uncompression and un-tarring of the distribution file gave birth
    to a directory named "coq-8.xx". You can rename this directory and put
@@ -170,16 +168,10 @@ INSTALLATION PROCEDURE FOR ADVANCED USERS.
    Then compile the sources as described in step 5 above. The resulting
    binaries will reside in the subdirectory bin/.
 
-   If you want to compile the sources for debugging (i.e. with the option
-   -g of the Caml compiler) then add the -debug option at configuration
-   step :
-
-	./configure -debug <other options>
-
-   and then compile the sources (step 5). Then you must make a Coq toplevel
-   including your own tactics, which must be compiled with -g, with coqmktop.
-   See the chapter 16 of the Coq Reference Manual for details about how
-   to use coqmktop and the Objective Caml debugger with Coq.
+   Unless you pass the -nodebug option to ./configure, the -g option of the
+   OCaml compiler will be used during compilation to allow debugging.
+   See the debugging file in dev/doc and the chapter 15 of the Coq Reference
+   Manual for details about how to use the OCaml debugger with Coq.
 
 
 THE AVAILABLE COMMANDS.

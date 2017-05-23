@@ -10,7 +10,6 @@ open Pp
 open CErrors
 open Util
 open Names
-open Term
 
 let make_dir l = DirPath.make (List.rev_map Id.of_string l)
 
@@ -29,6 +28,7 @@ let init_constant dir s () = coq_constant "Program" dir s
 let init_reference dir s () = coq_reference "Program" dir s
 
 let papp evdref r args = 
+  let open EConstr in
   let gr = delayed_force r in
     mkApp (Evarutil.e_new_global evdref gr, args)
 
@@ -57,7 +57,9 @@ let coq_JMeq_refl = init_reference ["Logic";"JMeq"] "JMeq_refl"
 let coq_not = init_constant ["Init";"Logic"] "not"
 let coq_and = init_constant ["Init";"Logic"] "and"
 
-let mk_coq_not x = mkApp (delayed_force coq_not, [| x |])
+let delayed_force c = EConstr.of_constr (c ())
+
+let mk_coq_not x = EConstr.mkApp (delayed_force coq_not, [| x |])
 
 let unsafe_fold_right f = function
     hd :: tl -> List.fold_right f tl hd
@@ -67,7 +69,7 @@ let mk_coq_and l =
   let and_typ = delayed_force coq_and in
     unsafe_fold_right
       (fun c conj ->
-	 mkApp (and_typ, [| c ; conj |]))
+	 EConstr.mkApp (and_typ, [| c ; conj |]))
       l
 
 (* true = transparent by default, false = opaque if possible *)

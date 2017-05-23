@@ -88,7 +88,7 @@ type proof_terminator = proof_ending -> unit
 type closed_proof = proof_object * proof_terminator
 
 type pstate = {
-  pid : Id.t;
+  pid : Id.t;  (* the name of the theorem whose proof is being constructed *)
   terminator : proof_terminator CEphemeron.key;
   endline_tactic : Genarg.glob_generic_argument option;
   section_vars : Context.Named.t option;
@@ -378,6 +378,7 @@ let close_proof ~keep_body_ucst_separate ?feedback_id ~now
   in
   let entries =
     Future.map2 (fun p (_, t) ->
+      let t = EConstr.Unsafe.to_constr t in
       let univstyp, body = make_body t p in
       let univs, typ = Future.force univstyp in
 	{ Entries.
@@ -407,7 +408,7 @@ let return_proof ?(allow_partial=false) () =
   (** ppedrot: FIXME, this is surely wrong. There is no reason to duplicate
       side-effects... This may explain why one need to uniquize side-effects
       thereafter... *)
-  let proofs = List.map (fun c -> c, eff) proofs in
+  let proofs = List.map (fun c -> EConstr.Unsafe.to_constr c, eff) proofs in
     proofs, Evd.evar_universe_context evd
  end else
   let initial_goals = Proof.initial_goals proof in
@@ -431,7 +432,7 @@ let return_proof ?(allow_partial=false) () =
       side-effects... This may explain why one need to uniquize side-effects
       thereafter... *)
   let proofs = 
-    List.map (fun (c, _) -> (Evarutil.nf_evars_universes evd c, eff)) initial_goals in
+    List.map (fun (c, _) -> (Evarutil.nf_evars_universes evd (EConstr.Unsafe.to_constr c), eff)) initial_goals in
     proofs, Evd.evar_universe_context evd
 
 let close_future_proof ~feedback_id proof =
@@ -515,7 +516,7 @@ module Bullet = struct
       | NeedClosingBrace -> str"Try unfocusing with \"}\"."
       | NoBulletInUse -> assert false (* This should never raise an error. *)
       | ProofFinished -> str"No more subgoals."
-      | Suggest b -> str"Bullet " ++ pr_bullet b ++ str" is mandatory here."
+      | Suggest b -> str"Expecting " ++ pr_bullet b ++ str"."
       | Unfinished b -> str"Current bullet " ++ pr_bullet b ++ str" is not finished."
 
     exception FailedBullet of t * suggestion
@@ -524,7 +525,7 @@ module Bullet = struct
       CErrors.register_handler
 	(function
 	| FailedBullet (b,sugg) ->
-	  let prefix = str"Wrong bullet " ++ pr_bullet b ++ str" : " in
+	  let prefix = str"Wrong bullet " ++ pr_bullet b ++ str": " in
 	  CErrors.user_err ~hdr:"Focus" (prefix ++ suggest_on_error sugg)
 	| _ -> raise CErrors.Unhandled)
 
@@ -670,16 +671,18 @@ let _ =
 let default_goal_selector = ref (Vernacexpr.SelectNth 1)
 let get_default_goal_selector () = !default_goal_selector
 
-let print_range_selector (i, j) =
-  if i = j then string_of_int i
-  else string_of_int i ^ "-" ^ string_of_int j
+let pr_range_selector (i, j) =
+  if i = j then int i
+  else int i ++ str "-" ++ int j
 
-let print_goal_selector = function
-  | Vernacexpr.SelectAll -> "all"
-  | Vernacexpr.SelectNth i -> string_of_int i
-  | Vernacexpr.SelectList l -> "[" ^
-      String.concat ", " (List.map print_range_selector l) ^ "]"
-  | Vernacexpr.SelectId id -> Id.to_string id
+let pr_goal_selector = function
+  | Vernacexpr.SelectAll -> str "all"
+  | Vernacexpr.SelectNth i -> int i
+  | Vernacexpr.SelectList l ->
+     str "["
+     ++ prlist_with_sep pr_comma pr_range_selector l
+     ++ str "]"
+  | Vernacexpr.SelectId id -> Id.print id
 
 let parse_goal_selector = function
   | "all" -> Vernacexpr.SelectAll
@@ -698,7 +701,10 @@ let _ =
                                   optdepr = false;
                                   optname = "default goal selector" ;
                                   optkey = ["Default";"Goal";"Selector"] ;
-                                  optread = begin fun () -> print_goal_selector !default_goal_selector end;
+                                  optread = begin fun () ->
+                                            string_of_ppcmds
+                                              (pr_goal_selector !default_goal_selector)
+                                            end;
                                   optwrite = begin fun n ->
                                     default_goal_selector := parse_goal_selector n
                                   end

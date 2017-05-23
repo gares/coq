@@ -9,11 +9,11 @@
 open Names
 open Constr
 open Environ
+open EConstr
 open Constrexpr
 open Tacexpr
 open Misctypes
 open Evd
-open Proof_type
 open Tacinterp
 
 (** TODO: document and clean me! *)
@@ -74,20 +74,20 @@ val cl_rewrite_clause :
   bool -> Locus.occurrences -> Id.t option -> unit Proofview.tactic
 
 val is_applied_rewrite_relation :
-  env -> evar_map -> Context.Rel.t -> constr -> types option
+  env -> evar_map -> rel_context -> constr -> types option
 
 val declare_relation :
-  ?binders:local_binder list -> constr_expr -> constr_expr -> Id.t ->
+  ?binders:local_binder_expr list -> constr_expr -> constr_expr -> Id.t ->
   constr_expr option -> constr_expr option -> constr_expr option -> unit
 
 val add_setoid :
-  bool -> local_binder list -> constr_expr -> constr_expr -> constr_expr ->
+  bool -> local_binder_expr list -> constr_expr -> constr_expr -> constr_expr ->
   Id.t -> unit
 
 val add_morphism_infer : bool -> constr_expr -> Id.t -> unit
 
 val add_morphism :
-  bool -> local_binder list -> constr_expr -> constr_expr -> Id.t -> unit
+  bool -> local_binder_expr list -> constr_expr -> constr_expr -> Id.t -> unit
 
 val get_reflexive_proof : env -> evar_map -> constr -> constr -> evar_map * constr
 
@@ -112,6 +112,6 @@ val apply_strategy :
   strategy ->
   Environ.env ->
   Names.Id.t list ->
-  Term.constr ->
-  bool * Term.constr ->
+  constr ->
+  bool * constr ->
   evars -> rewrite_result

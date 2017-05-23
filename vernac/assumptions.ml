@@ -44,6 +44,11 @@ let rec search_cst_label lab = function
   | (l, SFBconst cb) :: _ when Label.equal l lab -> cb
   | _ :: fields -> search_cst_label lab fields
 
+let rec search_mind_label lab = function
+  | [] -> raise Not_found
+  | (l, SFBmind mind) :: _ when Label.equal l lab -> mind
+  | _ :: fields -> search_mind_label lab fields
+
 (* TODO: using [empty_delta_resolver] below is probably slightly incorrect. But:
     a) I don't see currently what should be used instead
     b) this shouldn't be critical for Print Assumption. At worse some
@@ -135,6 +140,18 @@ let lookup_constant cst =
     else lookup_constant_in_impl cst (Some cb)
   with Not_found -> lookup_constant_in_impl cst None
 
+let lookup_mind_in_impl mind =
+  try
+    let mp,dp,lab = repr_kn (canonical_mind mind) in
+    let fields = memoize_fields_of_mp mp in
+      search_mind_label lab fields
+  with Not_found ->
+    anomaly (str "Print Assumption: unknown inductive " ++ MutInd.print mind)
+
+let lookup_mind mind =
+  try Global.lookup_mind mind
+  with Not_found -> lookup_mind_in_impl mind
+
 (** Graph traversal of an object, collecting on the way the dependencies of
     traversed objects *)
 
@@ -143,6 +160,27 @@ let label_of = function
   | IndRef (kn,_)
   | ConstructRef ((kn,_),_) -> pi3 (repr_mind kn)
   | VarRef id -> Label.of_id id
+
+let fold_constr_with_full_binders g f n acc c =
+  let open Context.Rel.Declaration in
+  match kind_of_term c with
+  | Rel _ | Meta _ | Var _   | Sort _ | Const _ | Ind _ | Construct _ -> acc
+  | Cast (c,_, t) -> f n (f n acc c) t
+  | Prod (na,t,c) -> f (g (LocalAssum (na,t)) n) (f n acc t) c
+  | Lambda (na,t,c) -> f (g (LocalAssum (na,t)) n) (f n acc t) c
+  | LetIn (na,b,t,c) -> f (g (LocalDef (na,b,t)) n) (f n (f n acc b) t) c
+  | App (c,l) -> Array.fold_left (f n) (f n acc c) l
+  | Proj (p,c) -> f n acc c
+  | Evar (_,l) -> Array.fold_left (f n) acc l
+  | Case (_,p,c,bl) -> Array.fold_left (f n) (f n (f n acc p) c) bl
+  | Fix (_,(lna,tl,bl)) ->
+      let n' = CArray.fold_left2 (fun c n t -> g (LocalAssum (n,t)) c) n lna tl in
+      let fd = Array.map2 (fun t b -> (t,b)) tl bl in
+      Array.fold_left (fun acc (t,b) -> f n' (f n acc t) b) acc fd
+  | CoFix (_,(lna,tl,bl)) ->
+      let n' = CArray.fold_left2 (fun c n t -> g (LocalAssum (n,t)) c) n lna tl in
+      let fd = Array.map2 (fun t b -> (t,b)) tl bl in
+      Array.fold_left (fun acc (t,b) -> f n' (f n acc t) b) acc fd
 
 let rec traverse current ctx accu t = match kind_of_term t with
 | Var id ->
@@ -166,10 +204,10 @@ let rec traverse current ctx accu t = match kind_of_term t with
         traverse_object
           ~inhabits:(current,ctx,Vars.subst1 mkProp oty) accu body (ConstRef kn)
     | _ ->
-        Termops.fold_constr_with_full_binders
+        fold_constr_with_full_binders
           Context.Rel.add (traverse current) ctx accu t
     end
-| _ -> Termops.fold_constr_with_full_binders
+| _ -> fold_constr_with_full_binders
           Context.Rel.add (traverse current) ctx accu t
 
 and traverse_object ?inhabits (curr, data, ax2ty) body obj =
@@ -206,7 +244,7 @@ and traverse_inductive (curr, data, ax2ty) mind obj =
       where I_0, I_1, ... are in the same mutual definition and c_ij
       are all their constructors. *)
    if Refmap_env.mem firstind_ref data then data, ax2ty else
-     let mib = Global.lookup_mind mind in
+     let mib = lookup_mind mind in
      (* Collects references of parameters *)
      let param_ctx = mib.mind_params_ctxt in
      let nparam = List.length param_ctx in
@@ -310,7 +348,7 @@ let assumptions ?(add_opaque=false) ?(add_transparent=false) st gr t =
     else
       accu
   | IndRef (m,_) | ConstructRef ((m,_),_) ->
-      let mind = Global.lookup_mind m in
+      let mind = lookup_mind m in
       if mind.mind_typing_flags.check_guarded then
         accu
       else

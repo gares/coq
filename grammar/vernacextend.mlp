@@ -11,7 +11,6 @@
 open Q_util
 open Argextend
 open Tacextend
-open GramCompat
 
 type rule = {
   r_head : string option;
@@ -28,7 +27,7 @@ type rule = {
 
 let rec make_let e = function
   | [] -> e
-  | ExtNonTerminal (g, p) :: l ->
+  | ExtNonTerminal (g, Some p) :: l ->
       let t = type_of_user_symbol g in
       let loc = MLast.loc_of_expr e in
       let e = make_let e l in
@@ -37,13 +36,13 @@ let rec make_let e = function
 
 let make_clause { r_patt = pt; r_branch = e; } =
   (make_patt pt,
-   vala None,
+   ploc_vala None,
    make_let e pt)
 
 (* To avoid warnings *)
 let mk_ignore c pt =
   let fold accu = function
-  | ExtNonTerminal (_, p) -> p :: accu
+  | ExtNonTerminal (_, Some p) -> p :: accu
   | _ -> accu
   in
   let names = List.fold_left fold [] pt in
@@ -55,11 +54,11 @@ let make_clause_classifier cg s { r_patt = pt; r_class = c; } =
   match c ,cg with
   | Some c, _ ->
      (make_patt pt,
-      vala None,
+      ploc_vala None,
       make_let (mk_ignore c pt) pt)
   | None, Some cg ->
      (make_patt pt,
-      vala None,
+      ploc_vala None,
       <:expr< fun () -> $cg$ $str:s$ >>)
   | None, None -> prerr_endline
       (("Vernac entry \""^s^"\" misses a classifier. "^
@@ -82,7 +81,7 @@ let make_clause_classifier cg s { r_patt = pt; r_class = c; } =
        ("Specific classifiers have precedence over global "^
          "classifiers. Only one classifier is called.") ^ "\n");
     (make_patt pt,
-      vala None,
+      ploc_vala None,
       <:expr< fun () -> (Vernacexpr.VtUnknown, Vernacexpr.VtNow) >>)
 
 let make_fun_clauses loc s l =
@@ -91,21 +90,22 @@ let make_fun_clauses loc s l =
     | None -> false
     | Some () -> true
     in
-    let cl = GramCompat.make_fun loc [make_clause c] in
+    let cl = make_fun loc [make_clause c] in
     <:expr< ($mlexpr_of_bool depr$, $cl$)>>
   in
   mlexpr_of_list map l
 
 let make_fun_classifiers loc s c l =
-  let cl = List.map (fun x -> GramCompat.make_fun loc [make_clause_classifier c s x]) l in
+  let cl = List.map (fun x -> make_fun loc [make_clause_classifier c s x]) l in
   mlexpr_of_list (fun x -> x) cl
 
 let make_prod_item = function
   | ExtTerminal s -> <:expr< Egramml.GramTerminal $str:s$ >>
-  | ExtNonTerminal (g, id) ->
+  | ExtNonTerminal (g, ido) ->
     let nt = type_of_user_symbol g in
     let base s = <:expr< Pcoq.genarg_grammar ($mk_extraarg loc s$) >> in
-      <:expr< Egramml.GramNonTerminal $default_loc$ $make_rawwit loc nt$
+    let typ = match ido with None -> None | Some _ -> Some nt in
+      <:expr< Egramml.GramNonTerminal $default_loc$ $mlexpr_of_option (make_rawwit loc) typ$
       $mlexpr_of_prod_entry_key base g$ >>
 
 let mlexpr_of_clause cl =
@@ -128,7 +128,6 @@ let declare_command loc s c nt cl =
       } >> ]
 
 open Pcaml
-open PcamlSig (* necessary for camlp4 *)
 
 EXTEND
   GLOBAL: str_item;
@@ -180,10 +179,13 @@ EXTEND
   args:
     [ [ e = LIDENT; "("; s = LIDENT; ")" ->
         let e = parse_user_entry e "" in
-        ExtNonTerminal (e, s)
+        ExtNonTerminal (e, Some s)
       | e = LIDENT; "("; s = LIDENT; ","; sep = STRING; ")" ->
         let e = parse_user_entry e sep in
-        ExtNonTerminal (e, s)
+        ExtNonTerminal (e, Some s)
+      | e = LIDENT ->
+        let e = parse_user_entry e "" in
+        ExtNonTerminal (e, None)
       | s = STRING ->
         ExtTerminal s
     ] ]

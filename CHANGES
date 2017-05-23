@@ -6,6 +6,28 @@ Tactics
 - New tactic "extensionality in H" which applies (possibly dependent)
   functional extensionality in H supposed to be a quantified equality
   until giving a bare equality.
+- New representation of terms that statically ensure stability by
+  evar-expansion. This has several consequences.
+  * In terms of performance, this adds a cost to every term destructuration,
+    but at the same time most eager evar normalizations were removed, which
+    couterbalances this drawback and even sometimes outperforms the old
+    implementation. For instance, many operations that would require O(n)
+    normalization of the term are now O(1) in tactics. YMMV.
+  * This triggers small changes in unification, which was not evar-insensitive.
+    Most notably, the new implementation recognizes Miller patterns that were
+    missed before because of a missing normalization step. Hopefully this should
+    be fairly uncommon.
+- Tactic "auto with real" can now discharge comparisons of literals.
+- The types of variables in patterns of "match" are now
+  beta-iota-reduced after type-checking. This has an impact on the
+  type of the variables that the tactic "refine" introduces in the
+  context, producing types a priori closer to the expectations.
+
+Vernacular Commands
+
+- Goals context can be printed in a more compact way when "Set
+  Printing Compact Contexts" is activated.
+
 
 Standard Library
 
@@ -26,6 +48,14 @@ Universes
 - Cumulative inductive types. see prefixes "Cumulative", "NonCumulative"
   for inductive definitions and the option "Set Inductive Cumulativity"
   in the reference manual.
+
+Plugins
+
+- The mathematical proof language (also known as declarative mode) was removed.
+
+Dependencies
+
+- Support for camlp4 has been removed.
 
 Changes from V8.6beta1 to V8.6
 ==============================

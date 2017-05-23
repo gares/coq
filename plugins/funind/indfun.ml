@@ -2,6 +2,7 @@ open CErrors
 open Util
 open Names
 open Term
+open EConstr
 open Pp
 open Indfun_common
 open Libnames
@@ -14,37 +15,39 @@ open Sigma.Notations
 
 module RelDecl = Context.Rel.Declaration
 
-let is_rec_info scheme_info =
+let is_rec_info sigma scheme_info =
   let test_branche min acc decl =
     acc || (
       let new_branche =
-	it_mkProd_or_LetIn mkProp (fst (decompose_prod_assum (RelDecl.get_type decl))) in
-      let free_rels_in_br = Termops.free_rels new_branche in
+	it_mkProd_or_LetIn mkProp (fst (decompose_prod_assum sigma (RelDecl.get_type decl))) in
+      let free_rels_in_br = Termops.free_rels sigma new_branche in
       let max = min + scheme_info.Tactics.npredicates in
       Int.Set.exists (fun i -> i >= min && i< max) free_rels_in_br
     )
   in
   List.fold_left_i test_branche 1 false (List.rev scheme_info.Tactics.branches)
 
-let choose_dest_or_ind scheme_info =
-  Tactics.induction_destruct (is_rec_info scheme_info) false
+let choose_dest_or_ind scheme_info args =
+  Proofview.tclBIND Proofview.tclEVARMAP (fun sigma ->
+  Tactics.induction_destruct (is_rec_info sigma scheme_info) false args)
 
 let functional_induction with_clean c princl pat =
   let res =
-    let f,args = decompose_app c in
     fun g ->
+    let sigma = Tacmach.project g in
+    let f,args = decompose_app sigma c in
     let princ,bindings, princ_type,g' =
       match princl with
       | None -> (* No principle is given let's find the good one *)
 	 begin
-	   match kind_of_term f with
+	   match EConstr.kind sigma f with
 	   | Const (c',u) ->
 	      let princ_option =
 		let finfo = (* we first try to find out a graph on f *)
 		  try find_Function_infos c'
 		  with Not_found ->
 		    user_err  (str "Cannot find induction information on "++
-				       Printer.pr_lconstr (mkConst c') )
+				       Printer.pr_leconstr (mkConst c') )
 		in
 		match Tacticals.elimination_sort_of_goal g with
 		| InProp -> finfo.prop_lemma
@@ -72,15 +75,17 @@ let functional_induction with_clean c princl pat =
 		    (* mkConst(const_of_id princ_name ),g (\* FIXME *\) *)
 		  with Not_found -> (* This one is neither defined ! *)
 		    user_err  (str "Cannot find induction principle for "
-				     ++Printer.pr_lconstr (mkConst c') )
+				     ++Printer.pr_leconstr (mkConst c') )
 	      in
-	      (princ,NoBindings, Tacmach.pf_unsafe_type_of g' princ,g')
+	      let princ = EConstr.of_constr princ in
+	      (princ,NoBindings,Tacmach.pf_unsafe_type_of g' princ,g')
 	   | _ -> raise (UserError(None,str "functional induction must be used with a function" ))
 	 end
       | Some ((princ,binding)) ->
 	 princ,binding,Tacmach.pf_unsafe_type_of g princ,g
     in
-    let princ_infos = Tactics.compute_elim_sig princ_type in
+    let sigma = Tacmach.project g' in
+    let princ_infos = Tactics.compute_elim_sig (Tacmach.project g') princ_type in
     let args_as_induction_constr =
       let c_list =
 	if princ_infos.Tactics.farg_in_concl
@@ -94,7 +99,7 @@ let functional_induction with_clean c princl pat =
     let princ' = Some (princ,bindings) in
     let princ_vars =
       List.fold_right
-	(fun a acc -> try Id.Set.add (destVar a) acc with DestKO -> acc)
+	(fun a acc -> try Id.Set.add (destVar sigma a) acc with DestKO -> acc)
 	args
 	Id.Set.empty
     in
@@ -129,11 +134,11 @@ let functional_induction with_clean c princl pat =
 
 let rec abstract_glob_constr c = function
   | [] -> c
-  | Constrexpr.LocalRawDef (x,b)::bl -> Constrexpr_ops.mkLetInC(x,b,abstract_glob_constr c bl)
-  | Constrexpr.LocalRawAssum (idl,k,t)::bl ->
+  | Constrexpr.CLocalDef (x,b,t)::bl -> Constrexpr_ops.mkLetInC(x,b,t,abstract_glob_constr c bl)
+  | Constrexpr.CLocalAssum (idl,k,t)::bl ->
       List.fold_right (fun x b -> Constrexpr_ops.mkLambdaC([x],k,t,b)) idl
         (abstract_glob_constr c bl)
-  | Constrexpr.LocalPattern _::bl -> assert false
+  | Constrexpr.CLocalPattern _::bl -> assert false
 
 let interp_casted_constr_with_implicits env sigma impls c  =
   Constrintern.intern_gen Pretyping.WithoutTypeConstraint env ~impls
@@ -151,7 +156,7 @@ let build_newrecursive
   let (rec_sign,rec_impls) =
     List.fold_left
       (fun (env,impls) (((_,recname),_),bl,arityc,_) ->
-        let arityc = Constrexpr_ops.prod_constr_expr arityc bl in
+        let arityc = Constrexpr_ops.mkCProdN Loc.ghost bl arityc in
         let arity,ctx = Constrintern.interp_type env0 sigma arityc in
 	let evdref = ref (Evd.from_env env0) in
 	let _, (_, impls') = Constrintern.interp_context_evars env evdref bl in
@@ -192,8 +197,10 @@ let is_rec names =
     | GRec _ -> error "GRec not handled"
     | GIf(_,b,_,lhs,rhs) ->
 	(lookup names b) || (lookup names lhs) || (lookup names rhs)
-    | GLetIn(_,na,t,b) | GLambda(_,na,_,t,b) | GProd(_,na,_,t,b)  ->
+    | GProd(_,na,_,t,b) | GLambda(_,na,_,t,b) ->
 	lookup names t || lookup (Nameops.name_fold Id.Set.remove na names) b
+    | GLetIn(_,na,b,t,c) ->
+	lookup names b || Option.cata (lookup names) true t || lookup (Nameops.name_fold Id.Set.remove na names) c
     | GLetTuple(_,nal,_,t,b) -> lookup names t ||
 	lookup
 	  (List.fold_left
@@ -215,9 +222,9 @@ let is_rec names =
 let rec local_binders_length = function
   (* Assume that no `{ ... } contexts occur *)
   | [] -> 0
-  | Constrexpr.LocalRawDef _::bl -> 1 + local_binders_length bl
-  | Constrexpr.LocalRawAssum (idl,_,_)::bl -> List.length idl + local_binders_length bl
-  | Constrexpr.LocalPattern _::bl -> assert false
+  | Constrexpr.CLocalDef _::bl -> 1 + local_binders_length bl
+  | Constrexpr.CLocalAssum (idl,_,_)::bl -> List.length idl + local_binders_length bl
+  | Constrexpr.CLocalPattern _::bl -> assert false
 
 let prepare_body ((name,_,args,types,_),_) rt =
   let n = local_binders_length args in
@@ -243,7 +250,9 @@ let derive_inversion fix_names =
 	 let evd,c =
 	   Evd.fresh_global
 	     (Global.env ()) evd (Constrintern.locate_reference (Libnames.qualid_of_ident id)) in 
-	 evd, destConst c::l
+        let c = EConstr.of_constr c in
+        let (cst, u) = destConst evd c in
+	 evd, (cst, EInstance.kind evd u) :: l
 	)
 	fix_names
 	(evd',[])
@@ -263,7 +272,8 @@ let derive_inversion fix_names =
 	       (Global.env ()) evd
 	       (Constrintern.locate_reference (Libnames.qualid_of_ident (mk_rel_id id)))
 	   in 
-	   evd,(fst (destInd id))::l
+	   let id = EConstr.of_constr id in
+	   evd,(fst (destInd evd id))::l
 	  )
 	  fix_names
 	  (evd',[])
@@ -330,7 +340,7 @@ let error_error names e =
 
 let generate_principle (evd:Evd.evar_map ref) pconstants on_error
     is_general do_built (fix_rec_l:(Vernacexpr.fixpoint_expr * Vernacexpr.decl_notation list) list) recdefs  interactive_proof
-    (continue_proof : int -> Names.constant array -> Term.constr array -> int ->
+    (continue_proof : int -> Names.constant array -> EConstr.constr array -> int ->
       Tacmach.tactic) : unit =
   let names = List.map (function (((_, name),_),_,_,_,_),_ -> name) fix_rec_l in
   let fun_bodies = List.map2 prepare_body fix_rec_l recdefs in
@@ -368,7 +378,8 @@ let generate_principle (evd:Evd.evar_map ref) pconstants on_error
 	     let evd = ref (Evd.from_env env) in
 	     let evd',uprinc = Evd.fresh_global env !evd princ in
              let _ = evd := evd' in 
-	     let princ_type = Typing.e_type_of ~refresh:true env evd uprinc in
+	     let princ_type = Typing.e_type_of ~refresh:true env evd (EConstr.of_constr uprinc) in
+	     let princ_type = EConstr.Unsafe.to_constr princ_type in
     	     Functional_principles_types.generate_functional_principle
 	       evd
 		 interactive_proof
@@ -403,7 +414,10 @@ let register_struct is_rec (fixpoint_exprl:(Vernacexpr.fixpoint_expr * Vernacexp
 	    let evd,c =
 	      Evd.fresh_global
 		(Global.env ()) evd (Constrintern.locate_reference (Libnames.qualid_of_ident fname)) in
-	    evd,((destConst c)::l)
+            let c = EConstr.of_constr c in
+            let (cst, u) = destConst evd c in
+            let u = EInstance.kind evd u in
+            evd,((cst, u) :: l)
 	   )
 	   (Evd.from_env (Global.env ()),[])
 	   fixpoint_exprl
@@ -417,7 +431,10 @@ let register_struct is_rec (fixpoint_exprl:(Vernacexpr.fixpoint_expr * Vernacexp
 	    let evd,c =
 	      Evd.fresh_global
 		(Global.env ()) evd (Constrintern.locate_reference (Libnames.qualid_of_ident fname)) in
-	    evd,((destConst c)::l)
+            let c = EConstr.of_constr c in
+            let (cst, u) = destConst evd c in
+            let u = EInstance.kind evd u in
+            evd,((cst, u) :: l)
 	   )
 	   (Evd.from_env (Global.env ()),[])
 	   fixpoint_exprl
@@ -427,7 +444,7 @@ let register_struct is_rec (fixpoint_exprl:(Vernacexpr.fixpoint_expr * Vernacexp
 
 let generate_correction_proof_wf f_ref tcc_lemma_ref
     is_mes functional_ref eq_ref rec_arg_num rec_arg_type nb_args relation
-    (_: int) (_:Names.constant array) (_:Term.constr array) (_:int) : Tacmach.tactic =
+    (_: int) (_:Names.constant array) (_:EConstr.constr array) (_:int) : Tacmach.tactic =
   Functional_principles_proofs.prove_principle_for_gen
     (f_ref,functional_ref,eq_ref)
     tcc_lemma_ref is_mes  rec_arg_num rec_arg_type relation
@@ -436,7 +453,7 @@ let generate_correction_proof_wf f_ref tcc_lemma_ref
 let register_wf ?(is_mes=false) fname rec_impls wf_rel_expr wf_arg using_lemmas args ret_type body
     pre_hook
     =
-  let type_of_f = Constrexpr_ops.prod_constr_expr ret_type args in
+  let type_of_f = Constrexpr_ops.mkCProdN Loc.ghost args ret_type in
   let rec_arg_num =
     let names =
       List.map
@@ -467,7 +484,7 @@ let register_wf ?(is_mes=false) fname rec_impls wf_rel_expr wf_arg using_lemmas 
     Constrexpr.CApp (Loc.ghost,(None,Constrexpr_ops.mkRefC (Qualid (Loc.ghost,(qualid_of_string "Logic.eq")))),
 		    [(f_app_args,None);(body,None)])
   in
-  let eq = Constrexpr_ops.prod_constr_expr unbounded_eq args in
+  let eq = Constrexpr_ops.mkCProdN Loc.ghost args unbounded_eq in
   let hook ((f_ref,_) as fconst) tcc_lemma_ref (functional_ref,_) (eq_ref,_) rec_arg_num rec_arg_type
       nb_args relation =
     try
@@ -496,7 +513,7 @@ let register_mes fname rec_impls wf_mes_expr wf_rel_expr_opt wf_arg using_lemmas
       | None ->
 	  begin
 	    match args with
-	      | [Constrexpr.LocalRawAssum ([(_,Name x)],k,t)] -> t,x
+	      | [Constrexpr.CLocalAssum ([(_,Name x)],k,t)] -> t,x
 	      | _ -> error "Recursive argument must be specified"
 	  end
       | Some wf_args ->
@@ -504,7 +521,7 @@ let register_mes fname rec_impls wf_mes_expr wf_rel_expr_opt wf_arg using_lemmas
 	    match
 	      List.find
 		(function
-		   | Constrexpr.LocalRawAssum(l,k,t) ->
+		   | Constrexpr.CLocalAssum(l,k,t) ->
 		       List.exists
 			 (function (_,Name id) -> Id.equal id wf_args | _ -> false)
 			 l
@@ -512,7 +529,7 @@ let register_mes fname rec_impls wf_mes_expr wf_rel_expr_opt wf_arg using_lemmas
 		)
 		args
 	    with
-	      | Constrexpr.LocalRawAssum(_,k,t)  ->	    t,wf_args
+	      | Constrexpr.CLocalAssum(_,k,t)  ->	    t,wf_args
 	      | _ -> assert false
 	  with Not_found -> assert false
   in
@@ -570,10 +587,10 @@ let make_assoc assoc l1 l2 =
 let rec rebuild_bl (aux,assoc) bl typ = 
 	match bl,typ with 
 	  | [], _ -> (List.rev aux,replace_vars_constr_expr assoc typ,assoc)
-	  | (Constrexpr.LocalRawAssum(nal,bk,_))::bl',typ ->
+	  | (Constrexpr.CLocalAssum(nal,bk,_))::bl',typ ->
 	     rebuild_nal (aux,assoc) bk bl' nal (List.length nal) typ
-	  | (Constrexpr.LocalRawDef(na,_))::bl',Constrexpr.CLetIn(_,_,nat,typ') ->
-	    rebuild_bl ((Constrexpr.LocalRawDef(na,replace_vars_constr_expr assoc nat)::aux),assoc)
+	  | (Constrexpr.CLocalDef(na,_,_))::bl',Constrexpr.CLetIn(_,_,nat,ty,typ') ->
+	    rebuild_bl ((Constrexpr.CLocalDef(na,replace_vars_constr_expr assoc nat,Option.map (replace_vars_constr_expr assoc) ty (* ??? *))::aux),assoc)
 	      bl' typ'
 	  | _ -> assert false
       and rebuild_nal (aux,assoc) bk bl' nal lnal typ = 
@@ -586,7 +603,7 @@ let rec rebuild_bl (aux,assoc) bl typ =
 	    then 
 	      let old_nal',new_nal' = List.chop lnal nal' in
 	      let nassoc = make_assoc assoc old_nal' nal in
-	      let assum = LocalRawAssum(nal,bk,replace_vars_constr_expr assoc nal't) in
+	      let assum = CLocalAssum(nal,bk,replace_vars_constr_expr assoc nal't) in
 	      rebuild_bl ((assum :: aux), nassoc) bl' 
 		(if List.is_empty new_nal' && List.is_empty rest
 		 then typ'
@@ -596,7 +613,7 @@ let rec rebuild_bl (aux,assoc) bl typ =
 	    else 
 	      let captured_nal,non_captured_nal = List.chop lnal' nal in
 	      let nassoc = make_assoc assoc nal' captured_nal in
-	      let assum = LocalRawAssum(captured_nal,bk,replace_vars_constr_expr assoc nal't) in
+	      let assum = CLocalAssum(captured_nal,bk,replace_vars_constr_expr assoc nal't) in
 	      rebuild_nal ((assum :: aux), nassoc)
 		bk bl' non_captured_nal (lnal - lnal') (CProdN(Loc.ghost,rest,typ'))
 	  | _ -> assert false
@@ -726,8 +743,8 @@ let rec add_args id new_args b =
       CLambdaN(loc,
 	       List.map (fun (nal,k,b2) -> (nal,k,add_args id new_args  b2)) nal,
 	       add_args id new_args  b1)
-  | CLetIn(loc,na,b1,b2) ->
-      CLetIn(loc,na,add_args id new_args b1,add_args id new_args b2)
+  | CLetIn(loc,na,b1,t,b2) ->
+      CLetIn(loc,na,add_args id new_args b1,Option.map (add_args id new_args) t,add_args id new_args b2)
   | CAppExpl(loc,(pf,r,us),exprl) ->
       begin
 	match r with
@@ -813,7 +830,7 @@ let rec chop_n_arrow n t =
       | _ -> anomaly (Pp.str "Not enough products")
 
 
-let rec get_args b t : Constrexpr.local_binder list *
+let rec get_args b t : Constrexpr.local_binder_expr list *
     Constrexpr.constr_expr * Constrexpr.constr_expr =
   match b with
     | Constrexpr.CLambdaN (loc, (nal_ta), b') ->
@@ -824,7 +841,7 @@ let rec get_args b t : Constrexpr.local_binder list *
 	  in
 	  let nal_tas,b'',t'' = get_args b' (chop_n_arrow n t) in
 	  (List.map (fun (nal,k,ta) ->
-		       (Constrexpr.LocalRawAssum (nal,k,ta))) nal_ta)@nal_tas, b'',t''
+		       (Constrexpr.CLocalAssum (nal,k,ta))) nal_ta)@nal_tas, b'',t''
 	end
     | _ -> [],b,t
 
@@ -835,7 +852,7 @@ let make_graph (f_ref:global_reference) =
       | ConstRef c ->
 	  begin try c,Global.lookup_constant c
 	  with Not_found ->
-	    raise (UserError (None,str "Cannot find " ++ Printer.pr_lconstr (mkConst c)) )
+	    raise (UserError (None,str "Cannot find " ++ Printer.pr_leconstr (mkConst c)) )
 	  end
       | _ -> raise (UserError (None, str "Not a function reference") )
   in
@@ -865,13 +882,13 @@ let make_graph (f_ref:global_reference) =
 			  List.flatten
 			    (List.map
 			       (function
-				  | Constrexpr.LocalRawDef (na,_)-> []
-				  | Constrexpr.LocalRawAssum (nal,_,_) ->
+				  | Constrexpr.CLocalDef (na,_,_)-> []
+				  | Constrexpr.CLocalAssum (nal,_,_) ->
 				      List.map
 					(fun (loc,n) ->
 					   CRef(Libnames.Ident(loc, Nameops.out_name n),None))
 					nal
-                                  | Constrexpr.LocalPattern _ -> assert false
+                                  | Constrexpr.CLocalPattern _ -> assert false
 			       )
 			       nal_tas
 			    )

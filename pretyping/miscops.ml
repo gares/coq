@@ -30,7 +30,7 @@ let smartmap_cast_type f c =
 let glob_sort_eq g1 g2 = match g1, g2 with
 | GProp, GProp -> true
 | GSet, GSet -> true
-| GType l1, GType l2 -> List.equal (fun x y -> CString.equal (snd x) (snd y)) l1 l2
+| GType l1, GType l2 -> List.equal (fun x y -> Names.Name.equal (snd x) (snd y)) l1 l2
 | _ -> false
 
 let intro_pattern_naming_eq nam1 nam2 = match nam1, nam2 with
@@ -58,3 +58,16 @@ let map_red_expr_gen f g h = function
   | CbvNative occs_o -> CbvNative (Option.map (map_occs (map_union g h)) occs_o)
   | Cbn flags -> Cbn (map_flags g flags)
   | ExtraRedExpr _ | Red _ | Hnf as x -> x
+
+(** Mapping bindings *)
+
+let map_explicit_bindings f l =
+  let map (loc, hyp, x) = (loc, hyp, f x) in
+  List.map map l
+
+let map_bindings f = function
+| ImplicitBindings l -> ImplicitBindings (List.map f l)
+| ExplicitBindings expl -> ExplicitBindings (map_explicit_bindings f expl)
+| NoBindings -> NoBindings
+
+let map_with_bindings f (x, bl) = (f x, map_bindings f bl)

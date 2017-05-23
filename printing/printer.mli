@@ -18,6 +18,11 @@ open Glob_term
 
 (** These are the entry points for printing terms, context, tac, ... *)
 
+
+val enable_unfocused_goal_printing: bool ref
+val enable_goal_tags_printing      : bool ref
+val enable_goal_names_printing     : bool ref
+
 (** Terms *)
 
 val pr_lconstr_env         : env -> evar_map -> constr -> std_ppcmds
@@ -38,6 +43,13 @@ val safe_pr_lconstr             : constr -> std_ppcmds
 val safe_pr_constr_env          : env -> evar_map -> constr -> std_ppcmds
 val safe_pr_constr              : constr -> std_ppcmds
 
+val pr_econstr_env     : env -> evar_map -> EConstr.t -> std_ppcmds
+val pr_econstr         : EConstr.t -> std_ppcmds
+val pr_leconstr_env     : env -> evar_map -> EConstr.t -> std_ppcmds
+val pr_leconstr         : EConstr.t -> std_ppcmds
+
+val pr_etype_env           : env -> evar_map -> EConstr.types -> std_ppcmds
+val pr_letype_env           : env -> evar_map -> EConstr.types -> std_ppcmds
 
 val pr_open_constr_env     : env -> evar_map -> open_constr -> std_ppcmds
 val pr_open_constr         : open_constr -> std_ppcmds
@@ -51,7 +63,7 @@ val pr_constr_under_binders      : constr_under_binders -> std_ppcmds
 val pr_lconstr_under_binders_env : env -> evar_map -> constr_under_binders -> std_ppcmds
 val pr_lconstr_under_binders     : constr_under_binders -> std_ppcmds
 
-val pr_goal_concl_style_env : env -> evar_map -> types -> std_ppcmds
+val pr_goal_concl_style_env : env -> evar_map -> EConstr.types -> std_ppcmds
 val pr_ltype_env           : env -> evar_map -> types -> std_ppcmds
 val pr_ltype               : types -> std_ppcmds
 
@@ -61,8 +73,8 @@ val pr_type                : types -> std_ppcmds
 val pr_closed_glob_env     : env -> evar_map -> closed_glob_constr -> std_ppcmds
 val pr_closed_glob         : closed_glob_constr -> std_ppcmds
 
-val pr_ljudge_env          : env -> evar_map -> unsafe_judgment -> std_ppcmds * std_ppcmds
-val pr_ljudge              : unsafe_judgment -> std_ppcmds * std_ppcmds
+val pr_ljudge_env          : env -> evar_map -> EConstr.unsafe_judgment -> std_ppcmds * std_ppcmds
+val pr_ljudge              : EConstr.unsafe_judgment -> std_ppcmds * std_ppcmds
 
 val pr_lglob_constr_env      : env -> glob_constr -> std_ppcmds
 val pr_lglob_constr          : glob_constr -> std_ppcmds
@@ -106,6 +118,9 @@ val pr_pconstructor        : env -> pconstructor -> std_ppcmds
 
 
 (** Contexts *)
+(** Display compact contexts of goals (simple hyps on the same line) *)
+val set_compact_context : bool -> unit
+val get_compact_context : unit -> bool
 
 val pr_context_unlimited   : env -> evar_map -> std_ppcmds
 val pr_ne_context_of       : std_ppcmds -> env -> evar_map -> std_ppcmds
@@ -127,10 +142,22 @@ val pr_cpred               : Cpred.t -> std_ppcmds
 val pr_idpred              : Id.Pred.t -> std_ppcmds
 val pr_transparent_state   : transparent_state -> std_ppcmds
 
-(** Proofs *)
+(** Proofs, these functions obey [Hyps Limit] and [Compact contexts]. *)
 
 val pr_goal                : goal sigma -> std_ppcmds
-val pr_subgoals            : ?pr_first:bool -> std_ppcmds option -> evar_map -> evar list -> Goal.goal list -> int list -> goal list -> std_ppcmds
+
+(** [pr_subgoals ~pr_first pp sigma seeds shelf focus_stack unfocused goals]
+   prints the goals of the list [goals] followed by the goals in
+   [unfocused], in a short way (typically only the conclusion) except
+   for the first goal if [pr_first] is true. This function can be
+   replaced by another one by calling [set_printer_pr] (see below),
+   typically by plugin writers. The default printer prints only the
+   focused goals unless the conrresponding option
+   [enable_unfocused_goal_printing] is set. [seeds] is for printing
+   dependent evars (mainly for emacs proof tree mode). *)
+val pr_subgoals            : ?pr_first:bool -> std_ppcmds option -> evar_map -> evar list -> Goal.goal list -> int list
+                             -> goal list -> goal list -> std_ppcmds
+
 val pr_subgoal             : int -> evar_map -> goal list -> std_ppcmds
 val pr_concl               : int -> evar_map -> goal -> std_ppcmds
 
@@ -185,7 +212,7 @@ val pr_goal_by_id : Id.t -> std_ppcmds
 val pr_goal_by_uid : string -> std_ppcmds
 
 type printer_pr = {
- pr_subgoals            : ?pr_first:bool -> std_ppcmds option -> evar_map -> evar list -> Goal.goal list -> int list -> goal list -> std_ppcmds;
+ pr_subgoals            : ?pr_first:bool -> std_ppcmds option -> evar_map -> evar list -> Goal.goal list -> int list -> goal list -> goal list -> std_ppcmds;
  pr_subgoal             : int -> evar_map -> goal list -> std_ppcmds;
  pr_goal                : goal sigma -> std_ppcmds;
 };;

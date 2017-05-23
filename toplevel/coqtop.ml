@@ -8,11 +8,8 @@
 
 open Pp
 open CErrors
-open Util
 open Flags
-open Names
 open Libnames
-open States
 open Coqinit
 
 let () = at_exit flush_all
@@ -92,10 +89,11 @@ let console_toploop_run () =
     Dumpglob.noglob ()
   end;
   Coqloop.loop();
-  (* We remove the feeder but it could be ok not to do so *)
   (* Initialise and launch the Ocaml toplevel *)
   Coqinit.init_ocaml_path();
-  Mltop.ocaml_toploop()
+  Mltop.ocaml_toploop();
+  (* We let the feeder in place for users of Drop *)
+  Feedback.del_feeder tl_feed
 
 let toploop_run = ref console_toploop_run
 
@@ -132,10 +130,10 @@ let engage () =
 
 let set_batch_mode () = batch_mode := true
 
-let toplevel_default_name = DirPath.make [Id.of_string "Top"]
+let toplevel_default_name = Names.(DirPath.make [Id.of_string "Top"])
 let toplevel_name = ref toplevel_default_name
 let set_toplevel_name dir =
-  if DirPath.is_empty dir then error "Need a non empty toplevel module name";
+  if Names.DirPath.is_empty dir then error "Need a non empty toplevel module name";
   toplevel_name := dir
 
 let remove_top_ml () = Mltop.remove ()
@@ -149,9 +147,9 @@ let set_inputstate s =
   warn_deprecated_inputstate ();
   inputstate:=s
 let inputstate () =
-  if not (String.is_empty !inputstate) then
+  if not (CString.is_empty !inputstate) then
     let fname = Loadpath.locate_file (CUnix.make_suffix !inputstate ".coq") in
-    intern_state fname
+    States.intern_state fname
 
 let warn_deprecated_outputstate =
   CWarnings.create ~name:"deprecated-outputstate" ~category:"deprecated"
@@ -163,9 +161,9 @@ let set_outputstate s =
   warn_deprecated_outputstate ();
   outputstate:=s
 let outputstate () =
-  if not (String.is_empty !outputstate) then
+  if not (CString.is_empty !outputstate) then
     let fname = CUnix.make_suffix !outputstate ".coq" in
-    extern_state fname
+    States.extern_state fname
 
 let set_include d p implicit =
   let p = dirpath_of_string p in
@@ -174,15 +172,15 @@ let set_include d p implicit =
 let load_vernacular_list = ref ([] : (string * bool) list)
 let add_load_vernacular verb s =
   load_vernacular_list := ((CUnix.make_suffix s ".v"),verb) :: !load_vernacular_list
-let load_vernacular () =
-  List.iter
-    (fun (s,b) ->
+let load_vernacular sid =
+  List.fold_left
+    (fun sid (s,v) ->
       let s = Loadpath.locate_file s in
       if !Flags.beautify then
-	with_option beautify_file (Vernac.load_vernac b) s
+	with_option beautify_file (Vernac.load_vernac v sid) s
       else
-	Vernac.load_vernac b s)
-    (List.rev !load_vernacular_list)
+	Vernac.load_vernac v sid s)
+    sid (List.rev !load_vernacular_list)
 
 let load_vernacular_obj = ref ([] : string list)
 let add_vernac_obj s = load_vernacular_obj := s :: !load_vernacular_obj
@@ -217,7 +215,7 @@ let glob_opt = ref false
 
 let add_compile verbose s =
   set_batch_mode ();
-  Flags.make_silent true;
+  Flags.quiet := true;
   if not !glob_opt then Dumpglob.dump_to_dotglob ();
   (** make the file name explicit; needed not to break up Coq loadpath stuff. *)
   let s =
@@ -249,7 +247,7 @@ let set_emacs () =
   if not (Option.is_empty !toploop) then
     error "Flag -emacs is incompatible with a custom toplevel loop";
   Flags.print_emacs := true;
-  Vernacentries.qed_display_script := false;
+  Printer.enable_goal_tags_printing := true;
   color := `OFF
 
 (** Options for CoqIDE *)
@@ -294,9 +292,17 @@ let init_gc () =
     We no longer use [Arg.parse], in order to use share [Usage.print_usage]
     between coqtop and coqc. *)
 
+let usage_no_coqlib = CWarnings.create ~name:"usage-no-coqlib" ~category:"filesystem"
+    (fun () -> Pp.str "cannot guess a path for Coq libraries; dynaminally loaded flags will not be mentioned")
+
+exception NoCoqLib
 let usage () =
-  Envars.set_coqlib CErrors.error;
+  begin
+  try
+  Envars.set_coqlib ~fail:(fun x -> raise NoCoqLib);
   init_load_path ();
+  with NoCoqLib -> usage_no_coqlib ()
+  end;
   if !batch_mode then Usage.print_usage_coqc ()
   else begin
     Mltop.load_ml_objects_raw_rex
@@ -379,7 +385,7 @@ let get_host_port opt s =
 let get_error_resilience opt = function
   | "on" | "all" | "yes" -> `All
   | "off" | "no" -> `None
-  | s -> `Only (String.split ',' s)
+  | s -> `Only (CString.split ',' s)
 
 let get_task_list s = List.map int_of_string (Str.split (Str.regexp ",") s)
 
@@ -387,7 +393,7 @@ let vio_tasks = ref []
 
 let add_vio_task f =
   set_batch_mode ();
-  Flags.make_silent true;
+  Flags.quiet := true;
   vio_tasks := f :: !vio_tasks
 
 let check_vio_tasks () =
@@ -401,7 +407,7 @@ let vio_files_j = ref 0
 let vio_checking = ref false
 let add_vio_file f =
   set_batch_mode ();
-  Flags.make_silent true;
+  Flags.quiet := true;
   vio_files := f :: !vio_files
 
 let set_vio_checking_j opt j =
@@ -433,10 +439,10 @@ let get_native_name s =
 
 (** Prints info which is either an error or an anomaly and then exits
     with the appropriate error code *)
-let fatal_error info anomaly =
-  let msg = info ++ fnl () in
-  Format.fprintf !Topfmt.err_ft "@[%a@]%!" pp_with msg;
-  exit (if anomaly then 129 else 1)
+let fatal_error ?extra exn =
+  Topfmt.print_err_exn ?extra exn;
+  let exit_code = if CErrors.(is_anomaly exn || not (handled exn)) then 129 else 1 in
+  exit exit_code
 
 let parse_args arglist =
   let args = ref arglist in
@@ -566,7 +572,7 @@ let parse_args arglist =
     |"-output-context" -> output_context := true
     |"-profile-ltac" -> Flags.profile_ltac := true
     |"-q" -> no_load_rc ()
-    |"-quiet"|"-silent" -> Flags.make_silent true; Flags.make_warn false
+    |"-quiet"|"-silent" -> Flags.quiet := true; Flags.make_warn false
     |"-quick" -> Flags.compilation_mode := BuildVio
     |"-list-tags" -> print_tags := true
     |"-time" -> Flags.time := true
@@ -599,11 +605,7 @@ let parse_args arglist =
   in
   try
     parse ()
-  with
-    | UserError(_, s) as e ->
-      if ismt s then exit 1
-      else fatal_error (CErrors.print e) false
-    | any -> fatal_error (CErrors.print any) (CErrors.is_anomaly any)
+  with any -> fatal_error any
 
 let init_toplevel arglist =
   init_gc ();
@@ -616,7 +618,7 @@ let init_toplevel arglist =
       (* If we have been spawned by the Spawn module, this has to be done
        * early since the master waits us to connect back *)
       Spawned.init_channels ();
-      Envars.set_coqlib CErrors.error;
+      Envars.set_coqlib ~fail:CErrors.error;
       if !print_where then (print_endline(Envars.coqlib ()); exit(exitcode ()));
       if !print_config then (Usage.print_config (); exit (exitcode ()));
       if !print_tags then (print_style_tags (); exit (exitcode ()));
@@ -624,7 +626,7 @@ let init_toplevel arglist =
       init_load_path ();
       Option.iter Mltop.load_ml_object_raw !toploop;
       let extras = !toploop_init extras in
-      if not (List.is_empty extras) then begin
+      if not (CList.is_empty extras) then begin
         prerr_endline ("Don't know what to do with "^String.concat " " extras);
         prerr_endline "See -help for the list of supported options";
         exit 1
@@ -633,29 +635,32 @@ let init_toplevel arglist =
       inputstate ();
       Mltop.init_known_plugins ();
       engage ();
-      if (not !batch_mode || List.is_empty !compile_list)
+      if (not !batch_mode || CList.is_empty !compile_list)
          && Global.env_is_initial ()
       then Declaremods.start_library !toplevel_name;
       init_library_roots ();
       load_vernac_obj ();
       require ();
+      (* XXX: This is incorrect in batch mode, as we will initialize
+         the STM before having done Declaremods.start_library, thus
+         state 1 is invalid. This bug was present in 8.5/8.6. *)
       Stm.init ();
-      load_rcfile();
-      load_vernacular ();
+      let sid  = load_rcfile (Stm.get_current_state ()) in
+      (* XXX: We ignore this for now, but should be threaded to the toplevels *)
+      let _sid = load_vernacular sid in
       compile_files ();
       schedule_vio_checking ();
       schedule_vio_compilation ();
       check_vio_tasks ();
       outputstate ()
     with any ->
-      let any = CErrors.push any in
       flush_all();
-      let msg =
-        if !batch_mode then mt ()
-        else str "Error during initialization:" ++ fnl ()
+      let extra =
+        if !batch_mode && not Stateid.(equal (Stm.get_current_state ()) dummy)
+        then None
+        else Some (str "Error during initialization: ")
       in
-      let is_anomaly e = CErrors.is_anomaly e || not (CErrors.handled e) in
-      fatal_error (msg ++ Coqloop.print_toplevel_error any) (is_anomaly (fst any))
+      fatal_error ?extra any
   end;
   if !batch_mode then begin
     flush_all();

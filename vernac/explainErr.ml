@@ -27,7 +27,7 @@ exception EvaluatedError of std_ppcmds * exn option
 let explain_exn_default = function
   (* Basic interaction exceptions *)
   | Stream.Error txt -> hov 0 (str "Syntax error: " ++ str txt ++ str ".")
-  | Compat.Token.Error txt -> hov 0 (str "Syntax error: " ++ str txt ++ str ".")
+  | Token.Error txt -> hov 0 (str "Syntax error: " ++ str txt ++ str ".")
   | CLexer.Error.E err -> hov 0 (str (CLexer.Error.to_string err))
   | Sys_error msg -> hov 0 (str "System error: " ++ guill msg)
   | Out_of_memory -> hov 0 (str "Out of memory.")
@@ -57,6 +57,7 @@ let process_vernac_interp_error exn = match fst exn with
 	mt() in
     wrap_vernac_error exn (str "Universe inconsistency" ++ msg ++ str ".")
   | TypeError(ctx,te) ->
+      let te = Himsg.map_ptype_error EConstr.of_constr te in
       wrap_vernac_error exn (Himsg.explain_type_error ctx Evd.empty te)
   | PretypeError(ctx,sigma,te) ->
       wrap_vernac_error exn (Himsg.explain_pretype_error ctx sigma te)

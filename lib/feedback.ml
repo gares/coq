@@ -15,9 +15,6 @@ type level =
   | Warning
   | Error
 
-type edit_id = int
-type state_id = Stateid.t
-type edit_or_state_id = Edit of edit_id | State of state_id
 type route_id = int
 
 type feedback_content =
@@ -38,12 +35,10 @@ type feedback_content =
   | Message of level * Loc.t option * Pp.std_ppcmds
 
 type feedback = {
-  id : edit_or_state_id;
+  id       : Stateid.t;
+  route    : route_id;
   contents : feedback_content;
-  route : route_id;
 }
-
-let default_route = 0
 
 (** Feeders *)
 let feeders : (int, feedback -> unit) Hashtbl.t = Hashtbl.create 7
@@ -56,7 +51,8 @@ let add_feeder =
 
 let del_feeder fid = Hashtbl.remove feeders fid
 
-let feedback_id    = ref (Edit 0)
+let default_route = 0
+let feedback_id    = ref Stateid.dummy
 let feedback_route = ref default_route
 
 let set_id_for_feedback ?(route=default_route) i =

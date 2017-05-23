@@ -8,9 +8,10 @@
 
 (*i camlp4deps: "grammar/grammar.cma" i*)
 
+DECLARE PLUGIN "ltac_plugin"
+
 open Util
 open Pp
-open Compat
 open Constrexpr
 open Tacexpr
 open Misctypes
@@ -66,9 +67,9 @@ let _ =
 let test_bracket_ident =
   Gram.Entry.of_parser "test_bracket_ident"
     (fun strm ->
-      match get_tok (stream_nth 0 strm) with
+      match stream_nth 0 strm with
         | KEYWORD "[" ->
-            (match get_tok (stream_nth 1 strm) with
+            (match stream_nth 1 strm with
               | IDENT _ -> ()
 	      | _ -> raise Stream.Failure)
 	| _ -> raise Stream.Failure)
@@ -334,7 +335,7 @@ GEXTEND Gram
     |   IDENT "all"; ":" -> SelectAll ] ]
   ;
   tactic_mode:
-    [ [ g = OPT toplevel_selector; tac = G_vernac.subgoal_command -> tac g ] ]
+    [ [ g = OPT toplevel_selector; tac = G_vernac.query_command -> tac g ] ]
   ;
   command:
     [ [ IDENT "Proof"; "with"; ta = Pltac.tactic; 
@@ -459,7 +460,9 @@ END
 
 let pr_ltac_production_item = function
 | Tacentries.TacTerm s -> quote (str s)
-| Tacentries.TacNonTerm (_, (arg, sep), id) ->
+| Tacentries.TacNonTerm (_, (arg, None), None) -> str arg
+| Tacentries.TacNonTerm (_, (arg, Some _), None) -> assert false
+| Tacentries.TacNonTerm (_, (arg, sep), Some id) ->
   let sep = match sep with
   | None -> mt ()
   | Some sep -> str "," ++ spc () ++ quote (str sep)
@@ -469,7 +472,9 @@ let pr_ltac_production_item = function
 VERNAC ARGUMENT EXTEND ltac_production_item PRINTED BY pr_ltac_production_item
 | [ string(s) ] -> [ Tacentries.TacTerm s ]
 | [ ident(nt) "(" ident(p) ltac_production_sep_opt(sep) ")" ] ->
-  [ Tacentries.TacNonTerm (loc, (Names.Id.to_string nt, sep), p) ]
+  [ Tacentries.TacNonTerm (loc, (Names.Id.to_string nt, sep), Some p) ]
+| [ ident(nt) ] ->
+  [ Tacentries.TacNonTerm (loc, (Names.Id.to_string nt, None), None) ]
 END
 
 VERNAC COMMAND EXTEND VernacTacticNotation

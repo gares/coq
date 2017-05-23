@@ -6,8 +6,7 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
-open Term
-open Proof_type
+open EConstr
 open Hints
 open Tactypes
 

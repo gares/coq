@@ -210,6 +210,7 @@ let refine_by_tactic env sigma ty tac =
   | _ -> assert false
   in
   let ans = Reductionops.nf_evar sigma ans in
+  let ans = EConstr.Unsafe.to_constr ans in
   (** [neff] contains the freshly generated side-effects *)
   let neff = Evd.eval_side_effects sigma in
   (** Reset the old side-effects *)
@@ -233,20 +234,27 @@ let declare_implicit_tactic tac = implicit_tactic := Some tac
 
 let clear_implicit_tactic () = implicit_tactic := None
 
-let solve_by_implicit_tactic env sigma evk =
+let apply_implicit_tactic tac = (); fun env sigma evk ->
   let evi = Evd.find_undefined sigma evk in
-  match (!implicit_tactic, snd (evar_source evk sigma)) with
-  | Some tac, (Evar_kinds.ImplicitArg _ | Evar_kinds.QuestionMark _)
+  match snd (evar_source evk sigma) with
+  | (Evar_kinds.ImplicitArg _ | Evar_kinds.QuestionMark _)
       when
-	Context.Named.equal (Environ.named_context_of_val evi.evar_hyps)
+	Context.Named.equal Constr.equal (Environ.named_context_of_val evi.evar_hyps)
 	(Environ.named_context env) ->
       let tac = Proofview.tclTHEN tac (Proofview.tclEXTEND [] (Proofview.tclZERO (CErrors.UserError (None,Pp.str"Proof is not complete."))) []) in
       (try
         let c = Evarutil.nf_evars_universes sigma evi.evar_concl in
+        let c = EConstr.of_constr c in
         if Evarutil.has_undefined_evars sigma c then raise Exit;
         let (ans, _, ctx) =
 	  build_by_tactic env (Evd.evar_universe_context sigma) c tac in
         let sigma = Evd.set_universe_context sigma ctx in
-        sigma, ans
+        sigma, EConstr.of_constr ans
        with e when Logic.catchable_exception e -> raise Exit)
   | _ -> raise Exit
+
+let solve_by_implicit_tactic () = match !implicit_tactic with
+| None -> None
+| Some tac -> Some (apply_implicit_tactic tac)
+
+

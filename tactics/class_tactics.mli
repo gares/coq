@@ -9,8 +9,7 @@
 (** This files implements typeclasses eauto *)
 
 open Names
-open Constr
-open Tacmach
+open EConstr
 
 val catchable : exn -> bool
 
@@ -28,13 +27,13 @@ val typeclasses_eauto : ?only_classes:bool -> ?st:transparent_state -> ?strategy
                         depth:(Int.t option) ->
                         Hints.hint_db_name list -> unit Proofview.tactic
 
-val head_of_constr : Id.t -> Term.constr -> unit Proofview.tactic
+val head_of_constr : Id.t -> constr -> unit Proofview.tactic
 
 val not_evar : constr -> unit Proofview.tactic
 
-val is_ground : constr -> tactic
+val is_ground : constr -> unit Proofview.tactic
 
-val autoapply : constr -> Hints.hint_db_name -> tactic
+val autoapply : constr -> Hints.hint_db_name -> unit Proofview.tactic
 
 module Search : sig
   val eauto_tac :

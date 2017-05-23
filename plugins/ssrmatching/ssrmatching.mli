@@ -4,7 +4,6 @@
 open Genarg
 open Tacexpr
 open Environ
-open Tacmach
 open Evd
 open Proof_type
 open Term
@@ -194,7 +193,7 @@ val mk_tpattern_matcher :
 (* convenience shortcut: [pf_fill_occ_term gl occ (sigma,t)] returns
  * the conclusion of [gl] where [occ] occurrences of [t] have been replaced
  * by [Rel 1] and the instance of [t] *)
-val pf_fill_occ_term : goal sigma -> occ -> evar_map * constr -> constr * constr
+val pf_fill_occ_term : goal sigma -> occ -> evar_map * EConstr.t -> EConstr.t * EConstr.t
 
 (* It may be handy to inject a simple term into the first form of cpattern *)
 val cpattern_of_term : char * glob_constr_and_expr -> cpattern
@@ -216,8 +215,8 @@ val assert_done : 'a option ref -> 'a
     [solve_unif_constraints_with_heuristics] and [resolve_typeclasses].
     In case of failure they raise [NoMatch] *)
 
-val unify_HO : env -> evar_map -> constr -> constr -> evar_map
-val pf_unify_HO : goal sigma -> constr -> constr -> goal sigma
+val unify_HO : env -> evar_map -> EConstr.constr -> EConstr.constr -> evar_map
+val pf_unify_HO : goal sigma -> EConstr.constr -> EConstr.constr -> goal sigma
 
 (** Some more low level functions needed to implement the full SSR language
     on top of the former APIs *)
@@ -225,7 +224,6 @@ val tag_of_cpattern : cpattern -> char
 val loc_of_cpattern : cpattern -> Loc.t
 val id_of_pattern : pattern -> Names.variable option
 val is_wildcard : cpattern -> bool
-val cpattern_of_id : Names.variable -> cpattern
 val cpattern_of_id : Names.variable -> cpattern
 val pr_constr_pat : constr -> Pp.std_ppcmds
 val pf_merge_uc : Evd.evar_universe_context -> goal Evd.sigma -> goal Evd.sigma

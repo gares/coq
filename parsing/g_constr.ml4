@@ -12,7 +12,6 @@ open Constrexpr
 open Constrexpr_ops
 open Util
 open Tok
-open Compat
 open Misctypes
 open Decl_kinds
 
@@ -38,14 +37,11 @@ let mk_cast = function
     in CCast(loc, c, CastConv ty)
 
 let binder_of_name expl (loc,na) =
-  LocalRawAssum ([loc, na], Default expl,
+  CLocalAssum ([loc, na], Default expl,
     CHole (loc, Some (Evar_kinds.BinderType na), IntroAnonymous, None))
 
 let binders_of_names l =
   List.map (binder_of_name Explicit) l
-
-let binders_of_lidents l =
-  List.map (fun (loc, id) -> binder_of_name Explicit (loc, Name id)) l
 
 let mk_fixb (id,bl,ann,body,(loc,tyc)) =
   let ty = match tyc with
@@ -81,11 +77,11 @@ let err () = raise Stream.Failure
 let lpar_id_coloneq =
   Gram.Entry.of_parser "test_lpar_id_coloneq"
     (fun strm ->
-      match get_tok (stream_nth 0 strm) with
+      match stream_nth 0 strm with
         | KEYWORD "(" ->
-            (match get_tok (stream_nth 1 strm) with
+            (match stream_nth 1 strm with
 	      | IDENT s ->
-                  (match get_tok (stream_nth 2 strm) with
+                  (match stream_nth 2 strm with
                     | KEYWORD ":=" ->
                         stream_njunk 3 strm;
                         Names.Id.of_string s
@@ -96,9 +92,9 @@ let lpar_id_coloneq =
 let impl_ident_head =
   Gram.Entry.of_parser "impl_ident_head"
     (fun strm ->
-      match get_tok (stream_nth 0 strm) with
+      match stream_nth 0 strm with
 	| KEYWORD "{" ->
-	    (match get_tok (stream_nth 1 strm) with
+	    (match stream_nth 1 strm with
 	      | IDENT ("wf"|"struct"|"measure") -> err ()
 	      | IDENT s ->
 		  stream_njunk 2 strm;
@@ -109,15 +105,15 @@ let impl_ident_head =
 let name_colon =
   Gram.Entry.of_parser "name_colon"
     (fun strm ->
-      match get_tok (stream_nth 0 strm) with
+      match stream_nth 0 strm with
 	| IDENT s ->
-            (match get_tok (stream_nth 1 strm) with
+            (match stream_nth 1 strm with
               | KEYWORD ":" ->
                   stream_njunk 2 strm;
                   Name (Names.Id.of_string s)
               | _ -> err ())
 	| KEYWORD "_" ->
-          (match get_tok (stream_nth 1 strm) with
+          (match stream_nth 1 strm with
               | KEYWORD ":" ->
                   stream_njunk 2 strm;
                   Anonymous
@@ -150,12 +146,12 @@ GEXTEND Gram
     [ [ "Set"  -> GSet
       | "Prop" -> GProp
       | "Type" -> GType []
-      | "Type"; "@{"; u = universe; "}" -> GType (List.map (fun (loc,x) -> (loc, Id.to_string x)) u)
+      | "Type"; "@{"; u = universe; "}" -> GType u
       ] ]
   ;
   universe:
-    [ [ IDENT "max"; "("; ids = LIST1 identref SEP ","; ")" -> ids
-      | id = identref -> [id]
+    [ [ IDENT "max"; "("; ids = LIST1 name SEP ","; ")" -> ids
+      | id = name -> [id]
       ] ]
   ;
   lconstr:
@@ -223,15 +219,14 @@ GEXTEND Gram
 
   record_fields:
     [ [ f = record_field_declaration; ";"; fs = record_fields -> f :: fs
-      | f = record_field_declaration; ";" -> [f]
       | f = record_field_declaration -> [f]
       | -> []
     ] ]
   ;
 
   record_field_declaration:
-    [ [ id = global; params = LIST0 identref; ":="; c = lconstr ->
-      (id, abstract_constr_expr c (binders_of_lidents params)) ] ]
+    [ [ id = global; bl = binders; ":="; c = lconstr ->
+      (id, mkCLambdaN (!@loc) bl c) ] ]
   ;
   binder_constr:
     [ [ "forall"; bl = open_binders; ","; c = operconstr LEVEL "200" ->
@@ -240,17 +235,18 @@ GEXTEND Gram
           mkCLambdaN (!@loc) bl c
       | "let"; id=name; bl = binders; ty = type_cstr; ":=";
         c1 = operconstr LEVEL "200"; "in"; c2 = operconstr LEVEL "200" ->
-          let loc1 =
-	    Loc.merge (local_binders_loc bl) (constr_loc c1)
-	  in
-          CLetIn(!@loc,id,mkCLambdaN loc1 bl (mk_cast(c1,ty)),c2)
+          let ty,c1 = match ty, c1 with
+          | (_,None), CCast(loc,c, CastConv t) -> (constr_loc t,Some t), c (* Tolerance, see G_vernac.def_body *)
+          | _, _ -> ty, c1 in
+          CLetIn(!@loc,id,mkCLambdaN (constr_loc c1) bl c1,
+                 Option.map (mkCProdN (fst ty) bl) (snd ty), c2)
       | "let"; fx = single_fix; "in"; c = operconstr LEVEL "200" ->
           let fixp = mk_single_fix fx in
           let (li,id) = match fixp with
               CFix(_,id,_) -> id
             | CCoFix(_,id,_) -> id
             | _ -> assert false in
-          CLetIn(!@loc,(li,Name id),fixp,c)
+          CLetIn(!@loc,(li,Name id),fixp,None,c)
       | "let"; lb = ["("; l=LIST0 name SEP ","; ")" -> l | "()" -> []];
 	  po = return_type;
 	  ":="; c1 = operconstr LEVEL "200"; "in";
@@ -302,7 +298,7 @@ GEXTEND Gram
     [ [ "Set" -> GSet
       | "Prop" -> GProp
       | "Type" -> GType None
-      | id = identref -> GType (Some (fst id, Id.to_string (snd id)))
+      | id = name -> GType (Some id)
       ] ]
   ;
   fix_constr:
@@ -412,11 +408,11 @@ GEXTEND Gram
   impl_ident_tail:
     [ [ "}" -> binder_of_name Implicit
     | nal=LIST1 name; ":"; c=lconstr; "}" ->
-        (fun na -> LocalRawAssum (na::nal,Default Implicit,c))
+        (fun na -> CLocalAssum (na::nal,Default Implicit,c))
     | nal=LIST1 name; "}" ->
-        (fun na -> LocalRawAssum (na::nal,Default Implicit,CHole (Loc.join_loc (fst na) !@loc, Some (Evar_kinds.BinderType (snd na)), IntroAnonymous, None)))
+        (fun na -> CLocalAssum (na::nal,Default Implicit,CHole (Loc.join_loc (fst na) !@loc, Some (Evar_kinds.BinderType (snd na)), IntroAnonymous, None)))
     | ":"; c=lconstr; "}" ->
-	(fun na -> LocalRawAssum ([na],Default Implicit,c))
+	(fun na -> CLocalAssum ([na],Default Implicit,c))
     ] ]
   ;
   fixannot:
@@ -442,12 +438,12 @@ GEXTEND Gram
        the latter is unique *)
     [ [ (* open binder *)
         id = name; idl = LIST0 name; ":"; c = lconstr ->
-          [LocalRawAssum (id::idl,Default Explicit,c)]
+          [CLocalAssum (id::idl,Default Explicit,c)]
 	(* binders factorized with open binder *)
       | id = name; idl = LIST0 name; bl = binders ->
           binders_of_names (id::idl) @ bl
       | id1 = name; ".."; id2 = name ->
-          [LocalRawAssum ([id1;(!@loc,Name ldots_var);id2],
+          [CLocalAssum ([id1;(!@loc,Name ldots_var);id2],
 	                  Default Explicit,CHole (!@loc, None, IntroAnonymous, None))]
       | bl = closed_binder; bl' = binders ->
 	  bl@bl'
@@ -457,37 +453,39 @@ GEXTEND Gram
     [ [ l = LIST0 binder -> List.flatten l ] ]
   ;
   binder:
-    [ [ id = name -> [LocalRawAssum ([id],Default Explicit,CHole (!@loc, None, IntroAnonymous, None))]
+    [ [ id = name -> [CLocalAssum ([id],Default Explicit,CHole (!@loc, None, IntroAnonymous, None))]
       | bl = closed_binder -> bl ] ]
   ;
   closed_binder:
     [ [ "("; id=name; idl=LIST1 name; ":"; c=lconstr; ")" ->
-          [LocalRawAssum (id::idl,Default Explicit,c)]
+          [CLocalAssum (id::idl,Default Explicit,c)]
       | "("; id=name; ":"; c=lconstr; ")" ->
-          [LocalRawAssum ([id],Default Explicit,c)]
+          [CLocalAssum ([id],Default Explicit,c)]
       | "("; id=name; ":="; c=lconstr; ")" ->
-          [LocalRawDef (id,c)]
+          (match c with
+          | CCast(_,c, CastConv t) -> [CLocalDef (id,c,Some t)]
+          | _ -> [CLocalDef (id,c,None)])
       | "("; id=name; ":"; t=lconstr; ":="; c=lconstr; ")" ->
-          [LocalRawDef (id,CCast (Loc.merge (constr_loc t) (!@loc),c, CastConv t))]
+          [CLocalDef (id,c,Some t)]
       | "{"; id=name; "}" ->
-          [LocalRawAssum ([id],Default Implicit,CHole (!@loc, None, IntroAnonymous, None))]
+          [CLocalAssum ([id],Default Implicit,CHole (!@loc, None, IntroAnonymous, None))]
       | "{"; id=name; idl=LIST1 name; ":"; c=lconstr; "}" ->
-          [LocalRawAssum (id::idl,Default Implicit,c)]
+          [CLocalAssum (id::idl,Default Implicit,c)]
       | "{"; id=name; ":"; c=lconstr; "}" ->
-          [LocalRawAssum ([id],Default Implicit,c)]
+          [CLocalAssum ([id],Default Implicit,c)]
       | "{"; id=name; idl=LIST1 name; "}" ->
-          List.map (fun id -> LocalRawAssum ([id],Default Implicit,CHole (!@loc, None, IntroAnonymous, None))) (id::idl)
+          List.map (fun id -> CLocalAssum ([id],Default Implicit,CHole (!@loc, None, IntroAnonymous, None))) (id::idl)
       | "`("; tc = LIST1 typeclass_constraint SEP "," ; ")" ->
-	  List.map (fun (n, b, t) -> LocalRawAssum ([n], Generalized (Implicit, Explicit, b), t)) tc
+	  List.map (fun (n, b, t) -> CLocalAssum ([n], Generalized (Implicit, Explicit, b), t)) tc
       | "`{"; tc = LIST1 typeclass_constraint SEP "," ; "}" ->
-	  List.map (fun (n, b, t) -> LocalRawAssum ([n], Generalized (Implicit, Implicit, b), t)) tc
+	  List.map (fun (n, b, t) -> CLocalAssum ([n], Generalized (Implicit, Implicit, b), t)) tc
       | "'"; p = pattern LEVEL "0" ->
           let (p, ty) =
             match p with
             | CPatCast (_, p, ty) -> (p, Some ty)
             | _ -> (p, None)
           in
-          [LocalPattern (!@loc, p, ty)]
+          [CLocalPattern (!@loc, p, ty)]
     ] ]
   ;
   typeclass_constraint:

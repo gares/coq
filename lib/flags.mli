@@ -8,6 +8,8 @@
 
 (** Global options of the system. *)
 
+(** Command-line flags  *)
+
 val boot : bool ref
 val load_init : bool ref
 
@@ -16,8 +18,11 @@ type compilation_mode = BuildVo | BuildVio | Vio2Vo
 val compilation_mode : compilation_mode ref
 val compilation_output_name : string option ref
 
+(* Flag set when the test-suite is called. Its only effect to display
+   verbose information for `Fail` *)
 val test_mode : bool ref
 
+(** Async-related flags *)
 type async_proofs = APoff | APonLazy | APon
 val async_proofs_mode : async_proofs ref
 type cache = Force
@@ -46,20 +51,27 @@ val in_toplevel : bool ref
 
 val profile : bool
 
-val print_emacs : bool ref
-val coqtop_ui : bool ref
+(* Legacy flags *)
 
+(* -emacs option: printing includes emacs tags, will affect stm caching. *)
+val print_emacs : bool ref
+(* -xml option: xml hooks will be called *)
 val xml_export : bool ref
 
+(* -ide_slave: printing will be more verbose, will affect stm caching *)
 val ide_slave : bool ref
 val ideslave_coqtop_flags : string option ref
 
+(* -time option: every command will be wrapped with `Time` *)
 val time : bool ref
 
+(* development flag to detect race conditions, it should go away. *)
 val we_are_parsing : bool ref
 
+(* Set Printing All flag. For some reason it is a global flag *)
 val raw_print : bool ref
-val record_print : bool ref
+
+(* Univ print flag, never set anywere. Maybe should belong to Univ? *)
 val univ_print : bool ref
 
 type compat_version = V8_2 | V8_3 | V8_4 | V8_5 | V8_6 | Current
@@ -69,17 +81,27 @@ val version_strictly_greater : compat_version -> bool
 val version_less_or_equal : compat_version -> bool
 val pr_version : compat_version -> string
 
+(* Beautify command line flags, should move to printing? *)
 val beautify : bool ref
 val beautify_file : bool ref
 
-val make_silent : bool -> unit
-val is_silent : unit -> bool
-val is_verbose : unit -> bool
+(* Coq quiet mode. Note that normal mode is called "verbose" here,
+   whereas [quiet] supresses normal output such as goals in coqtop *)
+val quiet : bool ref
 val silently : ('a -> 'b) -> 'a -> 'b
 val verbosely : ('a -> 'b) -> 'a -> 'b
 val if_silent : ('a -> unit) -> 'a -> unit
 val if_verbose : ('a -> unit) -> 'a -> unit
 
+(* Deprecated *)
+val make_silent : bool -> unit
+[@@ocaml.deprecated "Please use Flags.quiet"]
+val is_silent : unit -> bool
+[@@ocaml.deprecated "Please use Flags.quiet"]
+val is_verbose : unit -> bool
+[@@ocaml.deprecated "Please use Flags.quiet"]
+
+(* Miscellaneus flags for vernac *)
 val make_auto_intros : bool -> unit
 val is_auto_intros : unit -> bool
 
@@ -114,10 +136,6 @@ val without_option : bool ref -> ('a -> 'b) -> 'a -> 'b
 
 (** Temporarily extends the reference to a list *)
 val with_extra_values : 'c list ref -> 'c list -> ('a -> 'b) -> 'a -> 'b
-
-(** If [None], no limit *)
-val set_print_hyps_limit : int option -> unit
-val print_hyps_limit : unit -> int option
 
 (** Options for external tools *)
 

@@ -7,7 +7,6 @@
 (************************************************************************)
 
 open Pp
-open Compat
 open CErrors
 open Util
 open Names
@@ -41,7 +40,6 @@ let def_body = Gram.entry_create "vernac:def_body"
 let decl_notation = Gram.entry_create "vernac:decl_notation"
 let record_field = Gram.entry_create "vernac:record_field"
 let of_type_with_opt_coercion = Gram.entry_create "vernac:of_type_with_opt_coercion"
-let subgoal_command = Gram.entry_create "proof_mode:subgoal_command"
 let instance_name = Gram.entry_create "vernac:instance_name"
 let section_subset_expr = Gram.entry_create "vernac:section_subset_expr"
 
@@ -54,7 +52,7 @@ let make_bullet s =
   | _ -> assert false
 
 GEXTEND Gram
-  GLOBAL: vernac gallina_ext noedit_mode subprf subgoal_command;
+  GLOBAL: vernac gallina_ext noedit_mode subprf;
   vernac: FIRST
     [ [ IDENT "Time"; c = located_vernac -> VernacTime c
       | IDENT "Redirect"; s = ne_string; c = located_vernac -> VernacRedirect (s, c)
@@ -66,13 +64,7 @@ GEXTEND Gram
 
       (* Stm backdoor *)
       | IDENT "Stm"; IDENT "JoinDocument"; "." -> VernacStm JoinDocument
-      | IDENT "Stm"; IDENT "Finish"; "." -> VernacStm Finish
       | IDENT "Stm"; IDENT "Wait"; "." -> VernacStm Wait
-      | IDENT "Stm"; IDENT "PrintDag"; "." -> VernacStm PrintDag
-      | IDENT "Stm"; IDENT "Observe"; id = INT; "." ->
-          VernacStm (Observe (Stateid.of_int (int_of_string id)))
-      | IDENT "Stm"; IDENT "Command"; v = vernac_aux -> VernacStm (Command v)
-      | IDENT "Stm"; IDENT "PGLast"; v = vernac_aux -> VernacStm (PGLast v)
 
       | v = vernac_poly -> v ]
     ]
@@ -99,7 +91,7 @@ GEXTEND Gram
     [ [ prfcom = command_entry -> prfcom ] ]
   ;
   noedit_mode:
-    [ [ c = subgoal_command -> c None] ]
+    [ [ c = query_command -> c None] ]
   ;
 
   subprf:
@@ -109,15 +101,6 @@ GEXTEND Gram
     ] ]
   ;
 
-  subgoal_command:
-    [ [ c = query_command; "." ->
-                  begin function
-                    | Some (SelectNth g) -> c (Some g)
-                    | None -> c None
-                    | _ ->
-                        VernacError (UserError (None,str"Typing and evaluation commands, cannot be used with the \"all:\" selector."))
-                  end ] ]
-  ;
   located_vernac:
     [ [ v = vernac -> !@loc, v ] ]
   ;
@@ -153,8 +136,8 @@ GEXTEND Gram
     [ [ thm = thm_token; id = pidentref; bl = binders; ":"; c = lconstr;
         l = LIST0
           [ "with"; id = pidentref; bl = binders; ":"; c = lconstr ->
-          (Some id,(bl,c,None)) ] ->
-          VernacStartTheoremProof (thm, (Some id,(bl,c,None))::l, false)
+          (Some id,(bl,c)) ] ->
+          VernacStartTheoremProof (thm, (Some id,(bl,c))::l, false)
       | stre = assumption_token; nl = inline; bl = assum_list ->
 	  VernacAssumption (stre, nl, bl)
       | (kwd,stre) = assumptions_token; nl = inline; bl = assum_list ->
@@ -251,16 +234,22 @@ GEXTEND Gram
   (* Simple definitions *)
   def_body:
     [ [ bl = binders; ":="; red = reduce; c = lconstr ->
-      let (bl, c) = expand_pattern_binders mkCLambdaN bl c in
-      (match c with
-          CCast(_,c, CastConv t) -> DefineBody (bl, red, c, Some t)
+      if List.exists (function CLocalPattern _ -> true | _ -> false) bl
+      then
+        (* FIXME: "red" will be applied to types in bl and Cast with remain *)
+        let c = mkCLambdaN (!@loc) bl c in
+	DefineBody ([], red, c, None)
+      else
+        (match c with
+        | CCast(_,c, CastConv t) -> DefineBody (bl, red, c, Some t)
         | _ -> DefineBody (bl, red, c, None))
     | bl = binders; ":"; t = lconstr; ":="; red = reduce; c = lconstr ->
         let ((bl, c), tyo) =
-          if List.exists (function LocalPattern _ -> true | _ -> false) bl
+          if List.exists (function CLocalPattern _ -> true | _ -> false) bl
           then
+            (* FIXME: "red" will be applied to types in bl and Cast with remain *)
             let c = CCast (!@loc, c, CastConv t) in
-            (expand_pattern_binders mkCLambdaN bl c, None)
+            (([],mkCLambdaN (!@loc) bl c), None)
           else ((bl, c), Some t)
         in
 	DefineBody (bl, red, c, tyo)
@@ -348,8 +337,8 @@ GEXTEND Gram
   binder_nodef:
     [ [ b = binder_let ->
       (match b with
-          LocalRawAssum(l,ty) -> (l,ty)
-        | LocalRawDef _ ->
+          CLocalAssum(l,ty) -> (l,ty)
+        | CLocalDef _ ->
             Util.user_err_loc
               (loc,"fix_param",Pp.str"defined binder not allowed here.")) ] ]
   ;
@@ -421,7 +410,7 @@ let only_starredidentrefs =
   Gram.Entry.of_parser "test_only_starredidentrefs"
     (fun strm ->
       let rec aux n =
-      match get_tok (Util.stream_nth n strm) with
+      match Util.stream_nth n strm with
         | KEYWORD "." -> ()
         | KEYWORD ")" -> ()
         | (IDENT _ | KEYWORD "Type" | KEYWORD "*") -> aux (n+1)
@@ -775,11 +764,6 @@ GEXTEND Gram
                  implicit_status = MaximallyImplicit}) items
     ]
   ];
-  name_or_bang: [
-       [ b = OPT "!"; id = name ->
-       not (Option.is_empty b), id
-    ]
-  ];
   (* Same as [argument_spec_block], but with only implicit status and names *)
   more_implicits_block: [
     [ name = name -> [(snd name, Vernacexpr.NotImplicit)]
@@ -927,29 +911,30 @@ GEXTEND Gram
 	  VernacRemoveOption ([table], v) ]] 
   ;
   query_command: (* TODO: rapprocher Eval et Check *)
-    [ [ IDENT "Eval"; r = red_expr; "in"; c = lconstr ->
+    [ [ IDENT "Eval"; r = red_expr; "in"; c = lconstr; "." ->
           fun g -> VernacCheckMayEval (Some r, g, c)
-      | IDENT "Compute"; c = lconstr ->
+      | IDENT "Compute"; c = lconstr; "." ->
 	  fun g -> VernacCheckMayEval (Some (Genredexpr.CbvVm None), g, c)
-      | IDENT "Check"; c = lconstr ->
+      | IDENT "Check"; c = lconstr; "." ->
 	 fun g -> VernacCheckMayEval (None, g, c)
       (* Searching the environment *)
-      | IDENT "About"; qid = smart_global ->
+      | IDENT "About"; qid = smart_global; "." ->
 	 fun g -> VernacPrint (PrintAbout (qid,g))
-      | IDENT "SearchHead"; c = constr_pattern; l = in_or_out_modules ->
+      | IDENT "SearchHead"; c = constr_pattern; l = in_or_out_modules; "." ->
 	  fun g -> VernacSearch (SearchHead c,g, l)
-      | IDENT "SearchPattern"; c = constr_pattern; l = in_or_out_modules ->
+      | IDENT "SearchPattern"; c = constr_pattern; l = in_or_out_modules; "." ->
 	  fun g -> VernacSearch (SearchPattern c,g, l)
-      | IDENT "SearchRewrite"; c = constr_pattern; l = in_or_out_modules ->
+      | IDENT "SearchRewrite"; c = constr_pattern; l = in_or_out_modules; "." ->
 	  fun g -> VernacSearch (SearchRewrite c,g, l)
-      | IDENT "Search"; s = searchabout_query; l = searchabout_queries ->
+      | IDENT "Search"; s = searchabout_query; l = searchabout_queries; "." ->
 	  let (sl,m) = l in fun g -> VernacSearch (SearchAbout (s::sl),g, m)
       (* compatibility: SearchAbout *)
-      | IDENT "SearchAbout"; s = searchabout_query; l = searchabout_queries ->
+      | IDENT "SearchAbout"; s = searchabout_query; l = searchabout_queries; "." ->
 	  fun g -> let (sl,m) = l in VernacSearch (SearchAbout (s::sl),g, m)
       (* compatibility: SearchAbout with "[ ... ]" *)
       | IDENT "SearchAbout"; "["; sl = LIST1 searchabout_query; "]";
-	  l = in_or_out_modules -> fun g -> VernacSearch (SearchAbout sl,g, l)
+	l = in_or_out_modules; "." ->
+         fun g -> VernacSearch (SearchAbout sl,g, l)
       ] ]
   ;
   printable:

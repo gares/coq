@@ -34,17 +34,17 @@ val list_add_set_eq :
   ('a -> 'a -> bool) -> 'a -> 'a list -> 'a list
 
 val chop_rlambda_n : int -> Glob_term.glob_constr ->
-  (Name.t*Glob_term.glob_constr*bool) list * Glob_term.glob_constr
+  (Name.t*Glob_term.glob_constr*Glob_term.glob_constr option) list * Glob_term.glob_constr
 
 val chop_rprod_n : int -> Glob_term.glob_constr ->
   (Name.t*Glob_term.glob_constr) list * Glob_term.glob_constr
 
 val def_of_const : Term.constr -> Term.constr
-val eq : Term.constr Lazy.t
-val refl_equal : Term.constr Lazy.t
+val eq : EConstr.constr Lazy.t
+val refl_equal : EConstr.constr Lazy.t
 val const_of_id: Id.t ->  Globnames.global_reference(* constantyes *)
-val jmeq : unit -> Term.constr
-val jmeq_refl : unit -> Term.constr
+val jmeq : unit -> EConstr.constr
+val jmeq_refl : unit -> EConstr.constr
 
 val save : bool -> Id.t -> Safe_typing.private_constants Entries.definition_entry  -> Decl_kinds.goal_kind ->
   unit Lemmas.declaration_hook CEphemeron.key -> unit
@@ -109,11 +109,21 @@ val h_id :  Names.Id.t
 val hrec_id :  Names.Id.t
 val acc_inv_id :  Globnames.global_reference Util.delayed
 val ltof_ref : Globnames.global_reference Util.delayed
-val well_founded_ltof : Term.constr Util.delayed
+val well_founded_ltof : EConstr.constr Util.delayed
 val acc_rel : Globnames.global_reference Util.delayed
 val well_founded : Globnames.global_reference Util.delayed
 val evaluable_of_global_reference : Globnames.global_reference -> Names.evaluable_global_reference
-val list_rewrite : bool -> (Term.constr*bool) list -> Proof_type.tactic
+val list_rewrite : bool -> (EConstr.constr*bool) list -> Proof_type.tactic
 
-val check_type : Constr.t -> Proof_type.tactic
-val check_poly_app : Globnames.global_reference -> Constr.t array -> (Constr.t -> Proof_type.tactic) -> Proof_type.tactic
+val decompose_lam_n : Evd.evar_map -> int -> EConstr.t ->
+  (Names.Name.t * EConstr.t) list * EConstr.t
+val compose_lam : (Names.Name.t * EConstr.t) list -> EConstr.t -> EConstr.t
+val compose_prod : (Names.Name.t * EConstr.t) list -> EConstr.t -> EConstr.t
+                                                        
+type tcc_lemma_value = 
+  | Undefined
+  | Value of Constr.constr
+  | Not_needed
+
+val check_type : EConstr.t -> Proof_type.tactic
+val check_poly_app : Globnames.global_reference -> EConstr.t array -> (EConstr.t -> Proof_type.tactic) -> Proof_type.tactic

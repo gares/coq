@@ -7,11 +7,6 @@
 (************************************************************************)
 
 open Pp
-open CErrors
-open Util
-open Flags
-open Vernac
-open Pcoq
 
 let top_stderr x =
   Format.fprintf !Topfmt.err_ft "@[%a@]%!" pp_with x
@@ -24,7 +19,7 @@ type input_buffer = {
   mutable str : Bytes.t; (* buffer of already read characters *)
   mutable len : int;    (* number of chars in the buffer *)
   mutable bols : int list; (* offsets in str of beginning of lines *)
-  mutable tokens : Gram.coq_parsable; (* stream of tokens *)
+  mutable tokens : Pcoq.Gram.coq_parsable; (* stream of tokens *)
   mutable start : int } (* stream count of the first char of the buffer *)
 
 (* Double the size of the buffer. *)
@@ -52,7 +47,6 @@ let resynch_buffer ibuf =
    to avoid interfering with utf8. Compatibility code removed. *)
 
 let emacs_prompt_startstring() = Printer.emacs_str "<prompt>"
-
 let emacs_prompt_endstring() = Printer.emacs_str "</prompt>"
 
 (* Read a char in an input channel, displaying a prompt at every
@@ -62,7 +56,7 @@ let prompt_char ic ibuf count =
     | ll::_ -> Int.equal ibuf.len ll
     | [] -> Int.equal ibuf.len 0
   in
-  if bol && not !print_emacs then top_stderr (str (ibuf.prompt()));
+  if bol && not !Flags.print_emacs then top_stderr (str (ibuf.prompt()));
   try
     let c = input_char ic in
     if c == '\n' then ibuf.bols <- (ibuf.len+1) :: ibuf.bols;
@@ -79,17 +73,18 @@ let reset_input_buffer ic ibuf =
   ibuf.str <- Bytes.empty;
   ibuf.len <- 0;
   ibuf.bols <- [];
-  ibuf.tokens <- Gram.parsable (Stream.from (prompt_char ic ibuf));
+  ibuf.tokens <- Pcoq.Gram.parsable (Stream.from (prompt_char ic ibuf));
   ibuf.start <- 0
 
 (* Functions to print underlined locations from an input buffer. *)
+module TopErr = struct
 
 (* Given a location, returns the list of locations of each line. The last
    line is returned separately. It also checks the location bounds. *)
 
 let get_bols_of_loc ibuf (bp,ep) =
   let add_line (b,e) lines =
-    if b < 0 || e < b then anomaly (Pp.str "Bad location");
+    if b < 0 || e < b then CErrors.anomaly (Pp.str "Bad location");
     match lines with
       | ([],None) -> ([], Some (b,e))
       | (fl,oe) -> ((b,e)::fl, oe)
@@ -124,10 +119,11 @@ let blanch_utf8_string s bp ep = let open Bytes in
   done;
   Bytes.sub_string s' 0 !j
 
+let adjust_loc_buf ib loc = let open Loc in
+  { loc with ep = loc.ep - ib.start; bp = loc.bp - ib.start }
+
 let print_highlight_location ib loc =
   let (bp,ep) = Loc.unloc loc in
-  let bp = bp - ib.start
-  and ep = ep - ib.start in
   let highlight_lines =
     match get_bols_of_loc ib (bp,ep) with
       | ([],(bl,el)) ->
@@ -147,27 +143,44 @@ let print_highlight_location ib loc =
                       str sn ++ str dn) in
 	  (l1 ++ li ++ ln)
   in
-  let loc  = Loc.make_loc (bp,ep) in
-  (Pp.pr_loc loc ++ highlight_lines ++ fnl ())
-
-(* Functions to report located errors in a file. *)
-
-let print_location_in_file loc =
-  let fname = loc.Loc.fname in
-  let errstrm = str"Error while reading " ++ str fname in
-  if Loc.is_ghost loc then
-    hov 1 (errstrm ++ spc() ++ str" (unknown location):") ++ fnl ()
-  else
-    let errstrm = mt ()
-      (* if String.equal outer_fname fname then mt() else errstrm ++ str":" ++ fnl() *)
-    in
-    let open Loc in
-    hov 0 (* No line break so as to follow emacs error message format *)
-	(errstrm ++ Pp.pr_loc loc)
+  highlight_lines
 
 let valid_buffer_loc ib loc =
   not (Loc.is_ghost loc) &&
   let (b,e) = Loc.unloc loc in b-ib.start >= 0 && e-ib.start < ib.len && b<=e
+
+(* Toplevel error explanation. *)
+let error_info_for_buffer ?loc buf =
+  Option.map (fun loc ->
+      let fname = loc.Loc.fname in
+      let hl, loc =
+        (* We are in the toplevel *)
+        if CString.equal fname "" then
+          let nloc = adjust_loc_buf buf loc in
+          if valid_buffer_loc buf loc then
+            (fnl () ++ print_highlight_location buf nloc, nloc)
+            (* in the toplevel, but not a valid buffer *)
+          else (mt (), nloc)
+          (* we are in batch mode, don't adjust location *)
+        else (mt (), loc)
+      in Topfmt.pr_loc loc ++ hl
+    ) loc
+
+(* Actual printing routine *)
+let print_error_for_buffer ?loc lvl msg buf =
+  let pre_hdr = error_info_for_buffer ?loc buf in
+  if !Flags.print_emacs
+  then Topfmt.emacs_logger ?pre_hdr lvl msg
+  else Topfmt.std_logger   ?pre_hdr lvl msg
+
+(*
+let print_toplevel_parse_error (e, info) buf =
+  let loc = Loc.get_loc info in
+  let lvl = Feedback.Error in
+  let msg = CErrors.iprint (e, info) in
+  print_error_for_buffer ?loc lvl msg buf
+*)
+end
 
 (*s The Coq prompt is the name of the focused proof, if any, and "Coq"
     otherwise. We trap all exceptions to prevent the error message printing
@@ -177,18 +190,6 @@ let make_prompt () =
     (Names.Id.to_string (Pfedit.get_current_proof_name ())) ^ " < "
   with Proof_global.NoCurrentProof ->
     "Coq < "
-
-(*let build_pending_list l =
-  let pl = ref ">" in
-  let l' = ref l in
-  let res =
-    while List.length !l' > 1 do
-      pl := !pl ^ "|" Names.Id.to_string x;
-      l':=List.tl !l'
-    done in
-  let last = try List.hd !l' with _ ->   in
-  "<"^l'
-*)
 
 (* the coq prompt added to the default one when in emacs mode
    The prompt contains the current state label [n] (for global
@@ -204,7 +205,7 @@ let make_emacs_prompt() =
   let pending = Stm.get_all_proof_names() in
   let pendingprompt =
     List.fold_left
-      (fun acc x -> acc ^ (if String.is_empty acc then "" else "|") ^ Names.Id.to_string x)
+      (fun acc x -> acc ^ (if CString.is_empty acc then "" else "|") ^ Names.Id.to_string x)
       "" pending in
   let proof_info = if dpth >= 0 then string_of_int dpth else "0" in
   if !Flags.print_emacs then statnum ^ " |" ^ pendingprompt ^ "| " ^ proof_info ^ " < "
@@ -224,7 +225,7 @@ let top_buffer =
     str = Bytes.empty;
     len = 0;
     bols = [];
-    tokens = Gram.parsable (Stream.of_list []);
+    tokens = Pcoq.Gram.parsable (Stream.of_list []);
     start = 0 }
 
 let set_prompt prompt =
@@ -234,35 +235,14 @@ let set_prompt prompt =
     ^ prompt ()
     ^ emacs_prompt_endstring())
 
-(* The following exceptions need not be located. *)
-
-let locate_exn = function
-  | Out_of_memory | Stack_overflow | Sys.Break -> false
-  | _ -> true
-
-(* Toplevel error explanation. *)
-
-let print_toplevel_error (e, info) =
-  let loc = Option.default Loc.ghost (Loc.get_loc info) in
-  let fname = loc.Loc.fname in
-  let locmsg =
-    if Loc.is_ghost loc || String.equal fname "" then
-      if locate_exn e && valid_buffer_loc top_buffer loc then
-	print_highlight_location top_buffer loc
-      else mt ()
-    else print_location_in_file loc
-  in
-  let hdr msg = hov 0 (Topfmt.err_hdr ++ msg) in
-  locmsg ++ hdr (CErrors.iprint (e, info))
-
 (* Read the input stream until a dot is encountered *)
 let parse_to_dot =
-  let rec dot st = match Compat.get_tok (Stream.next st) with
+  let rec dot st = match Stream.next st with
     | Tok.KEYWORD ("."|"...") -> ()
-    | Tok.EOI -> raise End_of_input
+    | Tok.EOI -> raise Stm.End_of_input
     | _ -> dot st
   in
-  Gram.Entry.of_parser "Coqtoplevel.dot" dot
+  Pcoq.Gram.Entry.of_parser "Coqtoplevel.dot" dot
 
 (* If an error occurred while parsing, we try to read the input until a dot
    token is encountered.
@@ -270,20 +250,22 @@ let parse_to_dot =
 
 let rec discard_to_dot () =
   try
-    Gram.entry_parse parse_to_dot top_buffer.tokens
+    Pcoq.Gram.entry_parse parse_to_dot top_buffer.tokens
   with
-    | Compat.Token.Error _ | CLexer.Error.E _ -> discard_to_dot ()
-    | End_of_input -> raise End_of_input
+    | Token.Error _ | CLexer.Error.E _ -> discard_to_dot ()
+    | Stm.End_of_input -> raise Stm.End_of_input
     | e when CErrors.noncritical e -> ()
 
-let read_sentence input =
-  try
-    let (loc, _ as r) = Vernac.parse_sentence input in
-    CWarnings.set_current_loc loc; r
+let read_sentence sid input =
+  try Stm.parse_sentence sid input
   with reraise ->
     let reraise = CErrors.push reraise in
     discard_to_dot ();
-    iraise reraise
+    (* The caller of read_sentence does the error printing now, this
+       should be re-enabled once we rely on the feedback error
+       printer again *)
+    (* TopErr.print_toplevel_parse_error reraise top_buffer; *)
+    Exninfo.iraise reraise
 
 (** Coqloop Console feedback handler *)
 let coqloop_feed (fb : Feedback.feedback) = let open Feedback in
@@ -300,17 +282,11 @@ let coqloop_feed (fb : Feedback.feedback) = let open Feedback in
   | FileDependency (_,_) -> ()
   | FileLoaded (_,_) -> ()
   | Custom (_,_,_) -> ()
-  | Message (Error,loc,msg) ->
-    (* We ignore errors here as we (still) have a different error
-       printer for the toplevel. It is hard to solve due the many
-       error paths presents, and the different compromise of feedback
-       error forwaring in the stm depending on the mode *)
-    ()
+  (* Re-enable when we switch back to feedback-based error printing *)
+  | Message (Error,loc,msg) -> ()
+  (* TopErr.print_error_for_buffer ?loc lvl msg top_buffer *)
   | Message (lvl,loc,msg) ->
-    if !Flags.print_emacs then
-      Topfmt.emacs_logger ?loc lvl msg
-    else
-      Topfmt.std_logger ?loc lvl msg
+    TopErr.print_error_for_buffer ?loc lvl msg top_buffer
 
 (** [do_vernac] reads and executes a toplevel phrase, and print error
     messages when an exception is raised, except for the following:
@@ -322,25 +298,28 @@ let coqloop_feed (fb : Feedback.feedback) = let open Feedback in
     is caught and handled (i.e. not re-raised).
 *)
 
-let do_vernac () =
+let do_vernac sid =
   top_stderr (fnl());
-  if !print_emacs then top_stderr (str (top_buffer.prompt()));
+  if !Flags.print_emacs then top_stderr (str (top_buffer.prompt()));
   resynch_buffer top_buffer;
   try
     let input = (top_buffer.tokens, None) in
-    Vernac.process_expr top_buffer.tokens (read_sentence input)
+    Vernac.process_expr sid (read_sentence sid (fst input))
   with
-    | End_of_input | CErrors.Quit ->
+    | Stm.End_of_input | CErrors.Quit ->
         top_stderr (fnl ()); raise CErrors.Quit
     | CErrors.Drop ->  (* Last chance *)
         if Mltop.is_ocaml_top() then raise CErrors.Drop
-        else top_stderr (str "There is no ML toplevel.")
+        else (Feedback.msg_error (str "There is no ML toplevel."); sid)
+    (* Exception printing should be done by the feedback listener,
+       however this is not yet ready so we rely on the exception for
+       now. *)
     | any ->
-        (** Main error printer, note that this didn't it the "emacs"
-            legacy path. *)
-        let any = CErrors.push any in
-        let msg = print_toplevel_error any ++ fnl () in
-        top_stderr msg
+      let (e, info) = CErrors.push any in
+      let loc = Loc.get_loc info in
+      let msg = CErrors.iprint (e, info) in
+      TopErr.print_error_for_buffer ?loc Feedback.Error msg top_buffer;
+      sid
 
 (** Main coq loop : read vernacular expressions until Drop is entered.
     Ctrl-C is handled internally as Sys.Break instead of aborting Coq.
@@ -358,16 +337,21 @@ let loop_flush_all () =
 
 let rec loop () =
   Sys.catch_break true;
-  if !Flags.print_emacs then Vernacentries.qed_display_script := false;
-  Flags.coqtop_ui := true;
   try
     reset_input_buffer stdin top_buffer;
-    while true do do_vernac(); loop_flush_all () done
+    (* Be careful to keep this loop tail-recursive *)
+    let rec vernac_loop sid =
+      let nsid = do_vernac sid in
+      loop_flush_all ();
+      vernac_loop nsid
+    (* We recover the current stateid, threading from the caller is
+       not possible due exceptions. *)
+    in vernac_loop (Stm.get_current_state ())
   with
     | CErrors.Drop -> ()
     | CErrors.Quit -> exit 0
     | any ->
-      top_stderr (str"Anomaly: main loop exited with exception: " ++
+      Feedback.msg_error (str "Anomaly: main loop exited with exception: " ++
                   str (Printexc.to_string any) ++
                   fnl() ++
                   str"Please report" ++

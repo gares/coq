@@ -118,7 +118,7 @@ the current proof and declare the initial goal as an axiom.
 \subsection[\tt Proof {\term}.]{\tt Proof {\term}.\comindex{Proof}
 \label{BeginProof}}
 This command applies in proof editing mode. It is equivalent to {\tt
-  exact {\term}; Save.} That is, you have to give the full proof in
+  exact {\term}. Qed.} That is, you have to give the full proof in
 one gulp, as a proof term (see Section~\ref{exact}).
 
 \variant {\tt Proof.}
@@ -491,6 +491,19 @@ process of an {\tt intros}.
 \\ It displays
 the set of all uninstantiated existential variables in the current proof tree, 
 along with the type and the context of each variable.
+
+\item{\tt Show Match {\ident}.\label{ShowMatch}}\comindex{Show Match}\\
+This variant displays a template of the Gallina {\tt match} construct 
+with a branch for each constructor of the type {\ident}.
+
+Example:
+
+\begin{coq_example}
+Show Match nat.  
+\end{coq_example}
+\begin{ErrMsgs}
+\item \errindex{Unknown inductive type}
+\end{ErrMsgs}
 
 \item{\tt Show Universes.\label{ShowUniverses}}\comindex{Show Universes}
 \\ It displays the set of all universe constraints and its

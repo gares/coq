@@ -38,12 +38,12 @@ val wit_lglob :
 val wit_lconstr :
   (constr_expr,
   Tacexpr.glob_constr_and_expr,
-  Constr.t) Genarg.genarg_type
+  EConstr.t) Genarg.genarg_type
 
 val wit_casted_constr :
   (constr_expr,
   Tacexpr.glob_constr_and_expr,
-  Constr.t) Genarg.genarg_type
+  EConstr.t) Genarg.genarg_type
 
 val glob : constr_expr Pcoq.Gram.entry
 val lglob : constr_expr Pcoq.Gram.entry
@@ -66,6 +66,10 @@ val wit_by_arg_tac :
 val pr_by_arg_tac : 
   (int * Ppextend.parenRelation -> raw_tactic_expr -> Pp.std_ppcmds) ->
   raw_tactic_expr option -> Pp.std_ppcmds
+
+val test_lpar_id_colon : unit Pcoq.Gram.entry
+
+val wit_test_lpar_id_colon : (unit, unit, unit) Genarg.genarg_type
 
 (** Spiwack: Primitive for retroknowledge registration *)
 

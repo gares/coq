@@ -8,7 +8,7 @@
 
 open Preferences
 
-class command_window name coqtop =
+class command_window name coqtop coqops =
   let frame = Wg_Detachable.detachable
     ~title:(Printf.sprintf "Query pane (%s)" name) () in
   let _ = frame#hide in
@@ -25,6 +25,11 @@ object(self)
   val frame = frame
 
   val notebook = notebook
+
+  (* We need access to coqops in order to place queries in the proper
+     document stint. This should remove access from this module to the
+     low-level Coq one. *)
+  val coqops = coqops
 
   method pack_in (f : GObj.widget -> unit) = f frame#coerce
 
@@ -86,8 +91,8 @@ object(self)
     let result = GText.view ~packing:r_bin#add () in
     views <- (frame#coerce, result, combo#entry) :: views;
     let cb clr = result#misc#modify_base [`NORMAL, `NAME clr] in
-    let _ = background_color#connect#changed cb in
-    let _ = result#misc#connect#realize (fun () -> cb background_color#get) in
+    let _ = background_color#connect#changed ~callback:cb in
+    let _ = result#misc#connect#realize ~callback:(fun () -> cb background_color#get) in
     let cb ft = result#misc#modify_font (Pango.Font.from_string ft) in
     stick text_font result cb;
     result#misc#set_can_focus true; (* false causes problems for selection *)
@@ -101,7 +106,10 @@ object(self)
         else com ^ " " ^ arg ^" . "
       in
       let process =
-	Coq.bind (Coq.query (phrase,Stateid.dummy)) (function
+        (* We need to adapt this to route_id and redirect to the result buffer below *)
+        coqops#raw_coq_query phrase
+        (*
+	Coq.bind (Coq.query (phrase,sid)) (function
           | Interface.Fail (_,l,str) ->
             let width = Ideutils.textview_width result in
             Ideutils.insert_xml result#buffer (Richpp.richpp_of_pp width str);
@@ -111,6 +119,7 @@ object(self)
             result#buffer#insert res;
             notebook#set_page ~tab_label:(new_tab_lbl arg) frame#coerce;
 	    Coq.return ())
+         *)
       in
       result#buffer#set_text ("Result for command " ^ phrase ^ ":\n");
       Coq.try_grab coqtop process ignore
@@ -156,7 +165,7 @@ object(self)
     self#new_page_maker;
     self#new_query_aux ~grab_now:false ();
     frame#misc#hide ();
-    let _ = background_color#connect#changed self#refresh_color in
+    let _ = background_color#connect#changed ~callback:self#refresh_color in
     self#refresh_color background_color#get;
     ignore(notebook#event#connect#key_press ~callback:(fun ev ->
       if GdkEvent.Key.keyval ev = GdkKeysyms._Escape then (self#hide; true)

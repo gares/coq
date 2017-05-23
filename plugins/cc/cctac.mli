@@ -7,14 +7,13 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
-open Term
-open Proof_type
+open EConstr
 
 val proof_tac: Ccproof.proof -> unit Proofview.tactic
 
 val cc_tactic : int -> constr list ->  unit Proofview.tactic
 
-val cc_fail : tactic
+val cc_fail : unit Proofview.tactic
 
 val congruence_tac : int -> constr list -> unit Proofview.tactic
 
