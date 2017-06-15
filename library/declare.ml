@@ -159,18 +159,25 @@ let cache_constant ((sp,kn), obj) =
   Nametab.push (Nametab.Until 1) sp (ConstRef (constant_of_kn kn));
   let cst = Global.lookup_constant kn' in
   let univs =
-    match Global.body_of_constant_body cst with
-    | None -> Univ.LSet.empty
-    | Some bd -> Univops.universes_of_constr bd
-  in
-  let univs =
-    let ctp = Declareops.type_of_constant cst in
-    let ctp = Typeops.type_of_constant_type (Global.env ()) ctp in
-    Univ.LSet.union univs (Univops.universes_of_constr ctp)
-  in
-  let cstcnt = Global.constraints_of_constant_body cst in
-  let cstcnt_univs = Univ.universes_of_constraints cstcnt in
-  let univs = Univ.LSet.union univs cstcnt_univs in
+    (* We are allowed to see the body of polymorphic constants only,
+     * since regular constants may be computed lazily or not at all
+     * in -quick mode *)
+    if cst.const_polymorphic then      
+      let univs =
+        match Global.body_of_constant_body cst with
+        | None -> Univ.LSet.empty
+        | Some bd -> Univops.universes_of_constr bd
+      in
+      let univs =
+        let ctp = Declareops.type_of_constant cst in
+        let ctp = Typeops.type_of_constant_type (Global.env ()) ctp in
+        Univ.LSet.union univs (Univops.universes_of_constr ctp)
+      in
+      let cstcnt = Global.constraints_of_constant_body cst in
+      let cstcnt_univs = Univ.universes_of_constraints cstcnt in
+      Univ.LSet.union univs cstcnt_univs
+    else
+      Univ.LSet.empty in
   add_section_constant cst.const_polymorphic kn' cst.const_hyps univs;
   Dischargedhypsmap.set_discharged_hyps sp obj.cst_hyps;
   add_constant_kind (constant_of_kn kn) obj.cst_kind
