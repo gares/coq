@@ -491,6 +491,20 @@ $(COQWORKMGR): $(call bestobj, lib/clib.cma stm/coqworkmgrApi.cmo tools/coqworkm
 	$(SHOW)'OCAMLBEST -o $@'
 	$(HIDE)$(call bestocaml,, $(SYSMOD))
 
+bin/api_ppx: tools/api_ppx.ml
+	ocamlfind ocamlopt -package ppx_tools_versioned.metaquot_402 \
+		-package ocaml-migrate-parsetree.driver-main \
+		-open Ast_402 \
+		-c $< 
+	ocamlfind ocamlopt -package ppx_tools_versioned.metaquot_402 \
+		-package ocaml-migrate-parsetree \
+		-predicates custom_ppx,ppx_driver \
+		-linkpkg -linkall \
+		tools/api_ppx.cmx \
+		`ocamlfind query -predicates native \
+	       		ocaml-migrate-parsetree.driver-main -a-format` \
+		-o $@
+
 # fake_ide : for debugging or test-suite purpose, a fake ide simulating
 # a connection to coqtop -ideslave
 
@@ -566,9 +580,9 @@ kernel/kernel.cma: kernel/kernel.mllib
 
 # Specific rule for API/API.cmi
 # Make sure that API/API.mli cannot leak types from the Coq codebase.
-API/API.cmi : API/API.mli
+API/API.cmi : API/API.mli bin/api_ppx
 	$(SHOW)'OCAMLC    $<'
-	$(HIDE)$(OCAMLC) -I lib -I $(MYCAMLP4LIB) -c $<
+	$(HIDE)$(OCAMLC) -ppx 'bin/api_ppx --as-ppx' -I lib -I $(MYCAMLP4LIB) -c $<
 
 %.cma: %.mllib
 	$(SHOW)'OCAMLC -a -o $@'

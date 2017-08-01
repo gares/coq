@@ -50,3 +50,4 @@ S plugins/**
 B plugins/**
 
 PKG threads.posix camlp5
+PKG ppx_deriving.std ppx_deriving.runtime ocaml-migrate-parsetree ppx_tools_versioned

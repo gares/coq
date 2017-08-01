@@ -14,7 +14,7 @@
 bash -c 'for i in kernel intf library engine pretyping interp proofs parsing printing tactics vernac stm toplevel; do echo -e "\n## $i files" && cat ${i}/${i}.mllib; done && echo -e "\n## highparsing files" && cat parsing/highparsing.mllib' > API/link
 ```
  *)
-
+module API = struct
 (******************************************************************************)
 (* config                                                                     *)
 (******************************************************************************)
@@ -283,3 +283,4 @@ module Stm = Stm
 (******************************************************************************)
 module G_vernac = G_vernac
 module G_proofs = G_proofs
+end
