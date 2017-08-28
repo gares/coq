@@ -764,9 +764,16 @@ module Make (Input : GraphIn) : GraphS with module Input := Input = struct
        let empty = { entries; index = (-2); n_nodes = 2; n_edges = 0 } in
        enforce_univ_lt Level.min Level.var_min empty
     | Some max ->
-       let entries = add_lit_arc max (-1) (add_lit_arc Level.min 0 UMap.empty) in
-       let empty = { entries; index = (-2); n_nodes = 2; n_edges = 0 } in
-       enforce_univ_lt Level.min max empty
+      let entries =
+        UMap.empty |>
+        add_lit_arc max (-2) |>
+        add_lit_arc Level.var_min (-1) |>
+        add_lit_arc Level.min 0
+      in
+      let empty = { entries; index = (-3); n_nodes = 3; n_edges = 0 } in
+      empty |>
+      enforce_univ_lt Level.min Level.var_min |>
+      enforce_univ_lt Level.var_min max
 
   (* Prop = Set / HSet = HInf are forbidden here. *)
   let initial = empty

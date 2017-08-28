@@ -250,7 +250,7 @@ let rec ccnv cv_pb l2r infos lft1 lft2 term1 term2 cuniv =
     let c2 = term_of_fconstr_lift lft2 term2 in
     let ty2 = (infer env evars c2).uj_type in
     let s = (infer_type env evars ty2).utj_type in
-    if not (Sorts.is_prop s) then raise NotConvertible;
+    if not (Sorts.is_hprop s) then raise NotConvertible;
     let c1 = term_of_fconstr_lift lft1 term1 in
     let ty1 = (infer env evars c1).uj_type in
     (* CONV or CUMUL or cv_pb? l2r? *)

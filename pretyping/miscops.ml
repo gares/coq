@@ -34,10 +34,10 @@ let glob_univ_eq g1 g2 = match g1, g2 with
   | (GUSet | GUAnon | GUniv _), _ -> false
 
 let glob_trunc_eq g1 g2 = match g1, g2 with
-  | GHSet, GHSet | GHInf, GHInf -> true
+  | GHProp, GHProp | GHSet, GHSet | GHInf, GHInf -> true
   | GTrunc l1, GTrunc l2 ->
      List.equal (fun x y -> CString.equal (snd x) (snd y)) l1 l2
-  | (GHSet | GHInf | GTrunc _), _ -> false
+  | (GHProp | GHSet | GHInf | GTrunc _), _ -> false
 
 let glob_sort_eq g1 g2 = match g1, g2 with
 | GProp, GProp -> true

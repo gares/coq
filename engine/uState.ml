@@ -362,6 +362,7 @@ module UnifyTruncsIn : UnifyIn with
   = struct
   open Trunc
 
+  (* TODO FIXME for hprop *)
   type level = TLevel.t
   type algebraic = truncation
   module LSet = TSet
@@ -374,7 +375,7 @@ module UnifyTruncsIn : UnifyIn with
   let make_alg = Truncation.of_level
   let level_mem = Truncation.level_mem
   let level_rem = Truncation.level_rem
-  let is_minimal = TLevel.is_hset
+  let is_minimal x = TLevel.is_hset x || TLevel.is_hprop x
 
   let allow_eq_rigid_litteral = true
 

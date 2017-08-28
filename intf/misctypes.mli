@@ -55,6 +55,7 @@ type glob_univ =
   | GUniv of univ_info
 
 type glob_trunc =
+  | GHProp
   | GHSet
   | GHInf
   | GTrunc of trunc_info

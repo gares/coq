@@ -131,6 +131,8 @@ sig
   val sup : t -> t -> t
   (** The l.u.b. of 2 truncations *)
 
+  val leq : t -> t -> bool
+
   val hprop : t
   val hset : t
   val hinf : t

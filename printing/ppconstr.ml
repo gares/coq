@@ -143,6 +143,7 @@ end) = struct
     | GUniv l -> str"max(" ++ prlist_with_sep (fun () -> str",") (fun x -> str (snd x)) l ++ str")"
 
   let pr_trunc = function
+    | GHProp -> str "HProp"
     | GHSet -> str "HSet"
     | GHInf -> str "HInf"
     | GTrunc [_,x] -> str x

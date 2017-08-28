@@ -641,7 +641,7 @@ let rec compile_constr reloc c sz cont =
       in
       (* We assume that [Universe.type0m] is a neutral element for [Universe.sup] *)
       let uglob =
-        USet.fold (fun lvl u -> Sorts.sup u (Sorts.of_levels lvl Trunc.TLevel.hset))
+        USet.fold (fun lvl u -> Sorts.sup u (Sorts.of_levels lvl Trunc.TLevel.hprop))
                   (* FIXME use some tlevels thing instead of this *)
                   global_levels Sorts.prop
       in

@@ -24,6 +24,7 @@ val hash : sorts -> int
 val is_set : sorts -> bool
 val is_prop : sorts -> bool
 val is_small : sorts -> bool
+val is_hprop : sorts -> bool
 val is_hset : sorts -> bool
 val family_mem : sorts -> family -> bool
 
@@ -236,7 +237,7 @@ module Graph :
 sig
   type t
 
-  (** The graph with only relations between litteral levels (Prop, Set, HSet, HInf).*)
+  (** The graph with only relations between litteral levels (Prop, Set, HProp, HSet, HInf).*)
   val initial : t
 
   val is_initial : t -> bool

@@ -71,7 +71,7 @@ let compare s1 s2 =
     if Int.equal cu 0 then Truncation.compare s1.trunc s2.trunc
     else cu
 
-let prop = make Universe.type0m Truncation.hset
+let prop = make Universe.type0m Truncation.hprop
 let set = make Universe.type0 Truncation.hset
 let type1 = make type1_univ Truncation.hinf
 
@@ -83,6 +83,8 @@ let is_prop s = is_type0m_univ (univ_of_sort s)
 let is_set s = is_type0_univ (univ_of_sort s)
 
 let is_small s = is_small_univ (univ_of_sort s)
+
+let is_hprop s = Truncation.is_hprop (trunc_of_sort s)
 
 let is_hset s = Truncation.is_hset (trunc_of_sort s)
 
@@ -784,9 +786,9 @@ module Graph = struct
       type t = TLevel.t
       let equal = TLevel.equal
       let is_litteral = TLevel.is_litteral
-      let min = TLevel.hset
+      let min = TLevel.hprop
       let var_min = TLevel.hset
-      let is_min = TLevel.is_hset
+      let is_min = TLevel.is_hprop
       let is_var_min = TLevel.is_hset
       let max = Some TLevel.hinf
       let is_max = TLevel.is_hinf
@@ -893,8 +895,7 @@ module Graph = struct
     Truncation.for_all (fun ul -> trunc_exists_bigger g ul v) u
 
   let trunc_check_leq g u v =
-    Truncation.equal u v
-    || Truncation.is_hset u || Truncation.is_hinf v
+    Truncation.leq u v
     || real_trunc_check_leq g u v
 
   let real_trunc_check_eq g u v =

@@ -1276,8 +1276,8 @@ let translate_cstr (l,d,r as cstr) =
 
 let is_trivial_trunc_leq (l,d,r) =
   match d with
-  | Lt -> TLevel.is_hset l && TLevel.is_hinf r
-  | Le -> TLevel.is_hset l || TLevel.is_hinf r
+  | Lt -> TLevel.leq l r && TLevel.apart l r
+  | Le -> TLevel.leq l r
   | Eq -> false
 
 let refresh_constraints univs (ctx, cstrs) =

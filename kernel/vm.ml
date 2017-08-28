@@ -250,7 +250,7 @@ let rec whd_accu a stk =
 	let u = ref (Obj.obj (Obj.field at 0)) in
 	for i = 0 to nargs args - 1 do
           ignore(assert false); (* FIXME do something with truncations *)
-          u := Sorts.sup !u (Sorts.of_levels (uni_lvl_val (arg args i)) Trunc.TLevel.hset)
+          u := Sorts.sup !u (Sorts.of_levels (uni_lvl_val (arg args i)) Trunc.TLevel.hprop)
 	done;
         Vsort !u
      | _ -> assert false

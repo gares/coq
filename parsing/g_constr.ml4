@@ -26,7 +26,7 @@ let ldots_var = Id.of_string ".."
 let constr_kw =
   [ "forall"; "fun"; "match"; "fix"; "cofix"; "with"; "in"; "for";
     "end"; "as"; "let"; "if"; "then"; "else"; "return";
-    "Prop"; "Set"; "Type"; "HSet"; "HInf"; ".("; "_"; "..";
+    "Prop"; "Set"; "Type"; "HProp"; "HSet"; "HInf"; ".("; "_"; "..";
     "`{"; "`("; "{|"; "|}" ]
 
 let _ = List.iter CLexer.add_keyword constr_kw
@@ -165,7 +165,8 @@ GEXTEND Gram
       ] ]
   ;
   truncation:
-    [ [ "HSet" -> GHSet
+    [ [ "HProp" -> GHProp
+      | "HSet" -> GHSet
       | "HInf" -> GHInf
       | IDENT "max"; "("; ids = LIST1 identref SEP ","; ")" ->
          GTrunc (List.map unidify) ids

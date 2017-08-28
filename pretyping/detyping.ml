@@ -422,6 +422,7 @@ let detype_univ sigma = function
      else GUniv []
 
 let detype_trunc sigma = function
+  | t when Trunc.Truncation.is_hprop t -> GHProp
   | t when Trunc.Truncation.is_hset t -> GHSet
   | t when Trunc.Truncation.is_hinf t -> GHInf
   | t ->

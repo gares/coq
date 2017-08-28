@@ -267,6 +267,9 @@ module Truncation =
 
     let super _ = hinf
 
+    let leq x y =
+      equal x y || is_hprop x || (is_hset x && not (is_hprop y)) || is_hinf y
+
     (* Add l to x which does not contain hset/hinf, keeping it sorted w.r.t. TLevel.compare *)
     let rec add_level_name l x =
       match x with

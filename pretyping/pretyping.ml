@@ -257,6 +257,7 @@ let interp_universe ?loc evd = function
                     (evd, Universe.type0m) l
 
 let interp_truncation ?loc evd = function
+  | GHProp -> evd, Trunc.Truncation.hprop
   | GHSet -> evd, Trunc.Truncation.hset
   | GHInf -> evd, Trunc.Truncation.hinf
   | GTrunc [] -> let evd, l = new_trunc_level_variable ?loc univ_rigid evd in
@@ -266,7 +267,7 @@ let interp_truncation ?loc evd = function
      List.fold_left (fun (evd, u) l ->
          let evd', l = interp_truncation_level_name evd l in
          (evd', Truncation.sup u (Truncation.of_level l)))
-                    (evd, Truncation.hset) l
+                    (evd, Truncation.hprop) l
 
 let interp_universe_level loc evd = function
   | None -> new_univ_level_variable ~loc univ_rigid evd
