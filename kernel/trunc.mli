@@ -14,9 +14,11 @@ sig
   (** Type of truncation levels. A truncation level is essentially a unique name
       that will be associated to constraints later on. *)
 
+  val hprop : t
   val hset : t
   val hinf : t
 
+  val is_hprop : t -> bool
   val is_hset : t -> bool
   val is_hinf : t -> bool
   val is_litteral : t -> bool
@@ -129,9 +131,11 @@ sig
   val sup : t -> t -> t
   (** The l.u.b. of 2 truncations *)
 
+  val hprop : t
   val hset : t
   val hinf : t
 
+  val is_hprop : t -> bool
   val is_hset : t -> bool
   val is_hinf : t -> bool
 

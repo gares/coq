@@ -15,6 +15,7 @@ module TLevel =
   struct
     module Raw = struct
       type t =
+        | HProp
         | HSet
         | HInf
         | Level of int * DirPath.t
@@ -22,6 +23,9 @@ module TLevel =
 
       let compare a b =
         match a, b with
+        | HProp, HProp -> 0
+        | HProp, _ -> -1
+        | _, HProp -> 1
         | HSet, HSet -> 0
         | HSet, _ -> -1
         | _, HSet -> 1
@@ -39,12 +43,13 @@ module TLevel =
 
       let equal a b =
         match a, b with
-        | HSet, HSet | HInf, HInf -> true
+        | HProp, HProp | HSet, HSet | HInf, HInf -> true
         | Level (n, d), Level (n', d') -> n == n' && d == d'
         | Var n, Var m -> n == m
         | _ -> false
 
       let hcons = function
+        | HProp -> HProp
         | HSet -> HSet
         | HInf -> HInf
         | Level (n, d) as x ->
@@ -55,8 +60,9 @@ module TLevel =
       let hash =
         let open Hashset.Combine in
         function
-        | HSet -> combinesmall 1 0
-        | HInf -> combinesmall 1 1
+        | HProp -> combinesmall 1 0
+        | HSet -> combinesmall 1 1
+        | HInf -> combinesmall 1 2
         | Var n -> combinesmall 2 n
         | Level (n, d) -> combinesmall 3 (combine n (DirPath.hash d))
     end
@@ -84,7 +90,7 @@ module TLevel =
 
     let hash x = x.hash
 
-    let equal x y = x == y
+    let equal (x:t) y = x == y
 
     (* For hashconsing *)
     let eq = equal
@@ -96,20 +102,21 @@ module TLevel =
         if c == 0 then Raw.compare u.data v.data
         else c
 
+    let hprop = make Raw.HProp
     let hset = make Raw.HSet
     let hinf = make Raw.HInf
 
+    let is_hprop x = equal hprop x
     let is_hset x = equal hset x
     let is_hinf x = equal hinf x
-    let is_litteral x = is_hset x || is_hinf x
+    let is_litteral x = is_hprop x || is_hset x || is_hinf x
 
+    (* FIXME not sure about this... *)
     let leq x y =
-      equal x y || is_hset x
+      equal x y || is_hprop x || (is_hset x && not (is_hprop y)) || is_hinf y
 
     let apart x y =
-      match x.data, y.data with
-      | Raw.HSet, Raw.HInf | Raw.HInf, Raw.HSet -> true
-      | _ -> false
+      is_litteral x && is_litteral y && not (equal x y)
 
     let of_path d i = make (Raw.Level (i, DirPath.hcons d))
 
@@ -120,16 +127,9 @@ module TLevel =
       | Raw.Var i -> Some i
       | _ -> None
 
-    let apart u v =
-      let open Raw in
-      match u.data, v.data with
-      | HSet, HInf | HInf, HSet -> true
-      | _ -> false
-
-    let leq u v = equal u v || is_hset u || is_hinf v
-
     let to_string x =
       match x.data with
+      | Raw.HProp -> "HProp"
       | Raw.HSet -> "HSet"
       | Raw.HInf -> "HInf"
       | Raw.Level (n, d) -> DirPath.to_string d ^ "." ^ string_of_int n
@@ -257,9 +257,11 @@ module Truncation =
       | Some u' -> if TLevel.equal u u' then min else v
       | None -> remove u v
 
+    let hprop = of_level TLevel.hprop
     let hset = of_level TLevel.hset
     let hinf = of_level TLevel.hinf
 
+    let is_hprop x = equal hprop x
     let is_hset x = equal hset x
     let is_hinf x = equal hinf x
 
@@ -276,9 +278,9 @@ module Truncation =
          else cons l' (add_level_name l x')
 
     let add_level l x =
-      if TLevel.is_hset l then x
+      if TLevel.is_hprop l then x
       else if TLevel.is_hinf l || is_hinf x then hinf
-      else if is_hset x then of_level l
+      else if is_hprop x then of_level l
       else add_level_name l x
 
     let sort x =
