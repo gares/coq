@@ -71,9 +71,10 @@ let compare s1 s2 =
     if Int.equal cu 0 then Truncation.compare s1.trunc s2.trunc
     else cu
 
-let prop = make Universe.type0m Truncation.hprop
-let set = make Universe.type0 Truncation.hset
-let type1 = make type1_univ Truncation.hinf
+(* places may assume prop is neutral for sup, check this before changing to sset *)
+let prop = make Universe.type0m Truncation.sprop
+let set = make Universe.type0 Truncation.sset
+let type1 = make type1_univ Truncation.inf
 
 let univ_of_sort s = s.univ
 let trunc_of_sort s = s.trunc
@@ -84,9 +85,9 @@ let is_set s = is_type0_univ (univ_of_sort s)
 
 let is_small s = is_small_univ (univ_of_sort s)
 
-let is_hprop s = Truncation.is_hprop (trunc_of_sort s)
+let is_sprop s = Truncation.is_sprop (trunc_of_sort s)
 
-let is_hset s = Truncation.is_hset (trunc_of_sort s)
+let is_sset s = Truncation.is_sset (trunc_of_sort s)
 
 let family_mem s = function
   | InProp -> is_prop s
@@ -119,7 +120,7 @@ let sup s1 s2 =
   make (Universe.sup s1.univ s2.univ) (Truncation.sup s1.trunc s2.trunc)
 
 let super s =
-  make (Universe.super s.univ) Truncation.hinf
+  make (Universe.super s.univ) Truncation.inf
 
 type level_printer = (Level.t -> Pp.std_ppcmds) * (TLevel.t -> Pp.std_ppcmds)
 
@@ -786,12 +787,12 @@ module Graph = struct
       type t = TLevel.t
       let equal = TLevel.equal
       let is_litteral = TLevel.is_litteral
-      let min = TLevel.hprop
-      let var_min = TLevel.hset
-      let is_min = TLevel.is_hprop
-      let is_var_min = TLevel.is_hset
-      let max = Some TLevel.hinf
-      let is_max = TLevel.is_hinf
+      let min = TLevel.sprop
+      let var_min = TLevel.sset
+      let is_min = TLevel.is_sprop
+      let is_var_min = TLevel.is_sset
+      let max = Some TLevel.inf
+      let is_max = TLevel.is_inf
 
       let of_path = TLevel.of_path
       let to_string = TLevel.to_string

@@ -232,10 +232,10 @@ let mk_list univ trunc typ l =
 
 let mk_plist = 
   let type1lev = Universes.new_univ_level () in
-  let trunc = Trunc.TLevel.hinf in
+  let trunc = Trunc.TLevel.inf in
     fun l -> mk_list type1lev trunc Term.mkProp l
 
-let mk_list = mk_list Univ.Level.set Trunc.TLevel.hset
+let mk_list = mk_list Univ.Level.set Trunc.TLevel.sset
 let mk_shuffle_list l = mk_list (Lazy.force coq_t_fusion) l
 
 

@@ -24,8 +24,8 @@ val hash : sorts -> int
 val is_set : sorts -> bool
 val is_prop : sorts -> bool
 val is_small : sorts -> bool
-val is_hprop : sorts -> bool
-val is_hset : sorts -> bool
+val is_sprop : sorts -> bool
+val is_sset : sorts -> bool
 val family_mem : sorts -> family -> bool
 
 val hcons : sorts -> sorts

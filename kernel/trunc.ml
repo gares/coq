@@ -15,20 +15,20 @@ module TLevel =
   struct
     module Raw = struct
       type t =
-        | HProp
-        | HSet
-        | HInf
+        | SProp
+        | SSet
+        | Inf
         | Level of int * DirPath.t
         | Var of int (* De Bruijn index *)
 
       let compare a b =
         match a, b with
-        | HProp, HProp -> 0
-        | HProp, _ -> -1
-        | _, HProp -> 1
-        | HSet, HSet -> 0
-        | HSet, _ -> -1
-        | _, HSet -> 1
+        | SProp, SProp -> 0
+        | SProp, _ -> -1
+        | _, SProp -> 1
+        | SSet, SSet -> 0
+        | SSet, _ -> -1
+        | _, SSet -> 1
         | Level (i1, dp1), Level (i2, dp2) ->
            if i1 < i2 then -1
            else if i1 > i2 then 1
@@ -39,19 +39,19 @@ module TLevel =
            Int.compare n m
         | Var _, _ -> -1
         | _, Var _ -> 1
-        | HInf, HInf -> 0
+        | Inf, Inf -> 0
 
       let equal a b =
         match a, b with
-        | HProp, HProp | HSet, HSet | HInf, HInf -> true
+        | SProp, SProp | SSet, SSet | Inf, Inf -> true
         | Level (n, d), Level (n', d') -> n == n' && d == d'
         | Var n, Var m -> n == m
         | _ -> false
 
       let hcons = function
-        | HProp -> HProp
-        | HSet -> HSet
-        | HInf -> HInf
+        | SProp -> SProp
+        | SSet -> SSet
+        | Inf -> Inf
         | Level (n, d) as x ->
            let d' = DirPath.hcons d in
            if d' == d then x else Level (n, d')
@@ -60,9 +60,9 @@ module TLevel =
       let hash =
         let open Hashset.Combine in
         function
-        | HProp -> combinesmall 1 0
-        | HSet -> combinesmall 1 1
-        | HInf -> combinesmall 1 2
+        | SProp -> combinesmall 1 0
+        | SSet -> combinesmall 1 1
+        | Inf -> combinesmall 1 2
         | Var n -> combinesmall 2 n
         | Level (n, d) -> combinesmall 3 (combine n (DirPath.hash d))
     end
@@ -102,18 +102,18 @@ module TLevel =
         if c == 0 then Raw.compare u.data v.data
         else c
 
-    let hprop = make Raw.HProp
-    let hset = make Raw.HSet
-    let hinf = make Raw.HInf
+    let sprop = make Raw.SProp
+    let sset = make Raw.SSet
+    let inf = make Raw.Inf
 
-    let is_hprop x = equal hprop x
-    let is_hset x = equal hset x
-    let is_hinf x = equal hinf x
-    let is_litteral x = is_hprop x || is_hset x || is_hinf x
+    let is_sprop x = equal sprop x
+    let is_sset x = equal sset x
+    let is_inf x = equal inf x
+    let is_litteral x = is_sprop x || is_sset x || is_inf x
 
     (* FIXME not sure about this... *)
     let leq x y =
-      equal x y || is_hprop x || (is_hset x && not (is_hprop y)) || is_hinf y
+      equal x y || is_sprop x || (is_sset x && not (is_sprop y)) || is_inf y
 
     let apart x y =
       is_litteral x && is_litteral y && not (equal x y)
@@ -129,9 +129,9 @@ module TLevel =
 
     let to_string x =
       match x.data with
-      | Raw.HProp -> "HProp"
-      | Raw.HSet -> "HSet"
-      | Raw.HInf -> "HInf"
+      | Raw.SProp -> "SProp"
+      | Raw.SSet -> "SSet"
+      | Raw.Inf -> "Inf"
       | Raw.Level (n, d) -> DirPath.to_string d ^ "." ^ string_of_int n
       | Raw.Var i -> "Var(" ^ string_of_int i ^ ")"
 
@@ -257,20 +257,20 @@ module Truncation =
       | Some u' -> if TLevel.equal u u' then min else v
       | None -> remove u v
 
-    let hprop = of_level TLevel.hprop
-    let hset = of_level TLevel.hset
-    let hinf = of_level TLevel.hinf
+    let sprop = of_level TLevel.sprop
+    let sset = of_level TLevel.sset
+    let inf = of_level TLevel.inf
 
-    let is_hprop x = equal hprop x
-    let is_hset x = equal hset x
-    let is_hinf x = equal hinf x
+    let is_sprop x = equal sprop x
+    let is_sset x = equal sset x
+    let is_inf x = equal inf x
 
-    let super _ = hinf
+    let super _ = inf
 
     let leq x y =
-      equal x y || is_hprop x || (is_hset x && not (is_hprop y)) || is_hinf y
+      equal x y || is_sprop x || (is_sset x && not (is_sprop y)) || is_inf y
 
-    (* Add l to x which does not contain hset/hinf, keeping it sorted w.r.t. TLevel.compare *)
+    (* Add l to x which does not contain sprop/inf, keeping it sorted w.r.t. TLevel.compare *)
     let rec add_level_name l x =
       match x with
       | Nil -> of_level l
@@ -281,9 +281,9 @@ module Truncation =
          else cons l' (add_level_name l x')
 
     let add_level l x =
-      if TLevel.is_hprop l then x
-      else if TLevel.is_hinf l || is_hinf x then hinf
-      else if is_hprop x then of_level l
+      if TLevel.is_sprop l then x
+      else if TLevel.is_inf l || is_inf x then inf
+      else if is_sprop x then of_level l
       else add_level_name l x
 
     let sort x =

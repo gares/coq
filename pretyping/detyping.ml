@@ -422,9 +422,9 @@ let detype_univ sigma = function
      else GUniv []
 
 let detype_trunc sigma = function
-  | t when Trunc.Truncation.is_hprop t -> GHProp
-  | t when Trunc.Truncation.is_hset t -> GHSet
-  | t when Trunc.Truncation.is_hinf t -> GHInf
+  | t when Trunc.Truncation.is_sprop t -> GHProp
+  | t when Trunc.Truncation.is_sset t -> GHSet
+  | t when Trunc.Truncation.is_inf t -> GHInf
   | t ->
      if !print_universes
      then GTrunc [dl, Pp.string_of_ppcmds (Trunc.Truncation.pr_with (snd (Evd.pr_evd_level sigma)) t)]

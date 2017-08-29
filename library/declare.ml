@@ -585,8 +585,8 @@ let do_tconstraint poly l =
   let open Misctypes in
   let u_of_id x =
     match x with
-    | GIHSet -> Loc.dummy_loc, (false, Trunc.TLevel.hset)
-    | GIHInf -> Loc.dummy_loc, (false, Trunc.TLevel.hinf)
+    | GIHSet -> Loc.dummy_loc, (false, Trunc.TLevel.sset)
+    | GIHInf -> Loc.dummy_loc, (false, Trunc.TLevel.inf)
     | GITLevel None ->
        user_err ~hdr:"TConstraint"
                      (str "Cannot declare constraints on anonymous truncations")

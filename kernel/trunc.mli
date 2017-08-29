@@ -14,13 +14,13 @@ sig
   (** Type of truncation levels. A truncation level is essentially a unique name
       that will be associated to constraints later on. *)
 
-  val hprop : t
-  val hset : t
-  val hinf : t
+  val sprop : t
+  val sset : t
+  val inf : t
 
-  val is_hprop : t -> bool
-  val is_hset : t -> bool
-  val is_hinf : t -> bool
+  val is_sprop : t -> bool
+  val is_sset : t -> bool
+  val is_inf : t -> bool
   val is_litteral : t -> bool
 
   val apart : t -> t -> bool
@@ -133,13 +133,13 @@ sig
 
   val leq : t -> t -> bool
 
-  val hprop : t
-  val hset : t
-  val hinf : t
+  val sprop : t
+  val sset : t
+  val inf : t
 
-  val is_hprop : t -> bool
-  val is_hset : t -> bool
-  val is_hinf : t -> bool
+  val is_sprop : t -> bool
+  val is_sset : t -> bool
+  val is_inf : t -> bool
 
   val fold : (TLevel.t -> 'a -> 'a) -> t -> 'a -> 'a
 

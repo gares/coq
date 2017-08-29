@@ -375,7 +375,7 @@ module UnifyTruncsIn : UnifyIn with
   let make_alg = Truncation.of_level
   let level_mem = Truncation.level_mem
   let level_rem = Truncation.level_rem
-  let is_minimal x = TLevel.is_hset x || TLevel.is_hprop x
+  let is_minimal x = TLevel.is_sset x || TLevel.is_sprop x
 
   let allow_eq_rigid_litteral = true
 

@@ -93,7 +93,7 @@ let is_hset_type env revparams t =
   let s = (Retypeops.infer_type env no_evars t).utj_type in
   Sorts.Graph.trunc_check_eq (Environ.universes env)
                              (Sorts.trunc_of_sort s)
-                             Trunc.Truncation.hset
+                             Trunc.Truncation.sset
 
 let elim_sorts env (_,mip) params =
   match mip.mind_kelim with

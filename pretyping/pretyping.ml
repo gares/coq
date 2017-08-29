@@ -257,9 +257,9 @@ let interp_universe ?loc evd = function
                     (evd, Universe.type0m) l
 
 let interp_truncation ?loc evd = function
-  | GHProp -> evd, Trunc.Truncation.hprop
-  | GHSet -> evd, Trunc.Truncation.hset
-  | GHInf -> evd, Trunc.Truncation.hinf
+  | GHProp -> evd, Trunc.Truncation.sprop
+  | GHSet -> evd, Trunc.Truncation.sset
+  | GHInf -> evd, Trunc.Truncation.inf
   | GTrunc [] -> let evd, l = new_trunc_level_variable ?loc univ_rigid evd in
          evd, Trunc.Truncation.of_level l
   | GTrunc l ->
@@ -267,7 +267,7 @@ let interp_truncation ?loc evd = function
      List.fold_left (fun (evd, u) l ->
          let evd', l = interp_truncation_level_name evd l in
          (evd', Truncation.sup u (Truncation.of_level l)))
-                    (evd, Truncation.hprop) l
+                    (evd, Truncation.sprop) l
 
 let interp_universe_level loc evd = function
   | None -> new_univ_level_variable ~loc univ_rigid evd
@@ -522,8 +522,8 @@ let interp_universe_level_name loc evd l =
 
 let interp_truncation_level_name loc evd l =
   match l with
-  | GIHSet -> evd, Trunc.TLevel.hset
-  | GIHInf -> evd, Trunc.TLevel.hinf
+  | GIHSet -> evd, Trunc.TLevel.sset
+  | GIHInf -> evd, Trunc.TLevel.inf
   | GITLevel s -> interp_truncation_level loc evd s
 
 (** Instance for global [gr], checking sizes. *)
