@@ -268,6 +268,7 @@ let minimize_univ_variables ctx us algs left right cstrs =
 module UPairs = OrderedType.UnorderedPair(Univ.Level)
 module UPairSet = Set.Make (UPairs)
 
+(* TODO check is_small/sprop *)
 let normalize_context_set g ctx us algs weak =
   let (ctx, csts) = ContextSet.levels ctx, ContextSet.constraints ctx in
   (* Keep the Prop/Set <= i constraints separate for minimization *)

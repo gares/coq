@@ -51,7 +51,8 @@ type globals
 
 type stratification = {
   env_universes : UGraph.t;
-  env_engagement : engagement
+  env_engagement : engagement;
+  env_sprop_allowed : bool;
 }
 
 type named_context_val = private {
@@ -94,6 +95,8 @@ val set_opaque_tables : env -> Opaqueproof.opaquetab -> env
 val engagement    : env -> engagement
 val typing_flags    : env -> typing_flags
 val is_impredicative_set : env -> bool
+val is_impredicative_sort : env -> Sorts.t -> bool
+val is_impredicative_univ : env -> Univ.Universe.t -> bool
 val type_in_type : env -> bool
 val deactivated_guard : env -> bool
 val indices_matter : env -> bool
@@ -277,6 +280,9 @@ val push_subgraph : Univ.ContextSet.t -> env -> env
 
 val set_engagement : engagement -> env -> env
 val set_typing_flags : typing_flags -> env -> env
+val make_sprop_cumulative : env -> env
+val set_allow_sprop : bool -> env -> env
+val sprop_allowed : env -> bool
 
 val universes_of_global : env -> GlobRef.t -> AUContext.t
 

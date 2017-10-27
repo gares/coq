@@ -101,6 +101,7 @@ val mkVar : Id.t -> t
 val mkMeta : metavariable -> t
 val mkEvar : t pexistential -> t
 val mkSort : Sorts.t -> t
+val mkSProp : t
 val mkProp : t
 val mkSet  : t
 val mkType : Univ.Universe.t -> t
@@ -123,6 +124,8 @@ val mkCoFix : (t, t) pcofixpoint -> t
 val mkArrow : t -> t -> t
 
 val mkRef : GlobRef.t * EInstance.t -> t
+
+val type1 : t
 
 val applist : t * t list -> t
 

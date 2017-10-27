@@ -609,6 +609,7 @@ let detype_universe sigma u =
   Univ.Universe.map fn u
 
 let detype_sort sigma = function
+  | SProp -> GSProp
   | Prop -> GProp
   | Set -> GSet
   | Type u ->

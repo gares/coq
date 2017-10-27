@@ -24,6 +24,7 @@ let pp_sort s =
   match Sorts.family s with
   | InSet -> str "Set"
   | InProp -> str "Prop"
+  | InSProp -> str "SProp"
   | InType -> str "Type"
 
 let rec pp_lam lam =

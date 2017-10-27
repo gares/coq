@@ -36,18 +36,21 @@ type t =
    uctx_initial_universes : UGraph.t; (** The graph at the creation of the evar_map *)
    uctx_weak_constraints : UPairSet.t
  }
-  
+
+let initial_sprop_cumulative = UGraph.make_sprop_cumulative UGraph.initial_universes
+
 let empty =
   { uctx_names = UNameMap.empty, Univ.LMap.empty;
     uctx_local = Univ.ContextSet.empty;
     uctx_seff_univs = Univ.LSet.empty;
     uctx_univ_variables = Univ.LMap.empty;
     uctx_univ_algebraic = Univ.LSet.empty;
-    uctx_universes = UGraph.initial_universes;
-    uctx_initial_universes = UGraph.initial_universes;
+    uctx_universes = initial_sprop_cumulative;
+    uctx_initial_universes = initial_sprop_cumulative;
     uctx_weak_constraints = UPairSet.empty; }
 
 let make u =
+  let u = UGraph.make_sprop_cumulative u in
     { empty with 
       uctx_universes = u; uctx_initial_universes = u}
 
@@ -726,7 +729,7 @@ let universe_of_name uctx s =
   UNameMap.find s (fst uctx.uctx_names)
 
 let update_sigma_env uctx env =
-  let univs = Environ.universes env in
+  let univs = UGraph.make_sprop_cumulative (Environ.universes env) in
   let eunivs =
     { uctx with uctx_initial_universes = univs;
                          uctx_universes = univs }

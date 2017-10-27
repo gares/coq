@@ -194,7 +194,7 @@ TIMER=$(if $(TIMED), $(STDTIME), $(TIMECMD))
 # the output format of the unix command time. For instance:
 #   TIME="%C (%U user, %S sys, %e total, %M maxres)"
 
-COQOPTS=$(NATIVECOMPUTE) $(COQWARNERROR) $(COQUSERFLAGS)
+COQOPTS=$(NATIVECOMPUTE) $(COQWARNERROR) $(COQUSERFLAGS) -allow-sprop
 BOOTCOQC=$(TIMER) $(COQTOPBEST) -boot $(COQOPTS) -compile
 
 LOCALINCLUDES=$(addprefix -I ,$(SRCDIRS))
