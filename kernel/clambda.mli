@@ -6,7 +6,7 @@ exception TooLargeInductive of Pp.t
 
 val lambda_of_constr : optimize:bool -> env -> Constr.t -> lambda
 
-val decompose_Llam : lambda -> Name.t array * lambda
+val decompose_Llam : lambda -> Name.t Context.binder_annot array * lambda
 
 val get_alias : env -> Constant.t -> Constant.t
 

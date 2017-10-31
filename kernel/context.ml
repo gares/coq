@@ -31,6 +31,24 @@
 open Util
 open Names
 
+type 'a binder_annot = { binder_name : 'a; binder_relevance : Sorts.relevance }
+
+let eq_annot eq {binder_name=na1;binder_relevance=r1} {binder_name=na2;binder_relevance=r2} =
+  eq na1 na2 && Sorts.relevance_equal r1 r2
+
+let map_annot f {binder_name=na;binder_relevance} =
+  {binder_name=f na;binder_relevance}
+
+let make_annot x r = {binder_name=x;binder_relevance=r}
+
+let binder_name x = x.binder_name
+let binder_relevance x = x.binder_relevance
+
+let annotR x = make_annot x Sorts.Relevant
+
+let nameR x = annotR (Name x)
+let anonR = annotR Anonymous
+
 (** Representation of contexts that can capture anonymous as well as non-anonymous variables.
     Individual declarations are then designated by de Bruijn indexes. *)
 module Rel =
@@ -40,13 +58,14 @@ struct
   struct
     (* local declaration *)
     type ('constr, 'types) pt =
-      | LocalAssum of Name.t * 'types            (** name, type *)
-      | LocalDef of Name.t * 'constr * 'types   (** name, value, type *)
+      | LocalAssum of Name.t binder_annot * 'types            (** name, type *)
+      | LocalDef of Name.t binder_annot * 'constr * 'types   (** name, value, type *)
+
+    let get_annot = function
+      | LocalAssum (na,_) | LocalDef (na,_,_) -> na
 
     (** Return the name bound by a given declaration. *)
-    let get_name = function
-      | LocalAssum (na,_)
-      | LocalDef (na,_,_) -> na
+    let get_name x = (get_annot x).binder_name
 
     (** Return [Some value] for local-declarations and [None] for local-assumptions. *)
     let get_value = function
@@ -57,11 +76,13 @@ struct
     let get_type = function
       | LocalAssum (_,ty)
       | LocalDef (_,_,ty) -> ty
-                               
+
+    let get_relevance x = (get_annot x).binder_relevance
+
     (** Set the name that is bound by a given declaration. *)
     let set_name na = function
-      | LocalAssum (_,ty) -> LocalAssum (na, ty)
-      | LocalDef (_,v,ty) -> LocalDef (na, v, ty)
+      | LocalAssum (x,ty) -> LocalAssum ({x with binder_name=na}, ty)
+      | LocalDef (x,v,ty) -> LocalDef ({x with binder_name=na}, v, ty)
 
     (** Set the type of the bound variable in a given declaration. *)
     let set_type ty = function
@@ -92,20 +113,17 @@ struct
     let equal eq decl1 decl2 =
       match decl1, decl2 with
       | LocalAssum (n1,ty1), LocalAssum (n2, ty2) ->
-          Name.equal n1 n2 && eq ty1 ty2
+          eq_annot Name.equal n1 n2 && eq ty1 ty2
       | LocalDef (n1,v1,ty1), LocalDef (n2,v2,ty2) ->
-          Name.equal n1 n2 && eq v1 v2 && eq ty1 ty2
+          eq_annot Name.equal n1 n2 && eq v1 v2 && eq ty1 ty2
       | _ ->
           false
 
     (** Map the name bound by a given declaration. *)
-    let map_name f = function
-      | LocalAssum (na, ty) as decl ->
-          let na' = f na in
-          if na == na' then decl else LocalAssum (na', ty)
-      | LocalDef (na, v, ty) as decl ->
-          let na' = f na in
-          if na == na' then decl else LocalDef (na', v, ty)
+    let map_name f x =
+      let na = get_name x in
+      let na' = f na in
+      if na == na' then x else set_name na' x
 
     (** For local assumptions, this function returns the original local assumptions.
         For local definitions, this function maps the value in the local definition. *)
@@ -120,7 +138,7 @@ struct
       | LocalAssum (na, ty) as decl ->
           let ty' = f ty in
           if ty == ty' then decl else LocalAssum (na, ty')
-      | LocalDef (na, v, ty) as decl ->         
+      | LocalDef (na, v, ty) as decl ->
           let ty' = f ty in
           if ty == ty' then decl else LocalDef (na, v, ty')
 
@@ -171,7 +189,7 @@ struct
 
   (** [extended_rel_list n Γ] builds an instance [args] such that [Γ,Δ ⊢ args:Γ]
       with n = |Δ| and with the local definitions of [Γ] skipped in
-      [args]. Example: for [x:T,y:=c,z:U] and [n]=2, it gives [Rel 5, Rel 3]. *)
+      [args]. Example: for [x:T,y:=c,z:U] and [n]=2, it gives [Rel 5el 3]. *)
   let nhyps ctx =
     let open Declaration in
     let rec nhyps acc = function
@@ -219,7 +237,7 @@ struct
 
   (** [extended_list n Γ] builds an instance [args] such that [Γ,Δ ⊢ args:Γ]
       with n = |Δ| and with the {e local definitions} of [Γ] skipped in
-      [args]. Example: for [x:T, y:=c, z:U] and [n]=2, it gives [Rel 5, Rel 3]. *)
+      [args]. Example: for [x:T, y:=c, z:U] and [n]=2, it gives [Rel 5el 3]. *)
   let to_extended_list mk n l =
     let rec reln l p = function
       | Declaration.LocalAssum _ :: hyps -> reln (mk (n+p) :: l) (p+1) hyps
@@ -228,7 +246,7 @@ struct
     in
     reln [] 1 l
 
-  (** [extended_vect n Γ] does the same, returning instead an array. *)
+  (** [extended_vect n Γ] does the sameeturning instead an array. *)
   let to_extended_vect mk n hyps = Array.of_list (to_extended_list mk n hyps)
 end
 
@@ -241,13 +259,14 @@ struct
   struct
     (** local declaration *)
     type ('constr, 'types) pt =
-      | LocalAssum of Id.t * 'types             (** identifier, type *)
-      | LocalDef of Id.t * 'constr * 'types    (** identifier, value, type *)
+      | LocalAssum of Id.t binder_annot * 'types             (** identifier, type *)
+      | LocalDef of Id.t binder_annot * 'constr * 'types    (** identifier, value, type *)
+
+    let get_annot = function
+      | LocalAssum (na,_) | LocalDef (na,_,_) -> na
 
     (** Return the identifier bound by a given declaration. *)
-    let get_id = function
-      | LocalAssum (id,_) -> id
-      | LocalDef (id,_,_) -> id
+    let get_id x = (get_annot x).binder_name
 
     (** Return [Some value] for local-declarations and [None] for local-assumptions. *)
     let get_value = function
@@ -259,10 +278,14 @@ struct
       | LocalAssum (_,ty)
       | LocalDef (_,_,ty) -> ty
 
+    let get_relevance x = (get_annot x).binder_relevance
+
     (** Set the identifier that is bound by a given declaration. *)
-    let set_id id = function
-      | LocalAssum (_,ty) -> LocalAssum (id, ty)
-      | LocalDef (_, v, ty) -> LocalDef (id, v, ty)
+    let set_id id =
+      let set x = {x with binder_name = id} in
+      function
+      | LocalAssum (x,ty) -> LocalAssum (set x, ty)
+      | LocalDef (x, v, ty) -> LocalDef (set x, v, ty)
 
     (** Set the type of the bound variable in a given declaration. *)
     let set_type ty = function
@@ -293,20 +316,17 @@ struct
     let equal eq decl1 decl2 =
       match decl1, decl2 with
       | LocalAssum (id1, ty1), LocalAssum (id2, ty2) ->
-          Id.equal id1 id2 && eq ty1 ty2
+          eq_annot Id.equal id1 id2 && eq ty1 ty2
       | LocalDef (id1, v1, ty1), LocalDef (id2, v2, ty2) ->
-          Id.equal id1 id2 && eq v1 v2 && eq ty1 ty2
+          eq_annot Id.equal id1 id2 && eq v1 v2 && eq ty1 ty2
       | _ ->
           false
 
     (** Map the identifier bound by a given declaration. *)
-    let map_id f = function
-      | LocalAssum (id, ty) as decl ->
-          let id' = f id in
-          if id == id' then decl else LocalAssum (id', ty)
-      | LocalDef (id, v, ty) as decl ->
-          let id' = f id in
-          if id == id' then decl else LocalDef (id', v, ty)
+    let map_id f x =
+      let id = get_id x in
+      let id' = f id in
+      if id == id' then x else set_id id' x
 
     (** For local assumptions, this function returns the original local assumptions.
         For local definitions, this function maps the value in the local definition. *)
@@ -360,15 +380,17 @@ struct
 
     let of_rel_decl f = function
       | Rel.Declaration.LocalAssum (na,t) ->
-          LocalAssum (f na, t)
+          LocalAssum (map_annot f na, t)
       | Rel.Declaration.LocalDef (na,v,t) ->
-          LocalDef (f na, v, t)
-            
-    let to_rel_decl = function
+          LocalDef (map_annot f na, v, t)
+
+    let to_rel_decl =
+      let name x = {binder_name=Name x.binder_name;binder_relevance=x.binder_relevance} in
+      function
       | LocalAssum (id,t) ->
-          Rel.Declaration.LocalAssum (Name id, t)
+          Rel.Declaration.LocalAssum (name id, t)
       | LocalDef (id,v,t) ->
-          Rel.Declaration.LocalDef (Name id,v,t)
+          Rel.Declaration.LocalDef (name id,v,t)
   end
 
   (** Named-context is represented as a list of declarations.
@@ -421,7 +443,7 @@ struct
       gives [Var id1, Var id3]. All [idj] are supposed distinct. *)
   let to_instance mk l =
     let filter = function
-      | Declaration.LocalAssum (id, _) -> Some (mk id)
+      | Declaration.LocalAssum (id, _) -> Some (mk id.binder_name)
       | _ -> None
     in
     List.map_filter filter l
@@ -432,8 +454,8 @@ module Compacted =
     module Declaration =
       struct
         type ('constr, 'types) pt =
-          | LocalAssum of Id.t list * 'types
-          | LocalDef of Id.t list * 'constr * 'types
+          | LocalAssum of Id.t binder_annot list * 'types
+          | LocalDef of Id.t binder_annot list * 'constr * 'types
 
         let map_constr f = function
           | LocalAssum (ids, ty) as decl ->

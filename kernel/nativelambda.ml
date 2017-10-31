@@ -357,7 +357,7 @@ module Cache =
 
     let get_construct_info cache env c : constructor_info =
       try ConstrTable.find cache c
-      with Not_found -> 
+      with Not_found ->
 	let ((mind,j), i) = c in
         let oib = lookup_mind mind env in
 	let oip = oib.mind_packets.(j) in
@@ -500,8 +500,10 @@ let rec lambda_of_constr cache env sigma c =
 	else 
 	  match b with
 	  | Llam(ids, body) when Int.equal (Array.length ids) arity -> (cn, ids, body)
-	  | _ -> 
-	      let ids = Array.make arity Anonymous in
+          | _ ->
+              (** TODO relevance *)
+              let anon = Context.make_annot Anonymous Sorts.Relevant in
+              let ids = Array.make arity anon in
 	      let args = make_args arity 1 in
 	      let ll = lam_lift arity b in
 	      (cn, ids, mkLapp  ll args) in

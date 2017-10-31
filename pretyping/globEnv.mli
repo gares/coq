@@ -49,7 +49,8 @@ val vars_of_env : t -> Id.Set.t
 
 val push_rel : evar_map -> rel_declaration -> t -> rel_declaration * t
 val push_rel_context : ?force_names:bool -> evar_map -> rel_context -> t -> rel_context * t
-val push_rec_types : evar_map -> Name.t array * constr array -> t -> Name.t array * t
+val push_rec_types : evar_map -> Name.t Context.binder_annot array * constr array -> t ->
+  Name.t Context.binder_annot array * t
 
 (** Declare an evar using renaming information *)
 

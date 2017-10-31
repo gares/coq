@@ -440,14 +440,16 @@ let safe_push_named d env =
 
 
 let push_named_def (id,de) senv =
-  let c, typ = Term_typing.translate_local_def senv.env id de in
-  let env'' = safe_push_named (LocalDef (id, c, typ)) senv.env in
+  let c, r, typ = Term_typing.translate_local_def senv.env id de in
+  let x = Context.make_annot id r in
+  let env'' = safe_push_named (LocalDef (x, c, typ)) senv.env in
   { senv with env = env'' }
 
 let push_named_assum ((id,t,poly),ctx) senv =
   let senv' = push_context_set poly ctx senv in
-  let t = Term_typing.translate_local_assum senv'.env t in
-  let env'' = safe_push_named (LocalAssum (id,t)) senv'.env in
+  let t, r = Term_typing.translate_local_assum senv'.env t in
+  let x = Context.make_annot id r in
+  let env'' = safe_push_named (LocalAssum (x,t)) senv'.env in
     {senv' with env=env''}
 
 
@@ -602,7 +604,7 @@ let inline_side_effects env body side_eff =
   if List.is_empty side_eff then (body, Univ.ContextSet.empty, sigs)
   else
     (** Second step: compute the lifts and substitutions to apply *)
-    let cname c = Name (Label.to_id (Constant.label c)) in
+    let cname c r = Context.make_annot (Name (Label.to_id (Constant.label c))) r in
     let fold (subst, var, ctx, args) (c, cb, b) =
       let (b, opaque) = match cb.const_body, b with
       | Def b, _ -> (Mod_subst.force_constr b, false)
@@ -615,7 +617,7 @@ let inline_side_effects env body side_eff =
         let ty = cb.const_type in
         let subst = Cmap_env.add c (Inr var) subst in
         let ctx = Univ.ContextSet.union ctx univs in
-        (subst, var + 1, ctx, (cname c, b, ty, opaque) :: args)
+        (subst, var + 1, ctx, (cname c cb.const_relevance, b, ty, opaque) :: args)
       | Polymorphic_const _ ->
         (** Inline the term to emulate universe polymorphism *)
         let subst = Cmap_env.add c (Inl b) subst in

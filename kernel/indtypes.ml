@@ -118,7 +118,7 @@ let infos_and_sort env t =
       match kind t with
       | Prod (name,c1,c2) ->
         let varj = infer_type env c1 in
-	let env1 = Environ.push_rel (LocalAssum (name,varj.utj_val)) env in
+        let env1 = Environ.push_rel (LocalAssum (name,varj.utj_val)) env in
         let max = Universe.sup max (Sorts.univ_of_sort varj.utj_type) in
 	  aux env1 c2 max
     | _ when is_constructor_head t -> max
@@ -306,9 +306,10 @@ let typecheck_inductive env mie =
 	    full_arity is used as argument or subject to cast, an
 	    upper universe will be generated *)
 	 let full_arity = it_mkProd_or_LetIn arity paramsctxt in
-	 let id = ind.mind_entry_typename in
+         let id = ind.mind_entry_typename in
+         let x = Context.make_annot (Name id) (Sorts.relevance_of_sort deflev) in
 	 let env_ar' =
-           push_rel (LocalAssum (Name id, full_arity)) env_ar in
+           push_rel (LocalAssum (x, full_arity)) env_ar in
              (* (add_constraints cst2 env_ar) in *)
            (env_ar', (id,full_arity,sign @ paramsctxt,template,deflev,inflev)::l))
       (env',[])
@@ -512,7 +513,9 @@ let ienv_push_inductive (env, n, ntypes, ra_env) ((mi,u),lrecparams) =
   let specif = (lookup_mind_specif env mi, u) in
   let ty = type_of_inductive env specif in
   let env' =
-    let decl = LocalAssum (Anonymous, hnf_prod_applist env ty lrecparams) in
+    let r = (snd (fst specif)).mind_relevant in
+    let anon = Context.make_annot Anonymous r in
+    let decl = LocalAssum (anon, hnf_prod_applist env ty lrecparams) in
     push_rel decl env in
   let ra_env' =
     (Imbr mi,(Rtree.mk_rec_calls 1).(0)) ::
@@ -525,8 +528,8 @@ let rec ienv_decompose_prod (env,_,_,_ as ienv) n c =
   if Int.equal n 0 then (ienv,c) else
     let c' = whd_all env c in
     match kind c' with
-	Prod(na,a,b) ->
-	  let ienv' = ienv_push_var ienv (na,a,mk_norec) in
+        Prod(na,a,b) ->
+          let ienv' = ienv_push_var ienv (na,a,mk_norec) in
 	  ienv_decompose_prod ienv' (n-1) b
       | _ -> assert false
 
@@ -554,7 +557,7 @@ let check_positivity_one ~chkpos recursive (env,_,ntypes,_ as ienv) paramsctxt (
   let rec check_pos (env, n, ntypes, ra_env as ienv) nmr c =
     let x,largs = decompose_app (whd_all env c) in
       match kind x with
-	| Prod (na,b,d) ->
+        | Prod (na,b,d) ->
 	    let () = assert (List.is_empty largs) in
             (** If one of the inductives of the mutually inductive
                 block occurs in the left-hand side of a product, then
@@ -808,7 +811,7 @@ let compute_projections (kn, i as ind) mib =
       mkRel 1 :: List.map (lift 1) subst in
     subst
   in
-  let projections decl (i, j, labs, pbs, letsubst) =
+  let projections decl (i, j, labs, rs, pbs, letsubst) =
     match decl with
     | LocalDef (_na,c,_t) ->
         (* From [params, field1,..,fieldj |- c(params,field1,..,fieldj)]
@@ -820,10 +823,11 @@ let compute_projections (kn, i as ind) mib =
         (* From [params-wo-let, x:I |- subst:(params, x:I, field1,..,fieldj)]
            to [params-wo-let, x:I |- subst:(params, x:I, field1,..,fieldj+1)] *)
         let letsubst = c2 :: letsubst in
-        (i, j+1, labs, pbs, letsubst)
+        (i, j+1, labs, rs, pbs, letsubst)
     | LocalAssum (na,t) ->
-      match na with
+      match na.Context.binder_name with
       | Name id ->
+        let r = na.Context.binder_relevance in
         let lab = Label.of_id id in
         let kn = Projection.Repr.make ind ~proj_npars:mib.mind_nparams ~proj_arg:i lab in
         (* from [params, field1,..,fieldj |- t(params,field1,..,fieldj)]
@@ -835,14 +839,15 @@ let compute_projections (kn, i as ind) mib =
         (* from [params, x:I, field1,..,fieldj |- t(field1,..,fieldj)]
            to [params, x:I |- t(proj1 x,..,projj x)] *)
 	let fterm = mkProj (Projection.make kn false, mkRel 1) in
-        (i + 1, j + 1, lab :: labs, projty :: pbs, fterm :: letsubst)
+        (i + 1, j + 1, lab :: labs, r :: rs, projty :: pbs, fterm :: letsubst)
       | Anonymous -> raise UndefinableExpansion
   in
-  let (_, _, labs, pbs, _letsubst) =
-    List.fold_right projections ctx (0, 1, [], [], paramsletsubst)
+  let (_, _, labs, rs, pbs, _letsubst) =
+    List.fold_right projections ctx (0, 1, [], [], [], paramsletsubst)
   in
-    Array.of_list (List.rev labs),
-    Array.of_list (List.rev pbs)
+  Array.of_list (List.rev labs),
+  Array.of_list (List.rev rs),
+  Array.of_list (List.rev pbs)
 
 let abstract_inductive_universes iu =
   match iu with
@@ -882,18 +887,18 @@ let build_inductive env prv iu env_ar paramsctxt kn isrecord isfinite inds nmr r
       Array.map (fun (d,_) -> Context.Rel.nhyps d - nparamargs)
 	splayed_lc in
     (* Elimination sorts *)
-    let arkind,kelim = 
+    let arkind,kelim, mind_relevant =
       match ar_kind with
       | TemplateArity (paramlevs, lev) -> 
 	let ar = {template_param_levels = paramlevs; template_level = lev} in
-	  TemplateArity ar, all_sorts
+          TemplateArity ar, all_sorts, Sorts.relevance_of_sort (Sorts.sort_of_univ lev)
       | RegularArity (info,ar,defs) ->
         let s = Sorts.sort_of_univ defs in
 	let kelim = allowed_sorts info s in
 	let ar = RegularArity 
 	  { mind_user_arity = Vars.subst_univs_level_constr substunivs ar; 
             mind_sort = Sorts.sort_of_univ (Univ.subst_univs_level_universe substunivs defs); } in
-	  ar, kelim in
+          ar, kelim, Sorts.relevance_of_sort s in
     (* Assigning VM tags to constructors *)
     let nconst, nblock = ref 0, ref 0 in
     let transf num =
@@ -920,8 +925,9 @@ let build_inductive env prv iu env_ar paramsctxt kn isrecord isfinite inds nmr r
 	mind_consnrealargs = consnrealargs;
 	mind_user_lc = lc;
 	mind_nf_lc = nf_lc;
-	mind_recargs = recarg;
-	mind_nb_constant = !nconst;
+        mind_recargs = recarg;
+        mind_relevant;
+        mind_nb_constant = !nconst;
 	mind_nb_args = !nblock;
 	mind_reloc_tbl = rtbl;
       } in
@@ -951,8 +957,8 @@ let build_inductive env prv iu env_ar paramsctxt kn isrecord isfinite inds nmr r
     (** The elimination criterion ensures that all projections can be defined. *)
     if Array.for_all is_record packets then
       let map i id =
-        let labs, projs = compute_projections (kn, i) mib in
-        (id, labs, projs)
+        let labs, rs, projs = compute_projections (kn, i) mib in
+        (id, labs, rs, projs)
       in
       try PrimRecord (Array.mapi map rid)
       with UndefinableExpansion -> FakeRecord

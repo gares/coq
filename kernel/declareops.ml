@@ -103,6 +103,7 @@ let subst_const_body sub cb =
           Option.map (Cemitcodes.subst_to_patch_subst sub) cb.const_body_code;
         const_universes = cb.const_universes;
         const_private_poly_univs = cb.const_private_poly_univs;
+        const_relevance = cb.const_relevance;
         const_inline_code = cb.const_inline_code;
         const_typing_flags = cb.const_typing_flags }
 
@@ -210,6 +211,7 @@ let subst_mind_packet sub mbp =
     mind_nrealdecls = mbp.mind_nrealdecls;
     mind_kelim = mbp.mind_kelim;
     mind_recargs = subst_wf_paths sub mbp.mind_recargs (*wf_paths*);
+    mind_relevant = mbp.mind_relevant;
     mind_nb_constant = mbp.mind_nb_constant;
     mind_nb_args = mbp.mind_nb_args;
     mind_reloc_tbl = mbp.mind_reloc_tbl }
@@ -218,10 +220,10 @@ let subst_mind_record sub r = match r with
 | NotRecord -> NotRecord
 | FakeRecord -> FakeRecord
 | PrimRecord infos ->
-  let map (id, ps, pb as info) =
+  let map (id, ps, rs, pb as info) =
     let pb' = Array.Smart.map (subst_mps sub) pb in
     if pb' == pb then info
-    else (id, ps, pb')
+    else (id, ps, rs, pb')
   in
   let infos' = Array.Smart.map map infos in
   if infos' == infos then r else PrimRecord infos'
@@ -263,18 +265,20 @@ let inductive_make_projection ind mib ~proj_arg =
   match mib.mind_record with
   | NotRecord | FakeRecord -> None
   | PrimRecord infos ->
+    let _, labs, _, _ = infos.(snd ind) in
     Some (Names.Projection.Repr.make ind
             ~proj_npars:mib.mind_nparams
             ~proj_arg
-            (pi2 infos.(snd ind)).(proj_arg))
+            labs.(proj_arg))
 
 let inductive_make_projections ind mib =
   match mib.mind_record with
   | NotRecord | FakeRecord -> None
   | PrimRecord infos ->
+    let _, labs, _, _ = infos.(snd ind) in
     let projs = Array.mapi (fun proj_arg lab ->
         Names.Projection.Repr.make ind ~proj_npars:mib.mind_nparams ~proj_arg lab)
-        (pi2 infos.(snd ind))
+        labs
     in
     Some projs
 

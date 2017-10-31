@@ -116,6 +116,21 @@ module Hsorts =
 
 let hcons = Hashcons.simple_hcons Hsorts.generate Hsorts.hcons hcons_univ
 
+(** On binders: is this variable proof relevant *)
+type relevance = Relevant | Irrelevant
+
+let relevance_equal r1 r2 = match r1,r2 with
+  | Relevant, Relevant | Irrelevant, Irrelevant -> true
+  | (Relevant | Irrelevant), _ -> false
+
+let relevance_of_sort_family = function
+  | InSProp -> Irrelevant
+  | _ -> Relevant
+
+let relevance_of_sort = function
+  | SProp -> Irrelevant
+  | _ -> Relevant
+
 let debug_print = function
   | SProp -> Pp.(str "SProp")
   | Prop -> Pp.(str "Prop")

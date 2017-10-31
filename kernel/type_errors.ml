@@ -47,8 +47,8 @@ type ('constr, 'types) ptype_error =
   | NotAType of ('constr, 'types) punsafe_judgment
   | BadAssumption of ('constr, 'types) punsafe_judgment
   | ReferenceVariables of Id.t * 'constr
-  | ElimArity of pinductive * Sorts.family list * 'constr * ('constr, 'types) punsafe_judgment
-      * (Sorts.family * Sorts.family * arity_error) option
+  | ElimArity of pinductive * 'constr * ('constr, 'types) punsafe_judgment
+      * (Sorts.family list * Sorts.family * Sorts.family * arity_error) option
   | CaseNotInductive of ('constr, 'types) punsafe_judgment
   | WrongCaseInfo of pinductive * case_info
   | NumberBranches of ('constr, 'types) punsafe_judgment * int
@@ -58,12 +58,13 @@ type ('constr, 'types) ptype_error =
   | CantApplyBadType of
       (int * 'constr * 'constr) * ('constr, 'types) punsafe_judgment * ('constr, 'types) punsafe_judgment array
   | CantApplyNonFunctional of ('constr, 'types) punsafe_judgment * ('constr, 'types) punsafe_judgment array
-  | IllFormedRecBody of 'constr pguard_error * Name.t array * int * env * ('constr, 'types) punsafe_judgment array
+  | IllFormedRecBody of 'constr pguard_error * Name.t Context.binder_annot array * int * env * ('constr, 'types) punsafe_judgment array
   | IllTypedRecBody of
-      int * Name.t array * ('constr, 'types) punsafe_judgment array * 'types array
+      int * Name.t Context.binder_annot array * ('constr, 'types) punsafe_judgment array * 'types array
   | UnsatisfiedConstraints of Univ.Constraint.t
   | UndeclaredUniverse of Univ.Level.t
   | DisallowedSProp
+  | BadRelevance
 
 type type_error = (constr, types) ptype_error
 
@@ -87,8 +88,8 @@ let error_assumption env j =
 let error_reference_variables env id c =
   raise (TypeError (env, ReferenceVariables (id,c)))
 
-let error_elim_arity env ind aritylst c pj okinds =
-  raise (TypeError (env, ElimArity (ind,aritylst,c,pj,okinds)))
+let error_elim_arity env ind c pj okinds =
+  raise (TypeError (env, ElimArity (ind,c,pj,okinds)))
 
 let error_case_not_inductive env j =
   raise (TypeError (env, CaseNotInductive j))
@@ -133,3 +134,6 @@ let error_undeclared_universe env l =
 
 let error_disallowed_sprop env =
   raise (TypeError (env, DisallowedSProp))
+
+let error_bad_relevance env =
+  raise (TypeError (env, BadRelevance))

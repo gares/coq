@@ -29,6 +29,7 @@ open Util
 open Names
 open Evd
 open Constr
+open Context
 open Termops
 open Environ
 open EConstr
@@ -532,13 +533,15 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
       | [] -> sigma, ctxt
       | (na,bk,None,ty)::bl ->
         let sigma, ty' = pretype_type empty_valcon env sigma ty in
-	let dcl = LocalAssum (na, ty'.utj_val) in
+        let rty' = Sorts.relevance_of_sort ty'.utj_type in
+        let dcl = LocalAssum (make_annot na rty', ty'.utj_val) in
         let dcl', env = push_rel sigma dcl env in
         type_bl env sigma (Context.Rel.add dcl' ctxt) bl
       | (na,bk,Some bd,ty)::bl ->
         let sigma, ty' = pretype_type empty_valcon env sigma ty in
+        let rty' = Sorts.relevance_of_sort ty'.utj_type in
         let sigma, bd' = pretype (mk_tycon ty'.utj_val) env sigma bd in
-        let dcl = LocalDef (na, bd'.uj_val, ty'.utj_val) in
+        let dcl = LocalDef (make_annot na rty', bd'.uj_val, ty'.utj_val) in
         let dcl', env = push_rel sigma dcl env in
         type_bl env sigma (Context.Rel.add dcl' ctxt) bl in
     let sigma, ctxtv = Array.fold_left_map (fun sigma -> type_bl env sigma Context.Rel.empty) sigma bl in
@@ -563,6 +566,10 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
           | Some sigma -> sigma
         end
       | None -> sigma
+    in
+    let names = Array.map2 (fun na t ->
+        make_annot na (Retyping.relevance_of_type !!(env) sigma t))
+        names ftys
     in
       (* Note: bodies are not used by push_rec_types, so [||] is safe *)
     let names,newenv = push_rec_types sigma (names,ftys) env in
@@ -598,7 +605,7 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
 			     | None -> List.map_i (fun i _ -> i) 0 ctxtv.(i))
 			     vn)
 	  in
-	  let fixdecls = (names,ftys,fdefs) in
+          let fixdecls = (names,ftys,fdefs) in
           let indexes =
             search_guard
               ?loc !!env possible_indexes (nf_fix sigma fixdecls)
@@ -676,8 +683,8 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
                   sigma, [], j_val hj
               end
           in
-            let sigma, ujval = adjust_evar_source sigma na ujval in
-	    let value, typ = app_f n (j_val resj) ujval, subst1 ujval c2 in
+            let sigma, ujval = adjust_evar_source sigma na.binder_name ujval in
+            let value, typ = app_f n (j_val resj) ujval, subst1 ujval c2 in
 	    let j = { uj_val = value; uj_type = typ } in
             apply_rec env sigma (n+1) j candargs rest
 	  | _ ->
@@ -712,11 +719,11 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
     let sigma, (name',dom,rng) = split_tycon ?loc !!env sigma tycon' in
     let dom_valcon = valcon_of_tycon dom in
     let sigma, j = pretype_type dom_valcon env sigma c1 in
-    let var = LocalAssum (name, j.utj_val) in
+    let var = LocalAssum ({name' with binder_name=name}, j.utj_val) in
     let var',env' = push_rel sigma var env in
     let sigma, j' = pretype rng env' sigma c2 in
     let name = get_name var' in
-    let resj = judge_of_abstraction !!env (orelse_name name name') j j' in
+    let resj = judge_of_abstraction !!env (orelse_name name name'.binder_name) j j' in
     inh_conv_coerce_to_tycon ?loc env sigma resj tycon
 
   | GProd(name,bk,c1,c2) ->
@@ -726,7 +733,8 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
         let sigma, j = pretype_type empty_valcon env sigma c2 in
         sigma, name, { j with utj_val = lift 1 j.utj_val }
       | Name _ ->
-        let var = LocalAssum (name, j.utj_val) in
+        let r = Sorts.relevance_of_sort j.utj_type in
+        let var = LocalAssum (make_annot name r, j.utj_val) in
         let var, env' = push_rel sigma var env in
         let sigma, c2_j = pretype_type empty_valcon env' sigma c2 in
         sigma, get_name var, c2_j
@@ -751,12 +759,13 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
     let sigma, j = pretype tycon1 env sigma c1 in
     let sigma, t = Evarsolve.refresh_universes
       ~onlyalg:true ~status:Evd.univ_flexible (Some false) !!env sigma j.uj_type in
-    let var = LocalDef (name, j.uj_val, t) in
+    let r = Retyping.relevance_of_term !!env sigma j.uj_val in
+    let var = LocalDef (make_annot name r, j.uj_val, t) in
     let tycon = lift_tycon 1 tycon in
     let var, env = push_rel sigma var env in
     let sigma, j' = pretype tycon env sigma c2 in
     let name = get_name var in
-    sigma, { uj_val = mkLetIn (name, j.uj_val, t, j'.uj_val) ;
+    sigma, { uj_val = mkLetIn (make_annot name r, j.uj_val, t, j'.uj_val) ;
              uj_type = subst1 j.uj_val j'.uj_type }
 
   | GLetTuple (nal,(na,po),c,d) ->
@@ -784,10 +793,11 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
       | Some ps ->
 	let rec aux n k names l =
 	  match names, l with
-	  | na :: names, (LocalAssum (_,t) :: l) ->
+          | na :: names, (LocalAssum (na', t) :: l) ->
             let t = EConstr.of_constr t in
 	    let proj = Projection.make ps.(cs.cs_nargs - k) true in
-	    LocalDef (na, lift (cs.cs_nargs - n) (mkProj (proj, cj.uj_val)), t)
+            LocalDef ({na' with binder_name = na},
+                      lift (cs.cs_nargs - n) (mkProj (proj, cj.uj_val)), t)
 	    :: aux (n+1) (k + 1) names l
 	  | na :: names, (decl :: l) ->
 	    set_name na decl :: aux (n+1) k names l
@@ -796,20 +806,20 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
 	in aux 1 1 (List.rev nal) cs.cs_args, true in
     let fsign = Context.Rel.map (whd_betaiota sigma) fsign in
     let fsign,env_f = push_rel_context sigma fsign env in
-    let obj ind p v f =
+    let obj ind rci p v f =
       if not record then
-	let f = it_mkLambda_or_LetIn f fsign in
-        let ci = make_case_info !!env (fst ind) LetStyle in
-	  mkCase (ci, p, cj.uj_val,[|f|]) 
+        let f = it_mkLambda_or_LetIn f fsign in
+        let ci = make_case_info !!env (fst ind) rci LetStyle in
+          mkCase (ci, p, cj.uj_val,[|f|])
       else it_mkLambda_or_LetIn f fsign
     in
     (* Make dependencies from arity signature impossible *)
-    let arsgn =
-      let arsgn,_ = get_arity !!env indf in
-      List.map (set_name Anonymous) arsgn
+    let arsgn, indr =
+      let arsgn,s = get_arity !!env indf in
+      List.map (set_name Anonymous) arsgn, Sorts.relevance_of_sort_family s
     in
       let indt = build_dependent_inductive !!env indf in
-      let psign = LocalAssum (na, indt) :: arsgn in (* For locating names in [po] *)
+      let psign = LocalAssum (make_annot na indr, indt) :: arsgn in (* For locating names in [po] *)
       let psign = List.map (fun d -> map_rel_decl EConstr.of_constr d) psign in
       let predenv = Cases.make_return_predicate_ltac_lvar env sigma na c cj.uj_val in
       let nar = List.length arsgn in
@@ -827,9 +837,9 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
             let sigma, fj = pretype (mk_tycon fty) env_f sigma d in
 	    let v =
 	      let ind,_ = dest_ind_family indf in
-                Typing.check_allowed_sort !!env sigma ind cj.uj_val p;
-		obj ind p cj.uj_val fj.uj_val
-	    in
+                let rci = Typing.check_allowed_sort !!env sigma ind cj.uj_val p in
+                obj ind rci p cj.uj_val fj.uj_val
+            in
             sigma, { uj_val = v; uj_type = (substl (realargs@[cj.uj_val]) ccl) }
 
 	  | None ->
@@ -846,8 +856,8 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
 	    let p = it_mkLambda_or_LetIn (lift (nar+1) ccl) psign' in
 	    let v =
 	      let ind,_ = dest_ind_family indf in
-                Typing.check_allowed_sort !!env sigma ind cj.uj_val p;
-		obj ind p cj.uj_val fj.uj_val
+                let rci = Typing.check_allowed_sort !!env sigma ind cj.uj_val p in
+                obj ind rci p cj.uj_val fj.uj_val
             in sigma, { uj_val = v; uj_type = ccl })
 
   | GIf (c,(na,po),b1,b2) ->
@@ -862,14 +872,14 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
         user_err ?loc 
 		      (str "If is only for inductive types with two constructors.");
 
-      let arsgn =
-        let arsgn,_ = get_arity !!env indf in
+      let arsgn, indr =
+        let arsgn,s = get_arity !!env indf in
         (* Make dependencies from arity signature impossible *)
-        List.map (set_name Anonymous) arsgn
+        List.map (set_name Anonymous) arsgn, Sorts.relevance_of_sort_family s
       in
       let nar = List.length arsgn in
       let indt = build_dependent_inductive !!env indf in
-      let psign = LocalAssum (na, indt) :: arsgn in (* For locating names in [po] *)
+      let psign = LocalAssum (make_annot na indr, indt) :: arsgn in (* For locating names in [po] *)
       let psign = List.map (fun d -> map_rel_decl EConstr.of_constr d) psign in
       let predenv = Cases.make_return_predicate_ltac_lvar env sigma na c cj.uj_val in
       let psign,env_p = push_rel_context sigma psign predenv in
@@ -904,10 +914,10 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
       let sigma, b2 = f sigma cstrs.(1) b2 in
       let v =
 	let ind,_ = dest_ind_family indf in
-        let ci = make_case_info !!env (fst ind) IfStyle in
         let pred = nf_evar sigma pred in
-          Typing.check_allowed_sort !!env sigma ind cj.uj_val pred;
-	  mkCase (ci, pred, cj.uj_val, [|b1;b2|])
+        let rci = Typing.check_allowed_sort !!env sigma ind cj.uj_val pred in
+        let ci = make_case_info !!env (fst ind) rci IfStyle in
+          mkCase (ci, pred, cj.uj_val, [|b1;b2|])
       in
       let cj = { uj_val = v; uj_type = p } in
       inh_conv_coerce_to_tycon ?loc env sigma cj tycon

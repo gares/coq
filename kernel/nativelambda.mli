@@ -19,8 +19,8 @@ type evars =
 
 val empty_evars : evars
 
-val decompose_Llam : lambda -> Name.t array * lambda
-val decompose_Llam_Llet : lambda -> (Name.t * lambda option) array * lambda
+val decompose_Llam : lambda -> Name.t Context.binder_annot array * lambda
+val decompose_Llam_Llet : lambda -> (Name.t Context.binder_annot * lambda option) array * lambda
 
 val is_lazy : env -> prefix -> constr -> bool
 val mk_lazy : lambda -> lambda

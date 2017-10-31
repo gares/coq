@@ -299,9 +299,9 @@ and fterm =
   | FFix of fixpoint * fconstr subs
   | FCoFix of cofixpoint * fconstr subs
   | FCaseT of case_info * constr * fconstr * constr array * fconstr subs (* predicate and branches are closures *)
-  | FLambda of int * (Name.t * constr) list * constr * fconstr subs
-  | FProd of Name.t * fconstr * constr * fconstr subs
-  | FLetIn of Name.t * fconstr * fconstr * constr * fconstr subs
+  | FLambda of int * (Name.t Context.binder_annot * constr) list * constr * fconstr subs
+  | FProd of Name.t Context.binder_annot * fconstr * constr * fconstr subs
+  | FLetIn of Name.t Context.binder_annot * fconstr * fconstr * constr * fconstr subs
   | FEvar of existential * fconstr subs
   | FLIFT of int * fconstr
   | FCLOS of constr * fconstr subs
@@ -843,7 +843,7 @@ let rec knh info m stk =
     | FLOCKED -> assert false
     | FApp(a,b) -> knh info a (append_stack b (zupdate info m stk))
     | FCaseT(ci,p,t,br,e) -> knh info t (ZcaseT(ci,p,br,e)::zupdate info m stk)
-    | FFix(((ri,n),(_,_,_)),_) ->
+    | FFix(((ri,n),_),_) ->
         (match get_nth_arg m ri.(n) stk with
              (Some(pars,arg),stk') -> knh info arg (Zfix(m,pars)::stk')
            | (None, stk') -> (m,stk'))

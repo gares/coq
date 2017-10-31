@@ -297,6 +297,7 @@ let explain_exn = function
       | IllTypedRecBody _ -> str"IllTypedRecBody"
       | UnsatisfiedConstraints _ -> str"UnsatisfiedConstraints"
       | DisallowedSProp -> str"DisallowedSProp"
+      | BadRelevance -> str"BadRelevance"
       | UndeclaredUniverse _ -> str"UndeclaredUniverse"))
 
   | Indtypes.InductiveError e ->
