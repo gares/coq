@@ -311,7 +311,7 @@ exception LocalArity of (Sorts.family list * Sorts.family * Sorts.family * arity
 let check_allowed_sort ksort specif =
   let open Sorts in
   let eq_ksort s = match ksort, s with
-  | InProp, InProp | InSet, InSet | InType, InType -> true
+  | InProp, InProp | InSet, InSet | InType, InType | InSProp, InSProp -> true
   | _ -> false in
   if not (CList.exists eq_ksort (elim_sorts specif)) then
     let s = inductive_sort_family (snd specif) in

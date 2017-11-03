@@ -34,7 +34,8 @@ type inductive_error =
 
 exception InductiveError of inductive_error
 
-val infos_and_sort : env -> constr -> Univ.Universe.t
+type onlysprop = OnlySProp | NotOnlySProp
+val infos_and_sort : env -> Univ.Universe.t -> constr -> onlysprop * Univ.Universe.t
 
 val check_subtyping_arity_constructor : env -> (constr -> constr) -> types -> int -> bool -> unit
 
