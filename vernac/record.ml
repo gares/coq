@@ -92,7 +92,7 @@ let compute_constructor_level evars env l =
 	  Univ.sup (univ_of_sort s) univ 
       else univ
     in (EConstr.push_rel d env, univ))
-    l (env, Univ.type0m_univ)
+    l (env, Univ.Universe.sprop)
 
 let binder_of_decl = function
   | Vernacexpr.AssumExpr(n,t) -> (n,None,t)
@@ -167,8 +167,8 @@ let typecheck_params_and_fields finite def poly pl ps records =
     Pretyping.solve_remaining_evars Pretyping.all_and_fail_flags env_ar sigma in
   let fold sigma (typ, sort) (_, newfs) =
     let _, univ = compute_constructor_level sigma env_ar newfs in
-      if not def && (Sorts.is_prop sort ||
-	(Sorts.is_set sort && is_impredicative_set env0)) then
+    let univ = if Sorts.relevance_of_sort sort == Relevant then Univ.Universe.sup univ Univ.type0m_univ else univ in
+      if not def && (Environ.is_impredicative_sort env0 sort) then
         sigma, typ
       else
         let sigma = Evd.set_leq_sort env_ar sigma (Sorts.sort_of_univ univ) sort in
@@ -341,11 +341,11 @@ let declare_projections indsp ctx ?(kind=StructureComponent) binder_name coers f
 		    let branch = it_mkLambda_or_LetIn (mkRel nfi) lifted_fields in
                     let ci = Inductiveops.make_case_info env indsp rci LetStyle in
                     (* Record projections have no is *)
-                    mkCase (ci, p, mkRel 1, [|branch|])
+                    mkCase (ci, p, None, mkRel 1, [|branch|])
                 in
-		let proj =
+                let proj =
                   it_mkLambda_or_LetIn (mkLambda (x,rp,body)) paramdecls in
-		let projtyp =
+                let projtyp =
                   it_mkProd_or_LetIn (mkProd (x,rp,ccl)) paramdecls in
 	        try
 		  let entry = {

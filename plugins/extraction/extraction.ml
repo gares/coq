@@ -672,7 +672,7 @@ let rec extract_term env sg mle mlt c args =
 	(* we unify it with an fresh copy of the stored type of [Rel n]. *)
 	let extract_rel mlt = put_magic (mlt, Mlenv.get mle n) (MLrel n)
         in extract_app env sg mle mlt extract_rel args
-    | Case ({ci_ind=ip},_,c0,br) ->
+    | Case ({ci_ind=ip},_,_,c0,br) -> (* TODO case inversion? *)
         extract_app env sg mle mlt (extract_case env sg mle (ip,c0,br)) args
     | Fix ((_,i),recd) ->
         extract_app env sg mle mlt (extract_fix env sg mle i recd) args

@@ -346,11 +346,16 @@ let get_constructors env (ind,params) =
 
 let get_projections = Environ.get_projections
 
-let make_case_or_project env sigma indf ci pred c branches =
+let make_case_or_project env sigma indty ci pred c branches =
   let open EConstr in
-  let projs = get_projections env (fst (fst indf)) in
+  let IndType ((ind,params) as indf, _) = indty in
+  let projs = get_projections env (fst ind) in
   match projs with
-  | None -> (mkCase (ci, pred, c, branches))
+  | None ->
+    let (mib,mip) = Inductive.lookup_mind_specif env (fst ind) in
+    let with_is = ci.ci_relevance == Sorts.Relevant && mip.mind_relevant == Sorts.Irrelevant in
+    let is = if with_is then Some (mkAppliedInd indty) else None in
+    (mkCase (ci, pred, is, c, branches))
   | Some ps ->
      assert(Array.length branches == 1);
      let na, ty, t = destLambda sigma pred in
@@ -502,13 +507,14 @@ let compute_projections env (kn, i as ind) =
         ci_pp_info = print_info }
   in
   let len = List.length ctx in
-  let compat_body ccl i =
+  let compat_body ccl ~proj_arg i =
     (* [ccl] is defined in context [params;x:indty] *)
     (* [ccl'] is defined in context [params;x:indty;x:indty] *)
     let ccl' = liftn 1 2 ccl in
     let p = mkLambda (x, lift 1 indty, ccl') in
     let branch = it_mkLambda_or_LetIn (mkRel (len - i)) ctx in
-    let body = mkCase (ci i, p, mkRel 1, [|lift 1 branch|]) in
+    (* NB: compat projections are never irrelevant-to-relevant *)
+    let body = mkCase (ci proj_arg, p, None, mkRel 1, [|lift 1 branch|]) in
       it_mkLambda_or_LetIn (mkLambda (x,indty,body)) params
   in
   let projections decl (proj_arg, j, pbs, subst) =
@@ -540,7 +546,7 @@ let compute_projections env (kn, i as ind) =
         let ty = substl subst t in
         let term = mkProj (Projection.make kn true, mkRel 1) in
         let fterm = mkProj (Projection.make kn false, mkRel 1) in
-        let compat = compat_body ty (j - 1) in
+        let compat = compat_body ty ~proj_arg (j - 1) in
         let etab = it_mkLambda_or_LetIn (mkLambda (x, indty, term)) params in
         let etat = it_mkProd_or_LetIn (mkProd (x, indty, ty)) params in
         let body = (etab, etat, compat) in

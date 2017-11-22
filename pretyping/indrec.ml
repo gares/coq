@@ -119,9 +119,13 @@ let mis_make_case_com dep env sigma (ind, u as pind) (mib,mip as specif) kind =
           arsign
       in
       let obj = 
-	match projs with
-	| None -> mkCase (ci, lift ndepar p,  mkRel 1,
-			  Termops.rel_vect ndepar k)
+        match projs with
+        | None ->
+          let is = if mip.mind_relevant == Sorts.Irrelevant && not (Sorts.family_equal kind InSProp)
+            then Some (lift 1 depind)
+            else None
+          in
+          mkCase (ci, lift ndepar p, is, mkRel 1, Termops.rel_vect ndepar k)
 	| Some ps -> 
 	  let term = 
 	    mkApp (mkRel 2, 
@@ -144,7 +148,7 @@ let mis_make_case_com dep env sigma (ind, u as pind) (mib,mip as specif) kind =
   let typP = EConstr.Unsafe.to_constr typP in
   let c = 
     it_mkLambda_or_LetIn_name env
-    (mkLambda_string "P" relevance typP
+    (mkLambda_string "P" Sorts.Relevant typP
      (add_branch (push_rel (LocalAssum (make_annot Anonymous Sorts.Relevant,typP)) env') 0)) lnamespar
   in
   (sigma, c)
@@ -218,13 +222,14 @@ let type_rec_branch is_rec dep env sigma (vargs,depPvect,decP) tyi cs recargs =
              | Some(dep',p) ->
 		 let nP = lift (i+1+decP) p in
                  let env' = push_rel (LocalAssum (n,t)) env in
-		 let t_0 = process_pos env' dep' nP (lift 1 t) in
-		 make_prod_dep (dep || dep') env
+                 let t_0 = process_pos env' dep' nP (lift 1 t) in
+                 let r_0 = Retyping.relevance_of_type env' sigma (EConstr.of_constr t_0) in
+                 make_prod_dep (dep || dep') env
                    (n,t,
-                    mkArrow t_0 n.binder_relevance (* TODO check if t_0 has same relevance as t *)
-		      (process_constr
-                        (push_rel (LocalAssum (make_annot Anonymous n.binder_relevance,t_0)) env')
-			 (i+2) (lift 1 c_0) rest (nhyps-1) (i::li))))
+                    mkArrow t_0 r_0
+                      (process_constr
+                        (push_rel (LocalAssum (make_annot Anonymous r_0,t_0)) env')
+                         (i+2) (lift 1 c_0) rest (nhyps-1) (i::li))))
       | LetIn (n,b,t,c_0) ->
           mkLetIn (n,b,t,
 		   process_constr
@@ -347,6 +352,7 @@ let mis_make_indrec env sigma ?(force_mutual=false) listdepkind mib u =
           let arsign,s = get_arity env indf in
           let r = Sorts.relevance_of_sort_family s in
           let depind = build_dependent_inductive env indf in
+          let indty = find_rectype env !evdref (EConstr.of_constr depind) in
           let deparsign = LocalAssum (make_annot Anonymous r,depind)::arsign in
 
           let nonrecpar = Context.Rel.length lnonparrec in
@@ -404,11 +410,12 @@ let mis_make_indrec env sigma ?(force_mutual=false) listdepkind mib u =
 		  ((if dep then mkLambda_name env else mkLambda)
                       (make_annot Anonymous r,depind',concl))
 		  arsign'
-	      in
-	      let obj =
-		Inductiveops.make_case_or_project env !evdref indf ci (EConstr.of_constr pred)
-						  (EConstr.mkRel 1) (Array.map EConstr.of_constr branches)
-	      in
+              in
+              let obj =
+                Inductiveops.make_case_or_project env !evdref indty ci
+                  (EConstr.of_constr pred)
+                  (EConstr.mkRel 1) (Array.map EConstr.of_constr branches)
+              in
 	      let obj = EConstr.to_constr !evdref obj in
 		it_mkLambda_or_LetIn_name env obj
 		  (Termops.lift_rel_context nrec deparsign)
@@ -469,9 +476,8 @@ let mis_make_indrec env sigma ?(force_mutual=false) listdepkind mib u =
 	  in
 	  let typP = make_arity env !evdref dep indf s in
           let typP = EConstr.Unsafe.to_constr typP in
-          let rP = Sorts.relevance_of_sort_family kinds in
-            mkLambda_string "P" rP typP
-              (put_arity (push_rel (LocalAssum (make_annot Anonymous rP,typP)) env) (i+1) rest)
+            mkLambda_string "P" Sorts.Relevant typP
+              (put_arity (push_rel (LocalAssum (make_annot Anonymous Sorts.Relevant,typP)) env) (i+1) rest)
       | [] ->
 	  make_branch env 0 listdepkind
     in

@@ -175,7 +175,7 @@ let rec traverse current ctx accu t = match Constr.kind t with
 | Construct (((mind, _), _) as cst, _) ->
   traverse_inductive accu mind (ConstructRef cst)
 | Meta _ | Evar _ -> assert false
-| Case (_,oty,c,[||]) ->
+| Case (_,oty,is,c,[||]) -> (* TODO is? *)
     (* non dependent match on an inductive with no constructors *)
     begin match Constr.(kind oty, kind c) with
     | Lambda(_,_,oty), Const (kn, _)

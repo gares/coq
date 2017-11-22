@@ -98,7 +98,7 @@ module KeyTable : Hashtbl.S with type key = table_key
 (** [fconstr] is the type of frozen constr *)
 
 type fconstr
-
+type finvert
 (** [fconstr] can be accessed by using the function [fterm_of] and by
    matching on type [fterm] *)
 
@@ -113,6 +113,7 @@ type fterm =
   | FFix of fixpoint * fconstr subs
   | FCoFix of cofixpoint * fconstr subs
   | FCaseT of case_info * constr * fconstr * constr array * fconstr subs (* predicate and branches are closures *)
+  | FCaseInvert of case_info * constr * finvert * fconstr * constr array * fconstr subs
   | FLambda of int * (Name.t Context.binder_annot * constr) list * constr * fconstr subs
   | FProd of Name.t Context.binder_annot * fconstr * constr * fconstr subs
   | FLetIn of Name.t Context.binder_annot * fconstr * fconstr * constr * fconstr subs

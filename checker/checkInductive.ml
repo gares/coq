@@ -88,10 +88,27 @@ let eq_recarg a1 a2 = match a1, a2 with
 
 let eq_reloc_tbl = Array.equal (fun x y -> Int.equal (fst x) (fst y) && Int.equal (snd x) (snd y))
 
+let rec check_out_tree t1 t2 = match t1, t2 with
+  | OutInvert (c1, t1), OutInvert (c2, t2) ->
+    Names.eq_user_constructor c1 c2 && Array.equal (Option.equal check_out_tree) t1 t2
+  | OutVariable i1, OutVariable i2 -> Int.equal i1 i2
+  | (OutInvert _ | OutVariable _), _ -> false
+
+let check_ctor_info info {ctor_arg_infos; ctor_out_tree; } =
+  Array.equal ((==) : ctor_arg_info -> _ -> _) info.ctor_arg_infos ctor_arg_infos &&
+  Option.equal (Array.equal check_out_tree) info.ctor_out_tree ctor_out_tree
+
+let check_lc_info = Array.equal (fun a b -> match a, b with
+    | Some a, Some b -> check_ctor_info a b
+    | None, None -> true
+    | Some _, None -> false
+    | None, Some _ -> true (* inferred may be stronger (functors etc) *))
+
 let check_packet env mind ind
     { mind_typename; mind_arity_ctxt; mind_arity; mind_consnames; mind_user_lc;
       mind_nrealargs; mind_nrealdecls; mind_kelim; mind_nf_lc;
-      mind_consnrealargs; mind_consnrealdecls; mind_recargs; mind_relevant;
+      mind_consnrealargs; mind_consnrealdecls; mind_recargs;
+      mind_relevant; mind_lc_info;
       mind_nb_constant; mind_nb_args; mind_reloc_tbl } =
   let check = check mind in
 
@@ -114,6 +131,7 @@ let check_packet env mind ind
   check "mind_recargs" (Rtree.equal eq_recarg ind.mind_recargs mind_recargs);
 
   check "mind_relevant" (Sorts.relevance_equal ind.mind_relevant mind_relevant);
+  check "mind_lc_info" (check_lc_info ind.mind_lc_info mind_lc_info);
 
   check "mind_nb_args" Int.(equal ind.mind_nb_args mind_nb_args);
   check "mind_nb_constant" Int.(equal ind.mind_nb_constant mind_nb_constant);

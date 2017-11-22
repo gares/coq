@@ -142,6 +142,23 @@ type regular_inductive_arity = {
 
 type inductive_arity = (regular_inductive_arity, template_arity) declaration_arity
 
+(** An argument to a constructor [c] is forced iff it appears as a
+   non-forced argument of a constructor in the out_tree of [c]. *)
+type ctor_arg_info = ForcedArg | MatchArg
+
+(* This is supposed to verify that each Variable occurs only once
+   (with uip mode, may also occur in Eqn nodes). Note how we don't
+   look at ForcedArg occurences. *)
+type ctor_out_tree =
+  | OutInvert of Names.constructor * ctor_out_tree option array (* We only look at the MathArg locations, parameters do not appear not even as None. *)
+  | OutVariable of int
+  (* | OutEqn of Constr.t (* eg eq_refl, needs uip mode. TODO consider if allowed to be non variable. *) *)
+
+type ctor_info = {
+  ctor_arg_infos : ctor_arg_info array; (* no parameters *)
+  ctor_out_tree : ctor_out_tree array option; (** 1 for each index (no parameters), None if not natural SProp type (ie squashed or non-SProp). *)
+}
+
 type one_inductive_body = {
 (** {8 Primitive datas } *)
 
@@ -177,6 +194,8 @@ type one_inductive_body = {
     mind_recargs : wf_paths; (** Signature of recursive arguments in the constructors *)
 
     mind_relevant : Sorts.relevance;
+
+    mind_lc_info : ctor_info option array; (** None if non invertible *)
 
 (** {8 Datas for bytecode compilation } *)
 

@@ -67,6 +67,9 @@ type pretype_error =
     (Evar.t * Evar_kinds.t) option * Evar.Set.t option
     (** unresolvable evar, connex component *)
   | DisallowedSProp
+  | SPropMissingAnnot
+  | SPropUnexpectedAnnot
+  | SPropIncorrectAnnot of constr * constr
 
 exception PretypeError of env * Evd.evar_map * pretype_error
 
@@ -165,3 +168,6 @@ val unsatisfiable_constraints : env -> Evd.evar_map -> Evar.t option ->
 
 val unsatisfiable_exception : exn -> bool
 
+val error_sprop_missing_annot : env -> Evd.evar_map -> 'a
+val error_sprop_unexpected_annot : env -> Evd.evar_map -> 'a
+val error_sprop_incorrect_annot : env -> Evd.evar_map -> constr -> constr -> 'a

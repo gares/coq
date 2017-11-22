@@ -136,6 +136,8 @@ let rec infer_fterm cv_pb infos variances hd stk =
     let variances = infer_vect infos variances (Array.map (mk_clos le) cl) in
     infer_stack infos variances stk
 
+  | FCaseInvert _ -> assert false (* TODO *)
+
   (* Removed by whnf *)
   | FLOCKED | FCaseT _ | FLetIn _ | FApp _ | FLIFT _ | FCLOS _ -> assert false
 

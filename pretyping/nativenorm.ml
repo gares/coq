@@ -331,7 +331,7 @@ and nf_atom_type env sigma atom =
       let branchs = Array.mapi mkbranch bsw in
       let tcase = build_case_type p realargs a in
       let ci = ans.asw_ci in
-      mkCase(ci, p, a, branchs), tcase 
+      mkCase(ci, p, None (*TODO*), a, branchs), tcase
   | Afix(tt,ft,rp,s) ->
       let tt = Array.map (fun t -> nf_type_sort env sigma t) tt in
       let tt = Array.map fst tt and rt = Array.map snd tt in

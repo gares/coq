@@ -770,7 +770,7 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
 
   | GLetTuple (nal,(na,po),c,d) ->
     let sigma, cj = pretype empty_tycon env sigma c in
-    let (IndType (indf,realargs)) =
+    let (IndType (indf,realargs) as indty) =
       try find_rectype !!env sigma cj.uj_type
       with Not_found ->
 	let cloc = loc_of_glob_constr c in
@@ -806,11 +806,11 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
 	in aux 1 1 (List.rev nal) cs.cs_args, true in
     let fsign = Context.Rel.map (whd_betaiota sigma) fsign in
     let fsign,env_f = push_rel_context sigma fsign env in
-    let obj ind rci p v f =
+    let obj ind is rci p v f =
       if not record then
         let f = it_mkLambda_or_LetIn f fsign in
         let ci = make_case_info !!env (fst ind) rci LetStyle in
-          mkCase (ci, p, cj.uj_val,[|f|])
+          mkCase (ci, p, is, cj.uj_val,[|f|])
       else it_mkLambda_or_LetIn f fsign
     in
     (* Make dependencies from arity signature impossible *)
@@ -837,8 +837,8 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
             let sigma, fj = pretype (mk_tycon fty) env_f sigma d in
 	    let v =
 	      let ind,_ = dest_ind_family indf in
-                let rci = Typing.check_allowed_sort !!env sigma ind cj.uj_val p in
-                obj ind rci p cj.uj_val fj.uj_val
+                let is, rci = Typing.check_allowed_sort !!env sigma indty cj.uj_val p in
+                obj ind is rci p cj.uj_val fj.uj_val
             in
             sigma, { uj_val = v; uj_type = (substl (realargs@[cj.uj_val]) ccl) }
 
@@ -856,13 +856,13 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
 	    let p = it_mkLambda_or_LetIn (lift (nar+1) ccl) psign' in
 	    let v =
 	      let ind,_ = dest_ind_family indf in
-                let rci = Typing.check_allowed_sort !!env sigma ind cj.uj_val p in
-                obj ind rci p cj.uj_val fj.uj_val
+                let is, rci = Typing.check_allowed_sort !!env sigma indty cj.uj_val p in
+                obj ind is rci p cj.uj_val fj.uj_val
             in sigma, { uj_val = v; uj_type = ccl })
 
   | GIf (c,(na,po),b1,b2) ->
     let sigma, cj = pretype empty_tycon env sigma c in
-    let (IndType (indf,realargs)) =
+    let (IndType (indf,realargs) as indty) =
       try find_rectype !!env sigma cj.uj_type
       with Not_found ->
 	let cloc = loc_of_glob_constr c in
@@ -915,9 +915,9 @@ let rec pretype k0 resolve_tc (tycon : type_constraint) (env : GlobEnv.t) (sigma
       let v =
 	let ind,_ = dest_ind_family indf in
         let pred = nf_evar sigma pred in
-        let rci = Typing.check_allowed_sort !!env sigma ind cj.uj_val pred in
+        let is, rci = Typing.check_allowed_sort !!env sigma indty cj.uj_val pred in
         let ci = make_case_info !!env (fst ind) rci IfStyle in
-          mkCase (ci, pred, cj.uj_val, [|b1;b2|])
+          mkCase (ci, pred, is, cj.uj_val, [|b1;b2|])
       in
       let cj = { uj_val = v; uj_type = p } in
       inh_conv_coerce_to_tycon ?loc env sigma cj tycon

@@ -160,8 +160,7 @@ let lambda_applist_assum sigma n c l =
     | _ -> anomaly (Pp.str "Not enough lambda/let's.") in
   app n [] c l
 
-let type_case_branches env sigma (ind,largs) pj c =
-  let specif = lookup_mind_specif env (fst ind) in
+let type_case_branches env sigma specif (ind,largs) pj c =
   let nparams = inductive_params specif in
   let (params,realargs) = List.chop nparams largs in
   let p = pj.uj_val in
@@ -173,15 +172,35 @@ let type_case_branches env sigma (ind,largs) pj c =
   let ty = whd_betaiota sigma (lambda_applist_assum sigma (n+1) p (realargs@[c])) in
   sigma, (lc, ty, Sorts.relevance_of_sort ps)
 
-let judge_of_case env sigma ci pj cj lfj =
+let check_case_is env sigma (_,mip) cj rci isj =
+  let open Sorts in
+  let rind = mip.Declarations.mind_relevant in
+  match rind, rci with
+  | Relevant, Relevant | Relevant, Irrelevant | Irrelevant, Irrelevant ->
+    (match isj with None -> () | Some _ -> error_sprop_unexpected_annot env sigma)
+  | Irrelevant, Relevant ->
+    (match isj with
+     | None -> error_sprop_missing_annot env sigma
+     |Some isj ->
+       (* XXX wrap into sprop error *)
+       if not (Reductionops.is_conv env sigma cj.uj_type isj.utj_val)
+       then error_sprop_incorrect_annot env sigma cj.uj_type isj.utj_val)
+
+
+let judge_of_case env sigma ci pj isj cj lfj =
+  (* TODO check the is *)
   let ((ind, u), spec) =
     try find_mrectype env sigma cj.uj_type
     with Not_found -> error_case_not_inductive env sigma cj in
+  let specif = lookup_mind_specif env ind in
   let indspec = ((ind, EInstance.kind sigma u), spec) in
-  let sigma, (bty,rslty,rci) = type_case_branches env sigma indspec pj cj.uj_val in
+  let sigma, (bty,rslty,rci) = type_case_branches env sigma specif indspec pj cj.uj_val in
   let () = check_case_info env (fst indspec) rci ci in
+  let () = check_case_is env sigma specif cj rci isj in
   let sigma = check_branch_types env sigma (fst indspec) cj (lfj,bty) in
-  sigma, { uj_val  = mkCase (ci, pj.uj_val, cj.uj_val, Array.map j_val lfj);
+  sigma, { uj_val  = mkCase (ci, pj.uj_val,
+                             Option.map (fun isj -> isj.utj_val) isj,
+                             cj.uj_val, Array.map j_val lfj);
            uj_type = rslty }
 
 let check_type_fixpoint ?loc env sigma lna lar vdefj =
@@ -197,7 +216,9 @@ let check_type_fixpoint ?loc env sigma lna lar vdefj =
 
 
 (* FIXME: might depend on the level of actual parameters!*)
-let check_allowed_sort env sigma ind c p =
+let check_allowed_sort env sigma indty c p =
+  let IndType (indf, realargs) = indty in
+  let ind, params = dest_ind_family indf in
   let specif = Global.lookup_inductive (fst ind) in
   let sorts = elim_sorts specif in
   let pj = Retyping.get_judgment_of env sigma p in
@@ -210,7 +231,15 @@ let check_allowed_sort env sigma ind c p =
     error_elim_arity env sigma ind c pj
       (Some(sorts,ksort,s,Type_errors.error_elim_explain ksort s))
   else
-    Sorts.relevance_of_sort_family ksort
+    let r = Sorts.relevance_of_sort_family ksort in
+    if (snd specif).Declarations.mind_relevant == Sorts.Irrelevant
+    then
+      match ksort with
+      | Sorts.InSProp -> None,r
+      | InProp | InSet | InType ->
+        Some (mkAppliedInd indty), r
+    else None,r
+
 
 let judge_of_cast env sigma cj k tj =
   let expected_type = tj.utj_val in
@@ -348,11 +377,15 @@ let rec execute env sigma cstr =
         let sigma, ty = type_of_constructor env sigma ctor in
         sigma, make_judge cstr ty
 
-    | Case (ci,p,c,lf) ->
+    | Case (ci,p,is,c,lf) ->
         let sigma, cj = execute env sigma c in
         let sigma, pj = execute env sigma p in
         let sigma, lfj = execute_array env sigma lf in
-        judge_of_case env sigma ci pj cj lfj
+        let sigma, isj = Option.fold_left_map (fun sigma is ->
+            let sigma, isj = execute env sigma is in
+            type_judgment env sigma isj) sigma is
+        in
+        judge_of_case env sigma ci pj isj cj lfj
 
     | Fix ((vn,i as vni),recdef) ->
         let sigma, (_,tys,_ as recdef') = execute_recdef env sigma recdef in

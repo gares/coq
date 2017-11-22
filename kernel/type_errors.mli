@@ -34,6 +34,7 @@ type 'constr pguard_error =
   | RecCallInCasePred of 'constr
   | NotGuardedForm of 'constr
   | ReturnPredicateNotCoInductive of 'constr
+  | FixpointOnIrrelevantInductive
 
 type guard_error = constr pguard_error
 
@@ -66,6 +67,9 @@ type ('constr, 'types) ptype_error =
   | UndeclaredUniverse of Univ.Level.t
   | DisallowedSProp
   | BadRelevance
+  | SPropMissingAnnot
+  | SPropUnexpectedAnnot
+  | SPropIncorrectAnnot of 'constr * 'constr
 
 type type_error = (constr, types) ptype_error
 
@@ -117,3 +121,7 @@ val error_undeclared_universe : env -> Univ.Level.t -> 'a
 val error_disallowed_sprop : env -> 'a
 
 val error_bad_relevance : env -> 'a
+
+val error_sprop_missing_annot : env -> 'a
+val error_sprop_unexpected_annot : env -> 'a
+val error_sprop_incorrect_annot : env -> constr -> constr -> 'a

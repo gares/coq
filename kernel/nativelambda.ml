@@ -466,7 +466,7 @@ let rec lambda_of_constr cache env sigma c =
     let prefix = get_mind_prefix env (fst ind) in
     mkLapp (Lproj (prefix, ind, Projection.arg p)) [|lambda_of_constr cache env sigma c|]
 
-  | Case(ci,t,a,branches) ->  
+  | Case(ci,t,_is,a,branches) -> (* TODO non None is *)
       let (mind,i as ind) = ci.ci_ind in
       let mib = lookup_mind mind env in
       let oib = mib.mind_packets.(i) in

@@ -638,13 +638,14 @@ let map_constr_with_binders_left_to_right sigma g f l c =
     let al' = Array.map_left (f l) al in
       if Array.for_all2 (==) al' al then c
       else mkEvar (e, al')
-  | Case (ci,p,b,bl) ->
+  | Case (ci,p,is,b,bl) ->
       (* In v8 concrete syntax, predicate is after the term to match! *)
       let b' = f l b in
       let p' = f l p in
+      let is' = Option.map (f l) is in
       let bl' = Array.map_left (f l) bl in
-	if b' == b && p' == p && bl' == bl then c
-	else mkCase (ci, p', b', bl')
+        if b' == b && p' == p && is' == is && bl' == bl then c
+        else mkCase (ci, p', is', b', bl')
   | Fix (ln,(lna,tl,bl as fx)) ->
       let l' = fold_rec_types g fx l in
       let (tl', bl') = map_left2 (f l) tl (f l') bl in
@@ -704,22 +705,24 @@ let map_constr_with_full_binders_gen userview sigma g f l cstr =
       if c==c' && Array.for_all2 (==) al al' then cstr else mkApp (c', al')
   | Proj (p,c) -> 
       let c' = f l c in
-	if c' == c then cstr else mkProj (p, c')
+      if c' == c then cstr else mkProj (p, c')
   | Evar (e,al) ->
       let al' = Array.map (f l) al in
       if Array.for_all2 (==) al al' then cstr else mkEvar (e, al')
-  | Case (ci,p,c,bl) when userview ->
+  | Case (ci,p,is,c,bl) when userview ->
       let p' = map_return_predicate_with_full_binders sigma g f l ci p in
+      let is' = Option.map (f l) is in
       let c' = f l c in
       let bl' = map_branches_with_full_binders sigma g f l ci bl in
-      if p==p' && c==c' && bl'==bl then cstr else
-        mkCase (ci, p', c', bl')
-  | Case (ci,p,c,bl) ->
-      let p' = f l p in
-      let c' = f l c in
-      let bl' = Array.map (f l) bl in
-      if p==p' && c==c' && Array.for_all2 (==) bl bl' then cstr else
-        mkCase (ci, p', c', bl')
+      if p==p' && c==c' && is' == is && bl'==bl then cstr else
+        mkCase (ci, p', is', c', bl')
+  | Case (ci,p,is,c,bl) ->
+    let p' = f l p in
+    let is' = Option.map (f l) is in
+    let c' = f l c in
+    let bl' = Array.map (f l) bl in
+    if p==p' && is' == is && c==c' && Array.for_all2 (==) bl bl' then cstr else
+      mkCase (ci, p', is', c', bl')
   | Fix (ln,(lna,tl,bl as fx)) ->
       let tl' = Array.map (f l) tl in
       let l' = fold_rec_types g fx l in

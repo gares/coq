@@ -151,7 +151,7 @@ let rec v_constr =
     [|v_puniverses v_cst|]; (* Const *)
     [|v_puniverses v_ind|]; (* Ind *)
     [|v_puniverses v_cons|]; (* Construct *)
-    [|v_caseinfo;v_constr;v_constr;Array v_constr|]; (* Case *)
+    [|v_caseinfo;v_constr;Opt v_constr;v_constr;Array v_constr|]; (* Case *)
     [|v_fix|]; (* Fix *)
     [|v_cofix|]; (* CoFix *)
     [|v_proj;v_constr|] (* Proj *)
@@ -253,6 +253,14 @@ let v_mono_ind_arity =
 let v_ind_arity = v_sum "inductive_arity" 0
   [|[|v_mono_ind_arity|];[|v_pol_arity|]|]
 
+let v_ctor_arg_info = v_sum "ctor_arg_info" 2 [||]
+let rec v_out_tree = Sum ("out_tree", 0,
+                            [|[|v_cons;Array (Opt v_out_tree)|];
+                              [|Int|]|])
+let v_ctor_info = v_tuple "ctor_info" [|Array v_ctor_arg_info; Opt (Array v_out_tree)|]
+
+let v_lc_info = Array (Opt v_ctor_info)
+
 let v_one_ind = v_tuple "one_inductive_body"
   [|v_id;
     v_rctxt;
@@ -267,6 +275,7 @@ let v_one_ind = v_tuple "one_inductive_body"
     Array Int;
     v_wfp;
     v_relevance;
+    v_lc_info;
     Int;
     Int;
     Any|]

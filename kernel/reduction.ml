@@ -584,12 +584,20 @@ and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
           convert_stacks l2r infos lft1 lft2 v1 v2 cuniv
         else raise NotConvertible
 
+    | FCaseInvert (ci1,p1,_,_,br1,e1), FCaseInvert (ci2,p2,_,_,br2,e2) ->
+      (if not (eq_ind ci1.ci_ind ci2.ci_ind) then raise NotConvertible);
+      let el1 = el_stack lft1 v1 and el2 = el_stack lft2 v2 in
+      let ccnv = ccnv CONV l2r infos el1 el2 in
+      let cuniv = ccnv (mk_clos e1 p1) (mk_clos e2 p2) cuniv in
+      Array.fold_right2 (fun b1 b2 cuniv -> ccnv (mk_clos e1 b1) (mk_clos e2 b2) cuniv)
+        br1 br2 cuniv
+
      (* Should not happen because both (hd1,v1) and (hd2,v2) are in whnf *)
-     | ( (FLetIn _, _) | (FCaseT _,_) | (FApp _,_) | (FCLOS _,_) | (FLIFT _,_)
+     | ( (FLetIn _ | FCaseT _ | FApp _ | FCLOS _ | FLIFT _), _
        | (_, FLetIn _) | (_,FCaseT _) | (_,FApp _) | (_,FCLOS _) | (_,FLIFT _)
        | (FLOCKED,_) | (_,FLOCKED) ) -> assert false
 
-     | (FRel _ | FAtom _ | FInd _ | FFix _ | FCoFix _
+     | (FRel _ | FAtom _ | FInd _ | FFix _ | FCoFix _ | FCaseInvert _
         | FProd _ | FEvar _), _ -> raise NotConvertible
 
 and convert_stacks l2r infos lft1 lft2 stk1 stk2 cuniv =

@@ -255,6 +255,40 @@ let print_primitive ref =
       print_primitive_record mib.mind_finite mib.mind_packets mib.mind_record
   | _ -> []
 
+let pr_forced = function
+  | ForcedArg -> str"!"
+  | MatchArg -> str"?"
+
+let rec pr_out_tree = function
+  | OutInvert (ctor, args) ->
+    str "OutInvert ("++ pr_constructor (Global.env()) ctor ++ str ", [|" ++
+    prvect_with_sep (fun () -> str "; ")
+      (function | None -> str "None" | Some tree -> pr_out_tree tree) args ++
+    str "|])"
+  | OutVariable i -> str "Var(" ++ Pp.int i ++ str")"
+
+let pr_info = function
+  | Some {ctor_arg_infos; ctor_out_tree} ->
+    str"is invertible\n" ++
+    str "!forced, ?match arguments: " ++
+    prvect pr_forced ctor_arg_infos ++ fnl() ++
+    (match ctor_out_tree with
+     | None -> mt()
+     | Some trees -> str"[|" ++ prvect_with_sep (fun () -> str"; ") pr_out_tree trees ++ str"|]" ++ fnl())
+  | None -> str"is not invertible\n"
+
+let print_debug_ind = function
+  | IndRef ind ->
+    if !Flags.debug then
+      let mib, _ = Global.lookup_inductive ind in
+      List.map_of_array (fun bod ->
+          str "For " ++ Id.print bod.mind_typename ++ str":\n" ++
+          prvecti (fun i info -> str "ctor " ++ Id.print bod.mind_consnames.(i) ++ str " "++
+                                 pr_info info) bod.mind_lc_info)
+        mib.mind_packets
+    else []
+  | _ -> []
+
 let print_name_infos ref =
   let impls = implicits_of_global ref in
   let scopes = Notation.find_arguments_scope ref in
@@ -274,7 +308,8 @@ let print_name_infos ref =
   print_renames_list (mt()) renames @
   print_impargs_list (mt()) impls @
   print_argument_scopes (mt()) scopes @
-  print_if_is_coercion ref
+  print_if_is_coercion ref @
+  print_debug_ind ref
 
 let print_id_args_data test pr id l =
   if List.exists test l then

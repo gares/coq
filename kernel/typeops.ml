@@ -387,6 +387,32 @@ let check_binder_annot env s x =
   let r = x.Context.binder_relevance in
   if not (Sorts.relevance_of_sort s == r) then error_bad_relevance env
 
+let check_case_is env ct rt rp is =
+  match rt, rp with
+  | Relevant, Relevant | Relevant, Irrelevant | Irrelevant, Irrelevant ->
+    (match is with None -> () | Some _ -> error_sprop_unexpected_annot env)
+  | Irrelevant, Relevant ->
+    (match is with
+     | None -> error_sprop_missing_annot env
+     |Some is ->
+       (* XXX wrap into sprop error *)
+       default_conv CONV env ct is)
+
+let type_of_case env ci p pt is c ct _lf lft =
+  let (pind, _pis as indspec) =
+    try find_rectype env ct
+    with Not_found -> error_case_not_inductive env (make_judge c ct) in
+  let _, sp = try dest_arity env pt
+    with NotArity -> error_elim_arity env pind c (make_judge p pt) None in
+  let rp = Sorts.relevance_of_sort sp in
+  let () = check_case_info env pind rp ci in
+  let () = check_case_is env ct (Inductive.relevance_of_inductive env (fst pind)) rp is in
+  let (bty,rslty) =
+    type_case_branches env indspec (make_judge p pt) c in
+  let () = check_branch_types env pind c ct lft bty in
+  rslty
+
+
 (* The typing machine. *)
     (* ATTENTION : faudra faire le typage du contexte des Const,
     Ind et Constructsi un jour cela devient des constructions
@@ -465,11 +491,11 @@ let rec execute env cstr =
     | Construct c ->
       type_of_constructor env c
 
-    | Case (ci,p,c,lf) ->
+    | Case (ci,p,is,c,lf) ->
         let ct = execute env c in
         let pt = execute env p in
         let lft = execute_array env lf in
-          type_of_case env ci p pt c ct lf lft
+          type_of_case env ci p pt is c ct lf lft
 
     | Fix ((_vn,i as vni),recdef) ->
       let (fix_ty,recdef') = execute_recdef env recdef i in
@@ -501,19 +527,6 @@ and execute_recdef env (names,lar,vdef) i =
     (lara.(i),(names,lara,vdef))
 
 and execute_array env = Array.map (execute env)
-
-and type_of_case env ci p pt c ct _lf lft =
-  let (pind, _ as indspec) =
-    try find_rectype env ct
-    with Not_found -> error_case_not_inductive env (make_judge c ct) in
-  let _, sp = try dest_arity env pt
-    with NotArity -> error_elim_arity env pind c (make_judge p pt) None in
-  let () = check_case_info env pind (Sorts.relevance_of_sort sp) ci in
-  let (bty,rslty) =
-    type_case_branches env indspec (make_judge p pt) c in
-  let () = check_branch_types env pind c ct lft bty in
-  rslty
-
 
 (* Derived functions *)
 
@@ -611,7 +624,7 @@ let judge_of_inductive env indu =
 let judge_of_constructor env cu =
   make_judge (mkConstructU cu) (type_of_constructor env cu)
 
-let judge_of_case env ci pj cj lfj =
-  let lf, lft = dest_judgev lfj in
-  make_judge (mkCase (ci, (*nf_betaiota*) pj.uj_val, cj.uj_val, lft))
-             (type_of_case env ci pj.uj_val pj.uj_type cj.uj_val cj.uj_type lf lft)
+(* let judge_of_case env ci pj cj lfj = *)
+(*   let lf, lft = dest_judgev lfj in *)
+(*   make_judge (mkCase (ci, (\*nf_betaiota*\) pj.uj_val, cj.uj_val, lft)) *)
+(*              (type_of_case env ci pj.uj_val pj.uj_type cj.uj_val cj.uj_type lf lft) *)

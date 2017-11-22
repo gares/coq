@@ -1129,14 +1129,14 @@ let rec ungeneralize sigma n ng body =
   | LetIn (na,b,t,c) ->
       (* We traverse an alias *)
       mkLetIn (na,b,t,ungeneralize sigma (n+1) ng c)
-  | Case (ci,p,c,brs) ->
+  | Case (ci,p,is,c,brs) ->
       (* We traverse a split *)
       let p =
         let sign,p = decompose_lam_assum sigma p in
         let sign2,p = decompose_prod_n_assum sigma ng p in
         let p = prod_applist sigma p [mkRel (n+List.length sign+ng)] in
         it_mkLambda_or_LetIn (it_mkProd_or_LetIn p sign2) sign in
-      mkCase (ci,p,c,Array.map2 (fun q c ->
+      mkCase (ci,p,is,c,Array.map2 (fun q c ->
         let sign,b = decompose_lam_n_decls sigma q c in
         it_mkLambda_or_LetIn (ungeneralize sigma (n+q) ng b) sign)
         ci.ci_cstr_ndecls brs)
@@ -1159,7 +1159,7 @@ let rec is_dependent_generalization sigma ng body =
   | LetIn (na,b,t,c) ->
       (* We traverse an alias *)
       is_dependent_generalization sigma ng c
-  | Case (ci,p,c,brs) ->
+  | Case (ci,p,is,c,brs) ->
       (* We traverse a split *)
       Array.exists2 (fun q c ->
         let _,b = decompose_lam_n_decls sigma q c in
@@ -1413,7 +1413,7 @@ and match_current sigma pb (initial,tomatch) =
         check_all_variables !!(pb.env) sigma typ pb.mat;
         compile_all_variables initial tomatch sigma pb
     | IsInd (_,(IndType(indf,realargs) as indt),names) ->
-	let mind,_ = dest_ind_family indf in
+        let mind,_ = dest_ind_family indf in
         let mind = Tacred.check_privacy !!(pb.env) mind in
         let cstrs = get_constructors !!(pb.env) indf in
         let arsign, _ = get_arity !!(pb.env) indf in
@@ -1441,11 +1441,12 @@ and match_current sigma pb (initial,tomatch) =
           find_predicate pb.caseloc pb.env sigma
             pred current indt (names,dep) tomatch in
         let sigma, _ = Typing.type_of !!(pb.env) sigma pred in
-        let rci = Typing.check_allowed_sort !!(pb.env) sigma mind current pred in
+        let predinst = beta_applist sigma (pred, realargs @ [current]) in
+        let rci = Retyping.relevance_of_type !!(pb.env) sigma predinst in
         let ci = make_case_info !!(pb.env) (fst mind) rci pb.casestyle in
         let pred = nf_betaiota !!(pb.env) sigma pred in
         let case = Inductiveops.make_case_or_project !!(pb.env) sigma
-            indf ci pred current brvals
+            indt ci pred current brvals
         in
         sigma, { uj_val = applist (case, inst);
                  uj_type = prod_applist sigma typ inst }

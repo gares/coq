@@ -37,9 +37,11 @@ val meta_type : evar_map -> metavariable -> types
 val solve_evars : env -> evar_map -> constr -> evar_map * constr
 
 (** Raise an error message if incorrect elimination for this inductive
-    (first constr is term to match, second is return predicate) *)
-val check_allowed_sort : env -> evar_map -> pinductive -> constr -> constr ->
-  Sorts.relevance
+    (first constr is term to match, second is return predicate)
+    Returns the [is] that go into the Case.
+ *)
+val check_allowed_sort : env -> evar_map -> Inductiveops.inductive_type -> constr -> constr ->
+  constr option * Sorts.relevance
 
 (** Raise an error message if bodies have types not unifiable with the
     expected ones *)

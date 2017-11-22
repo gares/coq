@@ -99,7 +99,7 @@ type ('constr, 'types, 'sort, 'univs) kind_of_term =
   | Const     of (Constant.t * 'univs)
   | Ind       of (inductive * 'univs)
   | Construct of (constructor * 'univs)
-  | Case      of case_info * 'constr * 'constr * 'constr array
+  | Case      of case_info * 'constr * 'constr option * 'constr * 'constr array
   | Fix       of ('constr, 'types) pfixpoint
   | CoFix     of ('constr, 'types) pcofixpoint
   | Proj      of Projection.t * 'constr
@@ -187,7 +187,7 @@ let mkConstructU c = Construct c
 let mkConstructUi ((ind,u),i) = Construct ((ind,i),u)
 
 (* Constructs the term <p>Case c of c1 | c2 .. | cn end *)
-let mkCase (ci, p, c, ac) = Case (ci, p, c, ac)
+let mkCase (ci, p, is, c, ac) = Case (ci, p, is, c, ac)
 
 (* If recindxs = [|i1,...in|]
       funnames = [|f1,...fn|]
@@ -396,7 +396,7 @@ let destConstruct c = match kind c with
 
 (* Destructs a term <p>Case c of lc1 | lc2 .. | lcn end *)
 let destCase c = match kind c with
-  | Case (ci,p,c,v) -> (ci,p,c,v)
+  | Case (ci,p,is,c,v) -> (ci,p,is,c,v)
   | _ -> raise DestKO
 
 let destProj c = match kind c with
@@ -450,7 +450,11 @@ let fold f acc c = match kind c with
   | App (c,l) -> Array.fold_left f (f acc c) l
   | Proj (_p,c) -> f acc c
   | Evar (_,l) -> Array.fold_left f acc l
-  | Case (_,p,c,bl) -> Array.fold_left f (f (f acc p) c) bl
+  | Case (_,p,is,c,bl) ->
+    let acc = f acc p in
+    let acc = Option.fold_left f acc is in
+    let acc = f acc c in
+    Array.fold_left f acc bl
   | Fix (_,(_lna,tl,bl)) ->
     Array.fold_left2 (fun acc t b -> f (f acc t) b) acc tl bl
   | CoFix (_,(_lna,tl,bl)) ->
@@ -470,7 +474,7 @@ let iter f c = match kind c with
   | App (c,l) -> f c; Array.iter f l
   | Proj (_p,c) -> f c
   | Evar (_,l) -> Array.iter f l
-  | Case (_,p,c,bl) -> f p; f c; Array.iter f bl
+  | Case (_,p,is,c,bl) -> f p; Option.iter f is; f c; Array.iter f bl
   | Fix (_,(_,tl,bl)) -> Array.iter f tl; Array.iter f bl
   | CoFix (_,(_,tl,bl)) -> Array.iter f tl; Array.iter f bl
 
@@ -489,7 +493,7 @@ let iter_with_binders g f n c = match kind c with
   | LetIn (_,b,t,c) -> f n b; f n t; f (g n) c
   | App (c,l) -> f n c; Array.Fun1.iter f n l
   | Evar (_,l) -> Array.Fun1.iter f n l
-  | Case (_,p,c,bl) -> f n p; f n c; Array.Fun1.iter f n bl
+  | Case (_,p,is,c,bl) -> f n p; Option.iter (f n) is; f n c; Array.Fun1.iter f n bl
   | Proj (_p,c) -> f n c
   | Fix (_,(_,tl,bl)) ->
       Array.Fun1.iter f n tl;
@@ -516,7 +520,7 @@ let fold_constr_with_binders g f n acc c =
   | App (c,l) -> Array.fold_left (f n) (f n acc c) l
   | Proj (_p,c) -> f n acc c
   | Evar (_,l) -> Array.fold_left (f n) acc l
-  | Case (_,p,c,bl) -> Array.fold_left (f n) (f n (f n acc p) c) bl
+  | Case (_,p,is,c,bl) -> Array.fold_left (f n) (f n (Option.fold_left (f n) (f n acc p) is) c) bl
   | Fix (_,(_,tl,bl)) ->
       let n' = iterate g (Array.length tl) n in
       let fd = Array.map2 (fun t b -> (t,b)) tl bl in
@@ -639,18 +643,20 @@ let map_gen userview f c = match kind c with
       let l' = Array.Smart.map f l in
       if l'==l then c
       else mkEvar (e, l')
-  | Case (ci,p,b,bl) when userview ->
+  | Case (ci,p,is,b,bl) when userview ->
       let b' = f b in
       let p' = map_return_predicate f ci p in
+      let is' = Option.Smart.map f is in
       let bl' = map_branches f ci bl in
-      if b'==b && p'==p && bl'==bl then c
-      else mkCase (ci, p', b', bl')
-  | Case (ci,p,b,bl) ->
+      if b'==b && p'==p && is' == is && bl'==bl then c
+      else mkCase (ci, p', is', b', bl')
+  | Case (ci,p,is,b,bl) ->
       let b' = f b in
       let p' = f p in
+      let is' = Option.Smart.map f is in
       let bl' = Array.Smart.map f bl in
-      if b'==b && p'==p && bl'==bl then c
-      else mkCase (ci, p', b', bl')
+      if b'==b && p'==p && is == is' && bl'==bl then c
+      else mkCase (ci, p', is', b', bl')
   | Fix (ln,(lna,tl,bl)) ->
       let tl' = Array.Smart.map f tl in
       let bl' = Array.Smart.map f bl in
@@ -704,12 +710,13 @@ let fold_map f accu c = match kind c with
       let accu, l' = Array.Smart.fold_left_map f accu l in
       if l'==l then accu, c
       else accu, mkEvar (e, l')
-  | Case (ci,p,b,bl) ->
+  | Case (ci,p,is,b,bl) ->
       let accu, b' = f accu b in
       let accu, p' = f accu p in
+      let accu, is' = Option.Smart.fold_map f accu is in
       let accu, bl' = Array.Smart.fold_left_map f accu bl in
-      if b'==b && p'==p && bl'==bl then accu, c
-      else accu, mkCase (ci, p', b', bl')
+      if b'==b && p'==p && is' == is && bl'==bl then accu, c
+      else accu, mkCase (ci, p', is', b', bl')
   | Fix (ln,(lna,tl,bl)) ->
       let accu, tl' = Array.Smart.fold_left_map f accu tl in
       let accu, bl' = Array.Smart.fold_left_map f accu bl in
@@ -764,12 +771,13 @@ let map_with_binders g f l c0 = match kind c0 with
     let al' = Array.Fun1.Smart.map f l al in
     if al' == al then c0
     else mkEvar (e, al')
-  | Case (ci, p, c, bl) ->
+  | Case (ci, p, is, c, bl) ->
     let p' = f l p in
+    let is' = Option.Smart.map (f l) is in (* TODO Fun1.smartmap *)
     let c' = f l c in
     let bl' = Array.Fun1.Smart.map f l bl in
-    if p' == p && c' == c && bl' == bl then c0
-    else mkCase (ci, p', c', bl')
+    if p' == p && is' == is && c' == c && bl' == bl then c0
+    else mkCase (ci, p', is', c', bl')
   | Fix (ln, (lna, tl, bl)) ->
     let tl' = Array.Fun1.Smart.map f l tl in
     let l' = iterate g (Array.length tl) l in
@@ -814,7 +822,7 @@ let fold_with_full_binders g f n acc c =
   | App (c,l) -> Array.fold_left (f n) (f n acc c) l
   | Proj (_,c) -> f n acc c
   | Evar (_,l) -> Array.fold_left (f n) acc l
-  | Case (_,p,c,bl) -> Array.fold_left (f n) (f n (f n acc p) c) bl
+  | Case (_,p,is,c,bl) -> Array.fold_left (f n) (f n (Option.fold_left (f n) (f n acc p) is) c) bl
   | Fix (_,(lna,tl,bl)) ->
       let n' = CArray.fold_left2_i (fun i c n t -> g (LocalAssum (n,lift i t)) c) n lna tl in
       let fd = Array.map2 (fun t b -> (t,b)) tl bl in
@@ -864,8 +872,8 @@ let compare_head_gen_leq_with kind1 kind2 leq_universes leq_sorts eq leq nargs t
   | Ind (c1,u1), Ind (c2,u2) -> eq_ind c1 c2 && leq_universes (GlobRef.IndRef c1) nargs u1 u2
   | Construct (c1,u1), Construct (c2,u2) ->
     eq_constructor c1 c2 && leq_universes (GlobRef.ConstructRef c1) nargs u1 u2
-  | Case (_,p1,c1,bl1), Case (_,p2,c2,bl2) ->
-    eq 0 p1 p2 && eq 0 c1 c2 && Array.equal (eq 0) bl1 bl2
+  | Case (_,p1,is1,c1,bl1), Case (_,p2,is2,c2,bl2) ->
+    eq 0 p1 p2 && Option.equal (eq 0) is1 is2 && eq 0 c1 c2 && Array.equal (eq 0) bl1 bl2
   | Fix ((ln1, i1),(_,tl1,bl1)), Fix ((ln2, i2),(_,tl2,bl2)) ->
     Int.equal i1 i2 && Array.equal Int.equal ln1 ln2
     && Array.equal_norefl (eq 0) tl1 tl2 && Array.equal_norefl (eq 0) bl1 bl2
@@ -1036,8 +1044,12 @@ let constr_ord_int f t1 t2 =
     | Ind _, _ -> -1 | _, Ind _ -> 1
     | Construct (ct1,_u1), Construct (ct2,_u2) -> constructor_ord ct1 ct2
     | Construct _, _ -> -1 | _, Construct _ -> 1
-    | Case (_,p1,c1,bl1), Case (_,p2,c2,bl2) ->
-        ((f =? f) ==? (Array.compare f)) p1 p2 c1 c2 bl1 bl2
+    | Case (_,p1,is1,c1,bl1), Case (_,p2,is2,c2,bl2) ->
+      let c = f p1 p2 in
+      if Int.equal c 0 then let c = Option.compare f is1 is2 in
+      if Int.equal c 0 then let c = f c1 c2 in
+      if Int.equal c 0 then Array.compare f bl1 bl2
+      else c else c else c
     | Case _, _ -> -1 | _, Case _ -> 1
     | Fix (ln1,(_,tl1,bl1)), Fix (ln2,(_,tl2,bl2)) ->
         ((fix_cmp =? (Array.compare f)) ==? (Array.compare f))
@@ -1118,8 +1130,8 @@ let hasheq t1 t2 =
     | Const (c1,u1), Const (c2,u2) -> c1 == c2 && u1 == u2
     | Ind (ind1,u1), Ind (ind2,u2) -> ind1 == ind2 && u1 == u2
     | Construct (cstr1,u1), Construct (cstr2,u2) -> cstr1 == cstr2 && u1 == u2
-    | Case (ci1,p1,c1,bl1), Case (ci2,p2,c2,bl2) ->
-      ci1 == ci2 && p1 == p2 && c1 == c2 && array_eqeq bl1 bl2
+    | Case (ci1,p1,is1,c1,bl1), Case (ci2,p2,is2,c2,bl2) ->
+      ci1 == ci2 && p1 == p2 && is1 == is2 && c1 == c2 && array_eqeq bl1 bl2
     | Fix ((ln1, i1),(lna1,tl1,bl1)), Fix ((ln2, i2),(lna2,tl2,bl2)) ->
       Int.equal i1 i2
       && Array.equal Int.equal ln1 ln2
@@ -1144,11 +1156,16 @@ module HashsetTerm =
 module HashsetTermArray =
   Hashset.Make(struct type t = constr array let eq = array_eqeq end)
 
+module HashsetTermOption =
+  Hashset.Make(struct type t = constr option let eq = Option.equal hasheq end)
+
 let term_table = HashsetTerm.create 19991
 (* The associative table to hashcons terms. *)
 
 let term_array_table = HashsetTermArray.create 4999
 (* The associative table to hashcons term arrays. *)
+
+let term_option_table = HashsetTermOption.create 1999
 
 open Hashset.Combine
 
@@ -1217,15 +1234,16 @@ let hashcons (sh_sort,sh_ci,sh_construct,sh_ind,sh_con,sh_na,sh_id) =
 	let u', hu = sh_instance u in
 	(Construct (sh_construct c, u'),
 	 combinesmall 11 (combine (constructor_syntactic_hash c) hu))
-      | Case (ci,p,c,bl) ->
-	let p, hp = sh_rec p
-	and c, hc = sh_rec c in
+      | Case (ci,p,is,c,bl) ->
+        let p, hp = sh_rec p in
+        let is, his = hash_term_option is in
+        let c, hc = sh_rec c in
 	let bl,hbl = hash_term_array bl in
-        let hbl = combine (combine hc hp) hbl in
-	(Case (sh_ci ci, p, c, bl), combinesmall 12 hbl)
+        let hbl = combine (combine (combine hc hp) his) hbl in
+        (Case (sh_ci ci, p, is, c, bl), combinesmall 12 hbl)
       | Fix (ln,(lna,tl,bl)) ->
         let bl,hbl = hash_term_array bl in
-	let tl,htl = hash_term_array tl in
+        let tl,htl = hash_term_array tl in
         let () = Array.iteri (fun i x -> Array.unsafe_set lna i (sh_na x)) lna in
         let fold accu na = combine (hash_annot na) accu in
         let hna = Array.fold_left fold 0 lna in
@@ -1263,6 +1281,15 @@ let hashcons (sh_sort,sh_ci,sh_construct,sh_ind,sh_con,sh_na,sh_id) =
     let h = !accu land 0x3FFFFFFF in
     (HashsetTermArray.repr h t term_array_table, h)
 
+  and hash_term_option = function
+    | Some t ->
+      let t, h = hash_term t in
+      let h = h+1 in
+      let t = Some t in
+      (HashsetTermOption.repr h t term_option_table, h)
+    | None ->
+      None, 0
+
   in
   (* Make sure our statically allocated Rels (1 to 16) are considered
      as canonical, and hence hash-consed to themselves *)
@@ -1298,8 +1325,8 @@ let rec hash t =
       combinesmall 10 (combine (ind_hash ind) (Instance.hash u))
     | Construct (c,u) ->
       combinesmall 11 (combine (constructor_hash c) (Instance.hash u))
-    | Case (_ , p, c, bl) ->
-      combinesmall 12 (combine3 (hash c) (hash p) (hash_term_array bl))
+    | Case (_ , p, is, c, bl) ->
+      combinesmall 12 (combine4 (hash c) (hash p) (Option.hash hash is) (hash_term_array bl))
     | Fix (_ln ,(_, tl, bl)) ->
       combinesmall 13 (combine (hash_term_array bl) (hash_term_array tl))
     | CoFix(_ln, (_, tl, bl)) ->
@@ -1322,6 +1349,7 @@ struct
   let eq ci ci' =
     ci.ci_ind == ci'.ci_ind &&
     Int.equal ci.ci_npar ci'.ci_npar &&
+    ci.ci_relevance == ci'.ci_relevance &&
     Array.equal Int.equal ci.ci_cstr_ndecls ci'.ci_cstr_ndecls && (* we use [Array.equal] on purpose *)
     Array.equal Int.equal ci.ci_cstr_nargs ci'.ci_cstr_nargs && (* we use [Array.equal] on purpose *)
     pp_info_equal ci.ci_pp_info ci'.ci_pp_info  (* we use (=) on purpose *)
@@ -1344,7 +1372,8 @@ struct
     let h3 = Array.fold_left combine 0 ci.ci_cstr_ndecls in
     let h4 = Array.fold_left combine 0 ci.ci_cstr_nargs in
     let h5 = hash_pp_info ci.ci_pp_info in
-    combine5 h1 h2 h3 h4 h5
+    let h6 = hash_relevance ci.ci_relevance in
+    combinesmall (combine5 h1 h2 h3 h4 h5) h6
 end
 
 module Hcaseinfo = Hashcons.Make(CaseinfoHash)
@@ -1434,7 +1463,7 @@ let rec debug_print c =
   | Construct (((sp,i),j),u) ->
       str"Constr(" ++ pr_puniverses (MutInd.print sp ++ str"," ++ int i ++ str"," ++ int j) u ++ str")"
   | Proj (p,c) -> str"Proj(" ++ Constant.debug_print (Projection.constant p) ++ str"," ++ bool (Projection.unfolded p) ++ debug_print c ++ str")"
-  | Case (_ci,p,c,bl) -> v 0
+  | Case (_ci,p,_,c,bl) -> v 0
       (hv 0 (str"<"++debug_print p++str">"++ cut() ++ str"Case " ++
              debug_print c ++ str"of") ++ cut() ++
        prlist_with_sep (fun _ -> brk(1,2)) debug_print (Array.to_list bl) ++

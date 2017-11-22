@@ -655,7 +655,7 @@ let rec lambda_of_constr env c =
 
   | Construct _ ->  lambda_of_app env c empty_args
 
-  | Case(ci,t,a,branches) ->
+  | Case(ci,t,_is,a,branches) -> (* TODO case inversion *)
     let ind = ci.ci_ind in
     let mib = lookup_mind (fst ind) env.global_env in
     let oib = mib.mind_packets.(snd ind) in

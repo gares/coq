@@ -13,6 +13,7 @@ open Util
 open Names
 open Univ
 open Constr
+open Context
 open Vars
 open Declarations
 open Declareops
@@ -309,11 +310,8 @@ let build_dependent_inductive ind (_,mip) params =
 exception LocalArity of (Sorts.family list * Sorts.family * Sorts.family * arity_error) option
 
 let check_allowed_sort ksort specif =
-  let open Sorts in
-  let eq_ksort s = match ksort, s with
-  | InProp, InProp | InSet, InSet | InType, InType | InSProp, InSProp -> true
-  | _ -> false in
-  if not (CList.exists eq_ksort (elim_sorts specif)) then
+  let eq_ksort s = Sorts.family_equal ksort s in
+  if not (List.exists eq_ksort (elim_sorts specif)) then
     let s = inductive_sort_family (snd specif) in
     raise (LocalArity (Some(elim_sorts specif, ksort,s,error_elim_explain ksort s)))
 
@@ -741,7 +739,7 @@ let rec subterm_specif renv stack t =
   let f,l = decompose_app (whd_all renv.env t) in
     match kind f with
     | Rel k -> subterm_var k renv
-    | Case (ci,p,c,lbr) ->
+    | Case (ci,p,_is,c,lbr) ->(* TODO can we just ignore is here?*)
        let stack' = push_stack_closures renv l stack in
        let cases_spec =
 	 branches_specif renv (lazy_subterm_specif renv [] c) ci
@@ -936,7 +934,7 @@ let check_one_fix renv recpos trees def =
                       check_rec_call renv stack (Term.applist(lift p c,l))
               end
 		
-        | Case (ci,p,c_0,lrest) ->
+        | Case (ci,p,_is,c_0,lrest) -> (* TODO just ignore the is? *)
             List.iter (check_rec_call renv []) (c_0::p::l);
             (* compute the recarg information for the arguments of
                each branch *)
@@ -1078,8 +1076,19 @@ let inductive_of_mutfix env ((nvect,bodynum),(names,types,bodies as recdef)) =
                 (mind, (env', b))
 	      else check_occur env' (n+1) b
             else anomaly ~label:"check_one_fix" (Pp.str "Bad occurrence of recursive call.")
-        | _ -> raise_err env i NotEnoughAbstractionInFixBody in
-    check_occur fixenv 1 def in
+        | _ -> raise_err env i NotEnoughAbstractionInFixBody
+    in
+    let ((ind,_), _) as res = check_occur fixenv 1 def in
+    let _, ind = lookup_mind_specif env ind in
+    (* recursive sprop means non record with projections -> squashed *)
+    if not (Sorts.List.mem Sorts.InProp ind.mind_kelim)
+    then
+      begin
+        if names.(i).binder_relevance == Sorts.Relevant
+        then raise_err env i FixpointOnIrrelevantInductive
+      end;
+    res
+  in
   (* Do it on every fixpoint *)
   let rv = Array.map2_i find_ind nvect bodies in
   (Array.map fst rv, Array.map snd rv)
@@ -1181,7 +1190,7 @@ let check_one_cofix env nbfix def deftype =
 	    else
 	      raise (CoFixGuardError (env,UnguardedRecursiveCall c))
 
-	| Case (_,p,tm,vrest) ->
+        | Case (_,p,_,tm,vrest) ->
 	   begin
 	     let tree = match restrict_spec env (Subterm (Strict, tree)) p with
 	     | Dead_code -> assert false

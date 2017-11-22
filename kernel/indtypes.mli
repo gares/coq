@@ -35,7 +35,8 @@ type inductive_error =
 exception InductiveError of inductive_error
 
 type onlysprop = OnlySProp | NotOnlySProp
-val infos_and_sort : env -> Univ.Universe.t -> constr -> onlysprop * Univ.Universe.t
+val infos_and_sort : env -> isrecord:bool -> nparams:int -> constr ->
+  onlysprop * Univ.Universe.t list * Declarations.ctor_info option
 
 val check_subtyping_arity_constructor : env -> (constr -> constr) -> types -> int -> bool -> unit
 
@@ -44,7 +45,7 @@ val check_positivity : chkpos:bool ->
            Environ.env ->
            (Constr.constr, Constr.types) Context.Rel.pt ->
            Declarations.recursivity_kind ->
-           ('a * Names.Id.t list * Constr.types array *
+           ('a * Names.Id.t list * Constr.types array * 'e *
             (('b, 'c) Context.Rel.pt * 'd))
            array -> Int.t * Declarations.recarg Rtree.t array
 

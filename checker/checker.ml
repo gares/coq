@@ -298,6 +298,7 @@ let explain_exn = function
       | UnsatisfiedConstraints _ -> str"UnsatisfiedConstraints"
       | DisallowedSProp -> str"DisallowedSProp"
       | BadRelevance -> str"BadRelevance"
+      | SPropMissingAnnot|SPropUnexpectedAnnot|SPropIncorrectAnnot _ -> str "sprop case annot error"
       | UndeclaredUniverse _ -> str"UndeclaredUniverse"))
 
   | Indtypes.InductiveError e ->

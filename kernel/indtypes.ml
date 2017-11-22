@@ -114,12 +114,83 @@ type onlysprop = OnlySProp | NotOnlySProp
 
 (* Typing the arities and constructor types *)
 
-(* An inductive definition is a "unit" if it has only one constructor
-   and that all arguments expected by this constructor are
-   logical, this is the case for equality, conjunction of logical properties
-*)
-let infos_and_sort env min t =
-  let rec aux env t onlysprop max =
+exception BadTree
+
+let ctor_invert_info env ((mi,ind),ctor) =
+  let mib = Environ.lookup_mind mi env in
+  match mib.mind_packets.(ind).mind_lc_info.(ctor-1) with
+  | Some infos -> mib.mind_nparams, infos.ctor_arg_infos
+  | None -> raise BadTree
+
+let make_infos_gen env nparams levels t =
+  let rec fold forced arg =
+    match kind arg with (* TODO reduce? *)
+    | Cast (arg,_,_) -> fold forced arg
+    | Rel i ->
+      let i = i-1 in
+      if Int.Set.mem i forced
+      then raise BadTree
+      else Int.Set.add i forced, OutVariable i
+    | Construct (ctor, _) ->
+      let nparams, info = ctor_invert_info env ctor in
+      if Int.equal (nparams + (Array.length info)) 0
+      then forced, OutInvert (ctor, [||])
+      else
+        (* !! args can be non fully applied constructors *)
+        raise BadTree
+    | App (f,args) ->
+      begin match kind f with
+        | Construct (ctor,_) ->
+          let nparams, info = ctor_invert_info env ctor in
+          let nargs = Array.length args in
+          if not (Int.equal (nparams + (Array.length info)) nargs)
+          then raise BadTree
+          else
+            let args = Array.sub args nparams (nargs - nparams) in
+            let forced, args = Array.fold_left2_map (fun forced arg info ->
+                match info with
+                | ForcedArg -> forced, None
+                | MatchArg ->
+                  let forced, arg = fold forced arg in
+                  forced, Some arg)
+                forced args info
+            in
+            forced, OutInvert (ctor, args)
+        | _ -> raise BadTree (* TODO cast? *)
+      end
+    | _ -> raise BadTree
+  in
+  let args = match kind t with App (_,args) -> args | _ -> [||] in
+  let args = Array.sub args nparams (Array.length args - nparams) in
+  try
+    let forced, trees = Array.fold_left_map fold Int.Set.empty args in
+    let forced = Array.init (List.length levels)
+        (fun i -> if Int.Set.mem i forced then ForcedArg else MatchArg)
+    in
+    let trees =
+      (* All arguments must be forced, no projections *)
+      if Array.for_all (fun forced -> forced == ForcedArg) forced
+      then Some trees
+      else None
+    in
+    Some { ctor_arg_infos = forced;
+           ctor_out_tree = trees }
+  with BadTree ->
+    None
+
+let make_infos env ~isrecord nparams levels t =
+  match isrecord with
+  | false ->
+    make_infos_gen env nparams levels t
+  | true ->
+    (* Records have no indices, so every argument is MatchArg. *)
+    let ctor_arg_infos = Array.make (List.length levels) MatchArg in
+    (* The out_tree is trivial. *)
+    let ctor_out_tree = Some [||] in
+    Some { ctor_arg_infos; ctor_out_tree }
+
+let infos_and_sort env ~isrecord ~nparams t =
+  let rec aux env t onlysprop levels =
     let t = whd_all env t in
       match kind t with
       | Prod (name,c1,c2) ->
@@ -130,11 +201,39 @@ let infos_and_sort env min t =
           | OnlySProp, true -> OnlySProp
           | OnlySProp, false | NotOnlySProp, _ -> NotOnlySProp
         in
-        let max = Universe.sup max (Sorts.univ_of_sort sj) in
-          aux env1 c2 onlysprop max
-    | _ when is_constructor_head t -> onlysprop,max
-    | _ -> (* don't fail if not positive, it is tested later *) onlysprop,max
-  in aux env t OnlySProp min
+        aux env1 c2 onlysprop ((Sorts.univ_of_sort sj)::levels)
+    | _ when is_constructor_head t -> onlysprop,levels,make_infos env ~isrecord nparams levels t
+    | _ -> (* don't fail if not positive, it is tested later *)
+      onlysprop,levels,make_infos env ~isrecord nparams levels t
+  in aux env t OnlySProp []
+
+let sup_unforced_args info levels max =
+  List.fold_left_i (fun i max lvl -> match info with
+      | None -> Universe.sup lvl max
+      | Some info -> begin match info.ctor_arg_infos.(i) with
+          | ForcedArg -> max
+          | MatchArg -> Universe.sup lvl max
+        end) 0 max levels
+
+(* We can only verify natural SProp once we have all the infos. *)
+let finish_infos level infos =
+  (** Current condition: all constructors invertible + condition to
+      get some out_tree, see above *)
+  if Universe.is_sprop level
+  then if List.for_all (function
+      | Some { ctor_out_tree = Some _; _ } -> true | Some { ctor_out_tree = None; _ } | None -> false)
+      infos
+    then
+      level, (true, Array.rev_of_list infos)
+    else
+      Universe.sup level Universe.type0m, (false, Array.make (List.length infos) None)
+  else
+    let infos = List.rev_map
+        (Option.map (fun infos -> { infos with ctor_out_tree = None; } ))
+        infos
+    in
+    let infos = Array.of_list infos in
+    Universe.sup level Universe.type0m, (false, infos)
 
 (* Computing the levels of polymorphic inductive types
 
@@ -159,7 +258,7 @@ let infos_and_sort env min t =
 (* This (re)computes informations relevant to extraction and the sort of an
    arity or type constructor; we do not to recompute universes constraints *)
 
-let infer_constructor_packet env_ar_par params defu lc =
+let infer_constructor_packet env_ar_par ~isrecord params defu lc =
   (* type-check the constructors *)
   let jlc = List.map (infer_type env_ar_par) lc in
   let jlc = Array.of_list jlc in
@@ -172,11 +271,13 @@ let infer_constructor_packet env_ar_par params defu lc =
   (* generalize the constructor over the parameters *)
   let lc'' = Array.map (fun j -> Term.it_mkProd_or_LetIn j.utj_val params) jlc in
   (* compute the max of the sorts of the products of the constructors types *)
-  let osprop,level = List.fold_left (fun (_osprop,max) c ->
-      let osprop', l = infos_and_sort env_ar_par min c in
+  let nparams = Context.Rel.nhyps params in
+  let osprop, infos, level = List.fold_left (fun (_osprop,infos,max) c ->
+      let osprop', levels, info = infos_and_sort env_ar_par ~isrecord ~nparams c in
       (* We only care about onlysprop for records, so exactly 1 constructor *)
-      osprop', Universe.sup max l) (OnlySProp,min) lc in
-  (lc'', osprop, level)
+      osprop', info::infos, sup_unforced_args info levels max) (OnlySProp,[],min) lc in
+  let level, infos = finish_infos level infos in
+  (lc'', osprop, infos, level)
 
 (* If indices matter *)
 let cumulate_arity_large_levels env sign =
@@ -190,9 +291,6 @@ let cumulate_arity_large_levels env sign =
      | LocalDef _ ->
 	lev, push_rel d env)
     sign (Universe.type0m,env))
-
-let is_impredicative env u =
-  Universe.is_sprop u || is_type0m_univ u || (is_type0_univ u && is_impredicative_set env)
 
 (* Returns the list [x_1, ..., x_n] of levels contributing to template
    polymorphism. The elements x_k is None if the k-th parameter (starting
@@ -254,7 +352,7 @@ let check_subtyping cumi paramsctxt env_ar inds =
     in
     let env = Environ.add_constraints subtyp_constraints env in
     (* process individual inductive types: *)
-    Array.iter (fun (_id,_cn,lc,(_sign,arity)) ->
+    Array.iter (fun (_id,_cn,lc,_infos,(_sign,arity)) ->
       match arity with
         | RegularArity (_, full_arity, _) ->
            check_subtyping_arity_constructor env dosubst full_arity numparams true;
@@ -342,10 +440,15 @@ let typecheck_inductive env mie =
   let inds =
     List.fold_right2
       (fun ind ((_, _, _, _, defu, _) as arity_data) inds ->
-         let (lc',osprop,cstrs_univ) =
-           infer_constructor_packet env_ar_par paramsctxt defu ind.mind_entry_lc in
+         let isrecord = match mie.mind_entry_record with
+             None | Some None -> false | Some (Some _) -> true
+         in
+         let (lc',osprop,infos,cstrs_univ) =
+           infer_constructor_packet env_ar_par ~isrecord
+             paramsctxt defu ind.mind_entry_lc
+         in
 	 let consnames = ind.mind_entry_consnames in
-         let ind' = (arity_data,consnames,lc',osprop,cstrs_univ) in
+         let ind' = (arity_data,consnames,lc',osprop,infos,cstrs_univ) in
 	   ind'::inds)
       mie.mind_entry_inds
       arity_list
@@ -360,16 +463,16 @@ let typecheck_inductive env mie =
        eta, so if not declared in SProp downgrade primitiveness. *)
     match mie.mind_entry_record with
     | Some (Some _) as isrecord ->
-      if Array.for_all (fun (_,_,_,osprop,clev) -> osprop == NotOnlySProp || Universe.is_sprop clev) inds
+      if Array.for_all (fun (_,_,_,osprop,_,clev) -> osprop == NotOnlySProp || Universe.is_sprop clev) inds
       then isrecord
       else Some None
     | Some None | None as isrecord -> isrecord
   in
 
   let inds =
-    Array.map (fun ((id,full_arity,sign,template,def_level,inf_level),cn,lc,_osprop,clev)  ->
+    Array.map (fun ((id,full_arity,sign,template,def_level,inf_level),cn,lc,_osprop,infos,clev)  ->
       let infu =
-	(** Inferred level, with parameters and constructors. *)
+        (** Inferred level, with parameters and constructors. *)
 	match inf_level with
 	| Some alev -> Universe.sup clev alev
 	| None -> clev
@@ -381,7 +484,7 @@ let typecheck_inductive env mie =
         in
         let _ =
 	  (** Impredicative sort, always allow *)
-	  if is_impredicative env defu then ()
+          if Environ.is_impredicative_univ env defu then ()
 	  else (** Predicative case: the inferred level must be lower or equal to the
 		   declared level. *)
 	    if not is_natural then
@@ -422,7 +525,7 @@ let typecheck_inductive env mie =
               Pp.(strbrk "Template polymorphism and full polymorphism are incompatible.")
           else full_polymorphic ()
       in
-	(id,cn,lc,(sign,arity)))
+        (id,cn,lc,infos,(sign,arity)))
     inds
   in
   (* Check that the subtyping information inferred for inductive types in the block is correct. *)
@@ -745,7 +848,7 @@ let check_positivity ~chkpos kn env_ar_par paramsctxt finite inds =
   let ra_env_ar = Array.rev_to_list rc in
   let nparamsctxt = Context.Rel.length paramsctxt in
   let nmr = Context.Rel.nhyps paramsctxt in
-  let check_one i (_,lcnames,lc,(sign,_)) =
+  let check_one i (_,lcnames,lc,_infos,(sign,_)) =
     let ra_env_ar_par =
       List.init nparamsctxt (fun _ -> (Norec,mk_norec)) @ ra_env_ar in
     let ienv = (env_ar_par, 1+nparamsctxt, ntypes, ra_env_ar_par) in
@@ -785,7 +888,15 @@ let allowed_sorts is_smashed s =
     (* Smashed to Prop, no informative eliminations allowed *)
     | InProp -> logical_sorts
     | InSProp -> sprop_sorts
-    
+
+(** Constructors of squashed types are not invertible *)
+let squash_ctor_infos is_smashed (natsprop,infos) =
+  if is_smashed
+  then
+    false, Array.Smart.map (fun _ -> None) infos
+  else
+    natsprop, infos
+
 (* Previous comment: *)
 (* Unitary/empty Prop: elimination to all sorts are realizable *)
 (* unless the type is large. If it is large, forbids large elimination *)
@@ -799,7 +910,7 @@ let arity_conclusion = function
   | TemplateArity (_, s) -> mkType s
 
 let fold_inductive_blocks f =
-  Array.fold_left (fun acc (_,_,lc,(arsign,ar)) ->
+  Array.fold_left (fun acc (_,_,lc,_,(arsign,ar)) ->
     f (Array.fold_left f acc lc) (it_mkProd_or_LetIn (arity_conclusion ar) arsign))
 
 let used_section_variables env inds =
@@ -904,7 +1015,7 @@ let build_inductive env prv iu env_ar paramsctxt kn isrecord isfinite inds nmr r
       Environ.push_rel_context ctxunivs' env
   in
   (* Check one inductive *)
-  let build_one_packet (id,cnames,lc,(ar_sign,ar_kind)) recarg =
+  let build_one_packet (id,cnames,lc,ctorinfos,(ar_sign,ar_kind)) recarg =
     (* Type of constructors in normal form *)
     let lc = Array.map (Vars.subst_univs_level_constr substunivs) lc in
     let splayed_lc = Array.map (dest_prod_assum env_ar) lc in
@@ -916,18 +1027,20 @@ let build_inductive env prv iu env_ar paramsctxt kn isrecord isfinite inds nmr r
       Array.map (fun (d,_) -> Context.Rel.nhyps d - nparamargs)
 	splayed_lc in
     (* Elimination sorts *)
-    let arkind,kelim, mind_relevant =
+    let arkind,kelim,ctorinfos,mind_relevant =
       match ar_kind with
       | TemplateArity (paramlevs, lev) -> 
-	let ar = {template_param_levels = paramlevs; template_level = lev} in
-          TemplateArity ar, all_sorts, Sorts.relevance_of_sort (Sorts.sort_of_univ lev)
+        let ar = {template_param_levels = paramlevs; template_level = lev} in
+        TemplateArity ar, all_sorts, ctorinfos,
+        Sorts.relevance_of_sort (Sorts.sort_of_univ lev)
       | RegularArity (info,ar,defs) ->
         let s = Sorts.sort_of_univ defs in
-	let kelim = allowed_sorts info s in
+        let ctorinfos = squash_ctor_infos info ctorinfos in
+        let kelim = allowed_sorts info s in
 	let ar = RegularArity 
 	  { mind_user_arity = Vars.subst_univs_level_constr substunivs ar; 
             mind_sort = Sorts.sort_of_univ (Univ.subst_univs_level_universe substunivs defs); } in
-          ar, kelim, Sorts.relevance_of_sort s in
+          ar, kelim, ctorinfos, Sorts.relevance_of_sort s in
     (* Assigning VM tags to constructors *)
     let nconst, nblock = ref 0, ref 0 in
     let transf num =
@@ -956,8 +1069,9 @@ let build_inductive env prv iu env_ar paramsctxt kn isrecord isfinite inds nmr r
 	mind_nf_lc = nf_lc;
         mind_recargs = recarg;
         mind_relevant;
+        mind_lc_info = snd ctorinfos;
         mind_nb_constant = !nconst;
-	mind_nb_args = !nblock;
+        mind_nb_args = !nblock;
 	mind_reloc_tbl = rtbl;
       } in
   let packets = Array.map2 build_one_packet inds recargs in

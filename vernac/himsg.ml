@@ -476,6 +476,8 @@ let explain_ill_formed_rec_body env sigma err names i fixenv vdefj =
      str "The return clause of the following pattern matching should be" ++
      strbrk " a coinductive type:" ++
      spc () ++ pr_lconstr_env env sigma c
+  | FixpointOnIrrelevantInductive ->
+    strbrk "Fixpoints on proof irrelevant inductive types should produce proof irrelevant values"
   in
   prt_name i ++ str " is ill-formed." ++ fnl () ++
   pr_ne_context_of (str "In environment") env sigma ++
@@ -690,6 +692,17 @@ let explain_disallowed_sprop () =
 let explain_bad_relevance env =
   strbrk "Bad relevance (maybe a bugged tactic)."
 
+let explain_sprop_missing_annot env sigma =
+  strbrk "Missing annotation while eliminating SProp inductive"
+
+let explain_sprop_unexpected_annot env sigma =
+  strbrk "Unexpected annotation on match"
+
+let explain_sprop_incorrect_annot env sigma pi index =
+  strbrk "Incorrect annotation on SProp match: " ++
+  pr_leconstr_env env sigma pi ++ str " should be convertible with " ++
+  pr_leconstr_env env sigma index
+
 let explain_type_error env sigma err =
   let env = make_all_name_different env sigma in
   match err with
@@ -731,6 +744,12 @@ let explain_type_error env sigma err =
      explain_undeclared_universe env sigma l
   | DisallowedSProp -> explain_disallowed_sprop ()
   | BadRelevance -> explain_bad_relevance env
+  | SPropMissingAnnot ->
+    explain_sprop_missing_annot env sigma
+  | SPropUnexpectedAnnot ->
+    explain_sprop_unexpected_annot env sigma
+  | SPropIncorrectAnnot (pi,index) ->
+    explain_sprop_incorrect_annot env sigma pi index
 
 let pr_position (cl,pos) =
   let clpos = match cl with
@@ -844,6 +863,9 @@ let explain_pretype_error env sigma err =
   | CannotUnifyOccurrences (b,c1,c2,e) -> explain_cannot_unify_occurrences env sigma b c1 c2 e
   | UnsatisfiableConstraints (c,comp) -> explain_unsatisfiable_constraints env sigma c comp
   | DisallowedSProp -> explain_disallowed_sprop ()
+  | SPropMissingAnnot -> explain_sprop_missing_annot env sigma
+  | SPropUnexpectedAnnot -> explain_sprop_unexpected_annot env sigma
+  | SPropIncorrectAnnot (pi,index) -> explain_sprop_incorrect_annot env sigma pi index
 (* Module errors *)
 
 open Modops
@@ -1304,6 +1326,7 @@ let map_pguard_error f = function
 | RecCallInCasePred c -> RecCallInCasePred (f c)
 | NotGuardedForm c -> NotGuardedForm (f c)
 | ReturnPredicateNotCoInductive c -> ReturnPredicateNotCoInductive (f c)
+| FixpointOnIrrelevantInductive -> FixpointOnIrrelevantInductive
 
 let map_ptype_error f = function
 | UnboundRel n -> UnboundRel n
@@ -1329,6 +1352,9 @@ let map_ptype_error f = function
 | UndeclaredUniverse l -> UndeclaredUniverse l
 | DisallowedSProp -> DisallowedSProp
 | BadRelevance -> BadRelevance
+| SPropMissingAnnot -> SPropMissingAnnot
+| SPropUnexpectedAnnot -> SPropUnexpectedAnnot
+| SPropIncorrectAnnot (pi,index) -> SPropIncorrectAnnot (f pi, f index)
 
 let explain_reduction_tactic_error = function
   | Tacred.InvalidAbstraction (env,sigma,c,(env',e)) ->

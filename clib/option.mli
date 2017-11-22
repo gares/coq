@@ -124,6 +124,8 @@ sig
       some memory. *)
   val map : ('a -> 'a) -> 'a option -> 'a option
 
+  val fold_map : ('b -> 'a -> 'b * 'a) -> 'b -> 'a option -> 'b * 'a option
+
 end
 
 (** {6 Operations with Lists} *)
