@@ -1132,6 +1132,7 @@ module Search = struct
       let rec result (shelf, ()) i k =
         foundone := true;
         Proofview.Unsafe.tclGETGOALS >>= fun gls ->
+        let gls = CList.map Proofview.drop_state gls in
         let j = List.length gls in
         (if !typeclasses_debug > 0 then
            Feedback.msg_debug
@@ -1180,7 +1181,7 @@ module Search = struct
               (if List.is_empty goals then tclUNIT ()
                else
 	         let sigma' = mark_unresolvables sigma goals in
-	         with_shelf (Unsafe.tclEVARS sigma' <*> Unsafe.tclNEWGOALS goals) >>=
+                 with_shelf (Unsafe.tclEVARS sigma' <*> Unsafe.tclNEWGOALS (CList.map Proofview.with_empty_state goals)) >>=
                       fun s -> result s i (Some (Option.default 0 k + j)))
           end
         in with_shelf res >>= fun (sh, ()) ->
@@ -1273,6 +1274,7 @@ module Search = struct
           search_tac_gl ~st only_classes dep hints depth (succ i) sigma gls gl end
     in
       Proofview.Unsafe.tclGETGOALS >>= fun gls ->
+      let gls = CList.map Proofview.drop_state gls in
       Proofview.tclEVARMAP >>= fun sigma ->
       let j = List.length gls in
       (tclDISPATCH (List.init j (fun i -> tac sigma gls i)))
