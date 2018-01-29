@@ -520,6 +520,7 @@ module Goal : sig
 
   (** Compatibility: avoid if possible *)
   val goal : [ `NF ] t -> Evar.t
+  val print : 'a t -> Goal.goal Evd.sigma
 
 end
 

@@ -1066,6 +1066,8 @@ module Goal = struct
     self : Evar.t ; (* for compatibility with old-style definitions *)
   }
 
+  let print { sigma; self } = { Evd.it = self; sigma }
+
   let assume (gl : 'a t) = (gl :> [ `NF ] t)
   let state { state=state } = state
 
