@@ -179,6 +179,10 @@ val info_env : clos_infos -> env
 val info_flags: clos_infos -> reds
 val unfold_projection : clos_infos -> Projection.t -> stack_member option
 
+val push_relevance : clos_infos -> 'b Context.binder_annot -> clos_infos
+
+val info_relevances : clos_infos -> Sorts.relevance list
+
 val infos_with_reds : clos_infos -> reds -> clos_infos
 
 (** Reduction function *)

@@ -336,12 +336,18 @@ type infos_cache = {
 
 type clos_infos = {
   i_flags : reds;
+  i_relevances : Sorts.relevance list;
   i_cache : infos_cache }
 
 type clos_tab = fconstr KeyTable.t
 
 let info_flags info = info.i_flags
 let info_env info = info.i_cache.i_env
+
+let push_relevance info binder =
+  {info with i_relevances = binder.Context.binder_relevance :: info.i_relevances }
+
+let info_relevances info = info.i_relevances
 
 (**********************************************************************)
 (* The type of (machine) stacks (= lambda-bar-calculus' contexts)     *)
@@ -1094,27 +1100,30 @@ and norm_head info tab m =
   if is_val m then (incr prune; term_of_fconstr m) else
     match m.term with
       | FLambda(_n,tys,f,e) ->
-          let (e',rvtys) =
-            List.fold_left (fun (e,ctxt) (na,ty) ->
-              (subs_lift e, (na,kl info tab (mk_clos e ty))::ctxt))
-              (e,[]) tys in
-          let bd = kl info tab (mk_clos e' f) in
-          List.fold_left (fun b (na,ty) -> mkLambda(na,ty,b)) bd rvtys
+        let (e',info,rvtys) =
+          List.fold_left (fun (e,info,ctxt) (na,ty) ->
+              let info = push_relevance info na in
+              (subs_lift e, info, (na,kl info tab (mk_clos e ty))::ctxt))
+            (e,info,[]) tys in
+        let bd = kl info tab (mk_clos e' f) in
+        List.fold_left (fun b (na,ty) -> mkLambda(na,ty,b)) bd rvtys
       | FLetIn(na,a,b,f,e) ->
           let c = mk_clos (subs_lift e) f in
-          mkLetIn(na, kl info tab a, kl info tab b, kl info tab c)
+          mkLetIn(na, kl info tab a, kl info tab b, kl (push_relevance info na) tab c)
       | FProd(na,dom,rng,e) ->
-          mkProd(na, kl info tab dom, kl info tab (mk_clos (subs_lift e) rng))
+          mkProd(na, kl info tab dom, kl (push_relevance info na) tab (mk_clos (subs_lift e) rng))
       | FCoFix((n,(na,tys,bds)),e) ->
           let ftys = Array.Fun1.map mk_clos e tys in
           let fbds =
             Array.Fun1.map mk_clos (subs_liftn (Array.length na) e) bds in
-          mkCoFix(n,(na, CArray.map (kl info tab) ftys, CArray.map (kl info tab) fbds))
+          let infobd = Array.fold_left push_relevance info na in
+          mkCoFix(n,(na, CArray.map (kl info tab) ftys, CArray.map (kl infobd tab) fbds))
       | FFix((n,(na,tys,bds)),e) ->
           let ftys = Array.Fun1.map mk_clos e tys in
           let fbds =
             Array.Fun1.map mk_clos (subs_liftn (Array.length na) e) bds in
-          mkFix(n,(na, CArray.map (kl info tab) ftys, CArray.map (kl info tab) fbds))
+          let infobd = Array.fold_left push_relevance info na in
+          mkFix(n,(na, CArray.map (kl info tab) ftys, CArray.map (kl infobd tab) fbds))
       | FEvar((i,args),env) ->
           mkEvar(i, Array.map (fun a -> kl info tab (mk_clos env a)) args)
       | FProj (p,c) ->
@@ -1149,7 +1158,7 @@ let create_clos_infos ?(evars=fun _ -> None) flgs env =
     i_sigma = evars;
     i_share = share;
   } in
-  { i_flags = flgs; i_cache = cache }
+  { i_flags = flgs; i_relevances = []; i_cache = cache }
 
 let create_tab () = KeyTable.create 17
 

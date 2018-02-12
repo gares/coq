@@ -6,10 +6,16 @@ Definition iUnit : SProp := forall A : SProp, A -> A.
 
 Definition itt : iUnit := fun A a => a.
 
+Definition iUnit_irr (P : iUnit -> Type) (x y : iUnit) : P x -> P y
+  := fun v => v.
+
 Definition iSquash (A:Type) : SProp
   := forall P : SProp, (A -> P) -> P.
 Definition isquash A : A -> iSquash A
   := fun a P f => f a.
+Definition iSquash_rect A (P : iSquash A -> SProp) (H : forall x : A, P (isquash A x))
+  : forall x : iSquash A, P x
+  := fun x => x (P x) (H : A -> P x).
 
 Fail Check (fun A : SProp => A : Type).
 
@@ -23,6 +29,13 @@ Inductive sBox (A:SProp) : Prop
   := sbox : A -> sBox A.
 
 Definition uBox := sBox iUnit.
+
+Definition sBox_irr A (x y : sBox A) : x = y.
+Proof.
+  Fail reflexivity.
+  destruct x as [x], y as [y].
+  reflexivity.
+Defined.
 
 Set Primitive Projections.
 (* Primitive record with all fields in SProp has the eta property of SProp so must be SProp. *)
@@ -152,6 +165,8 @@ Set Primitive Projections.
 Fail Scheme Induction for sProd' Sort Set.
 
 Record NZpack := nzpack { nzval :> nat; nzprop : sNZ nzval }.
+
+Definition NZpack_eta (x : NZpack) (i : sNZ x) : x = nzpack x i := @eq_refl NZpack x.
 
 Class emptyclass : SProp := emptyinstance : forall A:SProp, A.
 
