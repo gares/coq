@@ -144,7 +144,7 @@ let tac_case t =
     if is_inj then
       V82.tactic ~nf_evars:false (Ssrelim.perform_injection t)
     else
-      Ssrelim.ssrscasetac false t
+      Ssrelim.ssrscasetac t
 end
 
 (** [=> [: id]] ************************************************************)
@@ -520,7 +520,7 @@ let ssrcasetac (view, (eqid, (dgens, ipats))) =
   in
   with_dgens dgens (ndefectcasetac view eqid ipats)
 
-let ssrscasetoptac = Ssrcommon.tclWITHTOP (Ssrelim.ssrscasetac false)
+let ssrscasetoptac = Ssrcommon.tclWITHTOP Ssrelim.ssrscase_or_inj_tac
 let ssrselimtoptac = Ssrcommon.tclWITHTOP Ssrelim.elimtac
 
 (** [move] **************************************************************)
