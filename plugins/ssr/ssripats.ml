@@ -142,7 +142,7 @@ let tac_case t =
     Ssrcommon.tacTYPEOF t >>= fun ty ->
     Ssrcommon.tacIS_INJECTION_CASE ~ty t >>= fun is_inj ->
     if is_inj then
-      V82.tactic (Ssrelim.perform_injection t)
+      V82.tactic ~nf_evars:false (Ssrelim.perform_injection t)
     else
       Ssrelim.ssrscasetac false t
 end
