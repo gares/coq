@@ -235,11 +235,11 @@ let rec ipat_tac1 future_ipats ipat : unit tactic =
   | IPatClear ids -> intro_clear (List.map Ssrcommon.hyp_id ids) future_ipats
 
   | IPatSimpl (Simpl n) ->
-       V82.tactic (Ssrequality.simpltac (Simpl n))
+       V82.tactic ~nf_evars:false (Ssrequality.simpltac (Simpl n))
   | IPatSimpl (Cut n) ->
-       V82.tactic (Ssrequality.simpltac (Cut n))
+       V82.tactic ~nf_evars:false (Ssrequality.simpltac (Cut n))
   | IPatSimpl (SimplCut (n,m)) ->
-       V82.tactic (Ssrequality.simpltac (SimplCut (n,m)))
+       V82.tactic ~nf_evars:false (Ssrequality.simpltac (SimplCut (n,m)))
 
   | IPatRewrite (occ,dir) ->
      Ssrcommon.tclWITHTOP
