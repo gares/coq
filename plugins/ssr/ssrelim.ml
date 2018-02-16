@@ -377,7 +377,7 @@ let ssrelim ?(ind=ref None) ?(is_case=false) deps what ?elim eqid elim_intro_tac
 let no_intro ?ist what eqid elim_tac is_rec clr = elim_tac
 
 let elimtac x =
-  Proofview.V82.tactic
+  Proofview.V82.tactic ~nf_evars:false
     (ssrelim ~is_case:false [] (`EConstr ([],None,x)) None no_intro)
 let casetac x = ssrelim ~is_case:true [] (`EConstr ([],None,x)) None no_intro
 

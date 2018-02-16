@@ -127,7 +127,7 @@ let apply_top_tac =
     old_cleartac [SsrHyp(None,top_id)]
   ]
 
-let inner_ssrapplytac gviews (ggenl, gclr) ist = Proofview.V82.tactic (fun gl ->
+let inner_ssrapplytac gviews (ggenl, gclr) ist = Proofview.V82.tactic ~nf_evars:false (fun gl ->
  let _, clr = interp_hyps ist gl gclr in
  let vtac gv i gl' = refine_interp_apply_view i ist gl' gv in
  let ggenl, tclGENTAC =
