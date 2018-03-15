@@ -169,13 +169,14 @@ val destFLambda :
 (** Global and local constant cache *)
 type clos_infos
 type clos_tab
-val create_clos_infos :
+val create_clos_infos : ?univs:UGraph.t ->
   ?evars:(existential->constr option) -> reds -> env -> clos_infos
 val oracle_of_infos : clos_infos -> Conv_oracle.oracle
 
 val create_tab : unit -> clos_tab
 
 val info_env : clos_infos -> env
+val info_univs : clos_infos -> UGraph.t
 val info_flags: clos_infos -> reds
 val unfold_projection : clos_infos -> Projection.t -> stack_member option
 
@@ -214,6 +215,8 @@ val eta_expand_ind_stack : env -> inductive -> fconstr -> stack ->
 
 (** [unfold_reference] unfolds references in a [fconstr] *)
 val unfold_reference : clos_infos -> clos_tab -> table_key -> fconstr option
+
+val set_conv : (clos_infos -> clos_tab -> fconstr -> fconstr -> bool) -> unit
 
 (***********************************************************************
   i This is for lazy debug *)

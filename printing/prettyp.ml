@@ -266,6 +266,9 @@ let rec pr_out_tree = function
       (function | None -> str "None" | Some tree -> pr_out_tree tree) args ++
     str "|])"
   | OutVariable i -> str "Var(" ++ Pp.int i ++ str")"
+  | OutEqn c ->
+    let env = Global.env() in let sigma = Evd.from_env env in
+    str "Eqn(" ++  pr_constr_env env sigma c ++ str ")"
 
 let pr_info = function
   | Some {ctor_arg_infos; ctor_out_tree} ->

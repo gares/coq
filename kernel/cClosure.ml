@@ -331,6 +331,7 @@ let update ~share v1 no t =
 type infos_cache = {
   i_env : env;
   i_sigma : existential -> constr option;
+  i_univs : UGraph.t;
   i_share : bool;
 }
 
@@ -343,6 +344,7 @@ type clos_tab = fconstr KeyTable.t
 
 let info_flags info = info.i_flags
 let info_env info = info.i_cache.i_env
+let info_univs info = info.i_cache.i_univs
 
 let push_relevance info binder =
   {info with i_relevances = binder.Context.binder_relevance :: info.i_relevances }
@@ -927,6 +929,20 @@ and knht info e t stk =
 
 exception InvertFail
 
+let conv : (clos_infos -> clos_tab -> fconstr -> fconstr -> bool) ref
+  = ref (fun _ _ _ -> assert false)
+
+let set_conv f = conv := f
+
+let check_eqn info tab univs e (c,f) =
+  let fc = mk_clos e (subst_instance_constr univs c) in
+  if not (!conv {info with i_flags=all} tab fc f) then raise InvertFail
+
+let check_eqns info tab univs args eqns =
+  (** FIXME incorrect **)
+  let e = subs_cons (args, subs_id 0) in
+  List.iter (check_eqn info tab univs e) eqns
+
 (* Computes a weak head normal form from the result of knh. *)
 let rec knr info tab m stk =
   match m.term with
@@ -996,7 +1012,7 @@ and knit info tab e t stk =
   let (ht,s) = knht info e t stk in
   knr info tab ht s
 
-and invert_match_one_index info tab ci args reali =
+and invert_match_one_index info tab ci args eqns reali =
   let open Declarations in function
     | OutVariable i -> args.(i) <- Some reali
     | OutInvert (((mind,_),ctor), trees) ->
@@ -1012,12 +1028,13 @@ and invert_match_one_index info tab ci args reali =
               Array.sub cargs nparams (Array.length cargs - nparams)
             in
             Array.iteri (fun i tree ->
-                Option.iter (invert_match_one_index info tab ci args cargs.(i)) tree)
+                Option.iter (invert_match_one_index info tab ci args eqns cargs.(i)) tree)
               trees
         | _ -> raise InvertFail
       end
+    | OutEqn c -> eqns := (c,reali) :: !eqns
 
-and try_match_ctor_infos info tab ci is =
+and try_match_ctor_infos info tab ci univs params is =
   let open Declarations in function
     | None | Some { ctor_out_tree = None; _ }->
       assert false (* All constructors of natural sprop are invertible *)
@@ -1025,10 +1042,12 @@ and try_match_ctor_infos info tab ci is =
       begin try
           assert (Int.equal (Array.length trees) (Array.length is));
           let args = Array.make (Array.length ainfos) None in
-          Array.iter2 (invert_match_one_index info tab ci args) is trees;
+          let eqns = ref [] in
+          Array.iter2 (invert_match_one_index info tab ci args eqns) is trees;
           (* When there are projections this is where they're inserted *)
           let args = Array.map Option.get args in
           let () = Array.rev args in
+          let () = check_eqns info tab univs (Array.append params args) !eqns in
           Some args
         with InvertFail -> None
       end
@@ -1040,17 +1059,18 @@ and try_match_ctor_infos info tab ci is =
 
    Return match branch term (which is under a substitution) and
    matched values. *)
-and case_inversion info tab ci (_u,_p,is) v =
+and case_inversion info tab ci (u,p,is) v =
   let open Declarations in
   let env = info_env info in
   let ind = ci.ci_ind in
   let mind = Environ.lookup_mind (fst ind) env in
   let mip = mind.mind_packets.(snd ind) in
   let nctors = Array.length mip.mind_consnames in
+  (** TODO instantiate poly univs (for eqns, comes up eg when [ctor : ind Type@{i}]) *)
   let rec loop i =
     if Int.equal i nctors then None
     else
-      match try_match_ctor_infos info tab ci is mip.mind_lc_info.(i) with
+      match try_match_ctor_infos info tab ci u p is mip.mind_lc_info.(i) with
       | Some res ->
         Some (v.(i), res)
       | None -> loop (i+1)
@@ -1151,11 +1171,13 @@ let whd_stack infos tab m stk = match m.norm with
   let () = if infos.i_cache.i_share then ignore (fapp_stack k) in (* to unlock Zupdates! *)
   k
 
-let create_clos_infos ?(evars=fun _ -> None) flgs env =
+let create_clos_infos ?univs ?(evars=fun _ -> None) flgs env =
+  let univs = Option.default (universes env) univs in
   let share = (Environ.typing_flags env).Declarations.share_reduction in
   let cache = {
     i_env = env;
     i_sigma = evars;
+    i_univs = univs;
     i_share = share;
   } in
   { i_flags = flgs; i_relevances = []; i_cache = cache }

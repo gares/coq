@@ -88,6 +88,7 @@ let push_context_set b c = globalize0 (Safe_typing.push_context_set b c)
 
 let set_engagement c = globalize0 (Safe_typing.set_engagement c)
 let set_indices_matter b = globalize0 (Safe_typing.set_indices_matter b)
+let set_uip b = globalize0 (Safe_typing.set_uip b)
 let set_typing_flags c = globalize0 (Safe_typing.set_typing_flags c)
 let typing_flags () = Environ.typing_flags (env ())
 let make_sprop_cumulative () = globalize0 Safe_typing.make_sprop_cumulative

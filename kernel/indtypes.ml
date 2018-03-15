@@ -122,19 +122,52 @@ let ctor_invert_info env ((mi,ind),ctor) =
   | Some infos -> mib.mind_nparams, infos.ctor_arg_infos
   | None -> raise BadTree
 
-let make_infos_gen env nparams levels t =
-  let rec fold forced arg =
+(** MatchArg variables not allowed in OutEqn.
+    eg [Im : forall x, im (f x)] with [f] non constructor,
+    then [Im] not invertible. *)
+let rec check_eqns forced = function
+  | OutVariable _ -> true
+  | OutInvert (_, args) -> Array.for_all (Option.cata (check_eqns forced) true) args
+  | OutEqn c ->
+    let rec check_occurs k c =
+      match kind c with
+      | Rel i when i > k ->
+        let i = i - k in
+        if i <= Array.length forced
+        then
+          begin match forced.(i-1) with
+            | ForcedArg -> true
+            | MatchArg -> false
+          end
+        else true (** parameter *)
+      | _ -> fold_constr_with_binders succ (fun k ok c -> ok && check_occurs k c) k true c
+    in
+    check_occurs 0 c
+
+let make_infos_gen env nparams k levels t =
+  let rec fold (forced,eqnlvl as acc) arg =
+    try aux acc arg
+    with BadTree ->
+      let eqnlvl = if Environ.uip env then eqnlvl
+        else
+          (* TODO retyping? *)
+          let j = Typeops.infer env arg in
+          let j = Typeops.infer_type env j.uj_type in
+          Universe.sup eqnlvl (Sorts.univ_of_sort j.utj_type)
+      in
+      (forced, eqnlvl), OutEqn arg
+  and aux (forced,eqnlvl as acc) arg =
     match kind arg with (* TODO reduce? *)
-    | Cast (arg,_,_) -> fold forced arg
-    | Rel i ->
+    | Cast (arg,_,_) -> fold acc arg
+    | Rel i when i <= k ->
       let i = i-1 in
       if Int.Set.mem i forced
       then raise BadTree
-      else Int.Set.add i forced, OutVariable i
+      else (Int.Set.add i forced, eqnlvl), OutVariable i
     | Construct (ctor, _) ->
       let nparams, info = ctor_invert_info env ctor in
       if Int.equal (nparams + (Array.length info)) 0
-      then forced, OutInvert (ctor, [||])
+      then acc, OutInvert (ctor, [||])
       else
         (* !! args can be non fully applied constructors *)
         raise BadTree
@@ -147,13 +180,13 @@ let make_infos_gen env nparams levels t =
           then raise BadTree
           else
             let args = Array.sub args nparams (nargs - nparams) in
-            let forced, args = Array.fold_left2_map (fun forced arg info ->
+            let forced, args = Array.fold_left2_map (fun acc arg info ->
                 match info with
-                | ForcedArg -> forced, None
+                | ForcedArg -> acc, None
                 | MatchArg ->
-                  let forced, arg = fold forced arg in
-                  forced, Some arg)
-                forced args info
+                  let acc, arg = fold acc arg in
+                  acc, Some arg)
+                acc args info
             in
             forced, OutInvert (ctor, args)
         | _ -> raise BadTree (* TODO cast? *)
@@ -162,11 +195,13 @@ let make_infos_gen env nparams levels t =
   in
   let args = match kind t with App (_,args) -> args | _ -> [||] in
   let args = Array.sub args nparams (Array.length args - nparams) in
-  try
-    let forced, trees = Array.fold_left_map fold Int.Set.empty args in
-    let forced = Array.init (List.length levels)
-        (fun i -> if Int.Set.mem i forced then ForcedArg else MatchArg)
-    in
+  let (forced, eqnlvl), trees = Array.fold_left_map fold (Int.Set.empty,Universe.sprop) args in
+  let forced = Array.init (List.length levels)
+      (fun i -> if Int.Set.mem i forced then ForcedArg else MatchArg)
+  in
+  let ok = Array.for_all (check_eqns forced) trees in
+  if not ok then None, eqnlvl (* XXX is this correct? *)
+  else
     let trees =
       (* All arguments must be forced, no projections *)
       if Array.for_all (fun forced -> forced == ForcedArg) forced
@@ -174,23 +209,21 @@ let make_infos_gen env nparams levels t =
       else None
     in
     Some { ctor_arg_infos = forced;
-           ctor_out_tree = trees }
-  with BadTree ->
-    None
+           ctor_out_tree = trees }, eqnlvl
 
-let make_infos env ~isrecord nparams levels t =
+let make_infos env ~isrecord nparams k levels t =
   match isrecord with
   | false ->
-    make_infos_gen env nparams levels t
+    make_infos_gen env nparams k levels t
   | true ->
     (* Records have no indices, so every argument is MatchArg. *)
     let ctor_arg_infos = Array.make (List.length levels) MatchArg in
     (* The out_tree is trivial. *)
     let ctor_out_tree = Some [||] in
-    Some { ctor_arg_infos; ctor_out_tree }
+    Some { ctor_arg_infos; ctor_out_tree }, Universe.sprop
 
 let infos_and_sort env ~isrecord ~nparams t =
-  let rec aux env t onlysprop levels =
+  let rec aux env k t onlysprop levels =
     let t = whd_all env t in
       match kind t with
       | Prod (name,c1,c2) ->
@@ -201,11 +234,11 @@ let infos_and_sort env ~isrecord ~nparams t =
           | OnlySProp, true -> OnlySProp
           | OnlySProp, false | NotOnlySProp, _ -> NotOnlySProp
         in
-        aux env1 c2 onlysprop ((Sorts.univ_of_sort sj)::levels)
-    | _ when is_constructor_head t -> onlysprop,levels,make_infos env ~isrecord nparams levels t
+        aux env1 (k+1) c2 onlysprop ((Sorts.univ_of_sort sj)::levels)
+    | _ when is_constructor_head t -> onlysprop,levels,make_infos env ~isrecord nparams k levels t
     | _ -> (* don't fail if not positive, it is tested later *)
-      onlysprop,levels,make_infos env ~isrecord nparams levels t
-  in aux env t OnlySProp []
+      onlysprop,levels,make_infos env ~isrecord nparams k levels t
+  in aux env 0 t OnlySProp []
 
 let sup_unforced_args info levels max =
   List.fold_left_i (fun i max lvl -> match info with
@@ -273,7 +306,8 @@ let infer_constructor_packet env_ar_par ~isrecord params defu lc =
   (* compute the max of the sorts of the products of the constructors types *)
   let nparams = Context.Rel.nhyps params in
   let osprop, infos, level = List.fold_left (fun (_osprop,infos,max) c ->
-      let osprop', levels, info = infos_and_sort env_ar_par ~isrecord ~nparams c in
+      let osprop', levels, (info, eqnlvl) = infos_and_sort env_ar_par ~isrecord ~nparams c in
+      let max = if Environ.uip env_ar_par then max else Universe.sup max eqnlvl in
       (* We only care about onlysprop for records, so exactly 1 constructor *)
       osprop', info::infos, sup_unforced_args info levels max) (OnlySProp,[],min) lc in
   let level, infos = finish_infos level infos in
@@ -1001,6 +1035,20 @@ let abstract_inductive_universes iu =
     let inst = Univ.make_instance_subst inst in
     (inst, Cumulative_ind acumi)
 
+let rec subst_univs_out_tree subst = function
+  | OutInvert (c, args) -> OutInvert (c, Array.map (Option.map (subst_univs_out_tree subst)) args)
+  | OutVariable _ as x -> x
+  | OutEqn c -> OutEqn (subst_univs_level_constr subst c)
+
+let subst_univs_ctor_info subst {ctor_arg_infos; ctor_out_tree=tree} =
+  let tree = Option.map (Array.map (subst_univs_out_tree subst)) tree in
+  {ctor_arg_infos; ctor_out_tree=tree}
+
+let subst_univs_lc_info subst info =
+  if Univ.is_empty_level_subst subst then info
+  else
+    Array.map (Option.map (subst_univs_ctor_info subst)) info
+
 let build_inductive env prv iu env_ar paramsctxt kn isrecord isfinite inds nmr recargs =
   let ntypes = Array.length inds in
   (* Compute the set of used section variables *)
@@ -1069,7 +1117,7 @@ let build_inductive env prv iu env_ar paramsctxt kn isrecord isfinite inds nmr r
 	mind_nf_lc = nf_lc;
         mind_recargs = recarg;
         mind_relevant;
-        mind_lc_info = snd ctorinfos;
+        mind_lc_info = subst_univs_lc_info substunivs (snd ctorinfos);
         mind_nb_constant = !nconst;
         mind_nb_args = !nblock;
 	mind_reloc_tbl = rtbl;

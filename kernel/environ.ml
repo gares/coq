@@ -236,6 +236,8 @@ let set_oracle env o =
 let engagement env = env.env_stratification.env_engagement
 let typing_flags env = env.env_typing_flags
 
+let uip env = env.env_typing_flags.uip
+
 let is_impredicative_set env = 
   match engagement env with
   | ImpredicativeSet -> true
@@ -421,6 +423,7 @@ let same_flags {
      share_reduction;
      enable_VM;
      enable_native_compiler;
+     uip;
   } alt =
   check_guarded == alt.check_guarded &&
   check_universes == alt.check_universes &&
@@ -428,7 +431,8 @@ let same_flags {
   indices_matter == alt.indices_matter &&
   share_reduction == alt.share_reduction &&
   enable_VM == alt.enable_VM &&
-  enable_native_compiler == alt.enable_native_compiler
+  enable_native_compiler == alt.enable_native_compiler &&
+  uip == alt.uip
 [@warning "+9"]
 
 let set_typing_flags c env = (* Unsafe *)

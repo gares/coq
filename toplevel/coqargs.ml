@@ -67,6 +67,7 @@ type coq_cmdopts = {
   indices_matter : bool;
   enable_VM : bool;
   enable_native_compiler : bool;
+  uip : bool;
   allow_sprop : bool;
   cumulative_sprop : bool;
   stm_flags   : Stm.AsyncOpts.stm_opt;
@@ -124,6 +125,7 @@ let default_opts = {
   indices_matter = false;
   enable_VM = true;
   enable_native_compiler = Coq_config.native_compiler;
+  uip = true;
   allow_sprop = false;
   cumulative_sprop = false;
   stm_flags    = Stm.AsyncOpts.default_opts;
@@ -570,6 +572,8 @@ let parse_args init_opts arglist : coq_cmdopts * string list =
     |"-filteropts" -> { oval with filter_opts = true }
     |"-impredicative-set" ->
       { oval with impredicative_set = Declarations.ImpredicativeSet }
+    | "-uip" -> { oval with uip = true }
+    | "-no-uip" -> { oval with uip = false }
     |"-allow-sprop" -> { oval with allow_sprop = true }
     |"-disallow-sprop" -> { oval with allow_sprop = false }
     |"-sprop-cumulative" -> { oval with cumulative_sprop = true }

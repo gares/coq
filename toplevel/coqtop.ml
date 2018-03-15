@@ -201,6 +201,7 @@ let init_toplevel init_opts custom_init arglist =
       Global.set_indices_matter opts.indices_matter;
       Global.set_VM opts.enable_VM;
       Global.set_native_compiler opts.enable_native_compiler;
+      Global.set_uip opts.uip;
       (Global.set_allow_sprop opts.allow_sprop);
       (if opts.cumulative_sprop then Global.make_sprop_cumulative ());
 

@@ -1237,7 +1237,7 @@ let clos_norm_flags flgs env sigma t =
   try
     let evars ev = safe_evar_value sigma ev in
     EConstr.of_constr (CClosure.norm_val
-      (CClosure.create_clos_infos ~evars flgs env)
+      (CClosure.create_clos_infos ~univs:(Evd.universes sigma) ~evars flgs env)
       (CClosure.create_tab ())
       (CClosure.inject (EConstr.Unsafe.to_constr t)))
   with e when is_anomaly e -> user_err Pp.(str "Tried to normalize ill-typed term")
@@ -1246,7 +1246,7 @@ let clos_whd_flags flgs env sigma t =
   try
     let evars ev = safe_evar_value sigma ev in
     EConstr.of_constr (CClosure.whd_val
-      (CClosure.create_clos_infos ~evars flgs env)
+      (CClosure.create_clos_infos ~univs:(Evd.universes sigma) ~evars flgs env)
       (CClosure.create_tab ())
       (CClosure.inject (EConstr.Unsafe.to_constr t)))
   with e when is_anomaly e -> user_err Pp.(str "Tried to normalize ill-typed term")
@@ -1343,7 +1343,8 @@ let sigma_check_inductive_instances cv_pb variance u1 u2 sigma =
 
 let sigma_univ_state = 
   let open Reduction in
-  { compare_sorts = sigma_compare_sorts;
+  { compare_graph = Evd.universes;
+    compare_sorts = sigma_compare_sorts;
     compare_instances = sigma_compare_instances;
     compare_cumul_instances = sigma_check_inductive_instances; }
 

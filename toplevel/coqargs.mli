@@ -46,6 +46,7 @@ type coq_cmdopts = {
   indices_matter : bool;
   enable_VM : bool;
   enable_native_compiler : bool;
+  uip : bool;
   allow_sprop : bool;
   cumulative_sprop : bool;
   stm_flags   : Stm.AsyncOpts.stm_opt;

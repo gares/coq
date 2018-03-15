@@ -223,7 +223,7 @@ let v_cst_def =
     [|[|Opt Int|]; [|v_cstr_subst|]; [|v_lazy_constr|]|]
 
 let v_typing_flags =
-  v_tuple "typing_flags" [|v_bool; v_bool; v_oracle; v_bool; v_bool; v_bool; v_bool|]
+  v_tuple "typing_flags" [|v_bool; v_bool; v_oracle; v_bool; v_bool; v_bool; v_bool; v_bool|]
 
 let v_const_univs = v_sum "constant_universes" 0 [|[|v_context_set|]; [|v_abs_context|]|]
 
@@ -256,7 +256,8 @@ let v_ind_arity = v_sum "inductive_arity" 0
 let v_ctor_arg_info = v_sum "ctor_arg_info" 2 [||]
 let rec v_out_tree = Sum ("out_tree", 0,
                             [|[|v_cons;Array (Opt v_out_tree)|];
-                              [|Int|]|])
+                              [|Int|];
+                              [|v_constr|]|])
 let v_ctor_info = v_tuple "ctor_info" [|Array v_ctor_arg_info; Opt (Array v_out_tree)|]
 
 let v_lc_info = Array (Opt v_ctor_info)

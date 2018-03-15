@@ -202,6 +202,7 @@ let is_cumul = function CUMUL -> true | CONV -> false
 
 type 'a universe_compare = 
   { (* Might raise NotConvertible *)
+    compare_graph : 'a -> UGraph.t; (* Used in reduction *)
     compare_sorts : env -> conv_pb -> Sorts.t -> Sorts.t -> 'a -> 'a;
     compare_instances: flex:bool -> Univ.Instance.t -> Univ.Instance.t -> 'a -> 'a;
     compare_cumul_instances : conv_pb -> Univ.Variance.t array ->
@@ -672,7 +673,8 @@ and convert_branches l2r infos ci e1 e2 lft1 lft2 br1 br2 cuniv =
 
 let clos_gen_conv trans cv_pb l2r evars env univs t1 t2 =
   let reds = CClosure.RedFlags.red_add_transparent betaiotazeta trans in
-  let infos = create_clos_infos ~evars reds env in
+  let graph = (snd univs).compare_graph (fst univs) in
+  let infos = create_clos_infos ~univs:graph ~evars reds env in
   let infos = {
     cnv_inf = infos;
     lft_tab = create_tab ();
@@ -719,9 +721,21 @@ let check_inductive_instances cv_pb variance u1 u2 univs =
   else raise NotConvertible
 
 let checked_universes =
-  { compare_sorts = checked_sort_cmp_universes;
+  { compare_graph = (fun u -> u);
+    compare_sorts = checked_sort_cmp_universes;
     compare_instances = check_convert_instances;
     compare_cumul_instances = check_inductive_instances; }
+
+let () = CClosure.set_conv (fun infos tab a b ->
+    try
+      let univs = info_univs infos in
+      let infos = { cnv_inf = infos; lft_tab = tab; rgt_tab = tab } in
+      let univs', _ = ccnv CONV false infos el_id el_id a b
+          (univs, checked_universes)
+      in
+      assert (univs == univs');
+      true
+    with NotConvertible -> false)
 
 let infer_eq (univs, cstrs as cuniv) u u' =
   if UGraph.check_eq univs u u' then cuniv
@@ -767,7 +781,8 @@ let infer_inductive_instances cv_pb variance u1 u2 (univs,csts') =
   (univs, Univ.Constraint.union csts csts')
 
 let inferred_universes : (UGraph.t * Univ.Constraint.t) universe_compare =
-  { compare_sorts = infer_cmp_universes;
+  { compare_graph = fst;
+    compare_sorts = infer_cmp_universes;
     compare_instances = infer_convert_instances;
     compare_cumul_instances = infer_inductive_instances; }
 

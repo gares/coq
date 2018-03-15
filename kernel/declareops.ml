@@ -25,6 +25,7 @@ let safe_flags oracle = {
   enable_VM = true;
   enable_native_compiler = true;
   indices_matter = true;
+  uip = true;
 }
 
 (** {6 Arities } *)
@@ -198,6 +199,7 @@ let rec subst_out_tree sub = function
   | OutInvert (((mi,i),ctor),args) ->
     OutInvert (((subst_mind sub mi, i),ctor), Array.map (Option.map (subst_out_tree sub)) args)
   | OutVariable i -> OutVariable i
+  | OutEqn c -> OutEqn (subst_mps sub c)
 
 let subst_lc_info sub info =
   { ctor_arg_infos = info.ctor_arg_infos;

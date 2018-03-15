@@ -80,6 +80,8 @@ let print_usage_channel co command =
 \n  -dump-glob f           dump globalizations in file f (to be used by coqdoc)\
 \n  -impredicative-set     set sort Set impredicative\
 \n  -allow-sprop           allow using the proof irrelevant SProp sort\
+\n  -uip                   Enable uniqueness of identity proofs (default)\
+\n  -no-uip                Disable uniqueness of identity proofs\
 \n  -sprop-cumulative      make sort SProp cumulative with the rest of the hierarchy\
 \n  -indices-matter        levels of indices (and nonuniform parameters) contribute to the level of inductives\
 \n  -type-in-type          disable universe consistency checking\

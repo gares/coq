@@ -36,7 +36,7 @@ exception InductiveError of inductive_error
 
 type onlysprop = OnlySProp | NotOnlySProp
 val infos_and_sort : env -> isrecord:bool -> nparams:int -> constr ->
-  onlysprop * Univ.Universe.t list * Declarations.ctor_info option
+  onlysprop * Univ.Universe.t list * (Declarations.ctor_info option * Univ.Universe.t)
 
 val check_subtyping_arity_constructor : env -> (constr -> constr) -> types -> int -> bool -> unit
 

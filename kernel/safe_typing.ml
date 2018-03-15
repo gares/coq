@@ -199,6 +199,10 @@ let set_typing_flags c senv =
 let set_indices_matter indices_matter senv =
   set_typing_flags { (Environ.typing_flags senv.env) with indices_matter } senv
 
+let set_uip b senv =
+  let flags = Environ.typing_flags senv.env in
+  set_typing_flags { flags with uip = b } senv
+
 let set_share_reduction b senv =
   let flags = Environ.typing_flags senv.env in
   set_typing_flags { flags with share_reduction = b } senv

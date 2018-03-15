@@ -92,7 +92,8 @@ let rec check_out_tree t1 t2 = match t1, t2 with
   | OutInvert (c1, t1), OutInvert (c2, t2) ->
     Names.eq_user_constructor c1 c2 && Array.equal (Option.equal check_out_tree) t1 t2
   | OutVariable i1, OutVariable i2 -> Int.equal i1 i2
-  | (OutInvert _ | OutVariable _), _ -> false
+  | OutEqn c1, OutEqn c2 -> Constr.equal c1 c2
+  | (OutInvert _ | OutVariable _ | OutEqn _), _ -> false
 
 let check_ctor_info info {ctor_arg_infos; ctor_out_tree; } =
   Array.equal ((==) : ctor_arg_info -> _ -> _) info.ctor_arg_infos ctor_arg_infos &&

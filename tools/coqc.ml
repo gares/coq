@@ -98,6 +98,7 @@ let parse_args () =
       |"-q"|"-profile"|"-echo" |"-quiet"
       |"-silent"|"-m"|"-beautify"|"-strict-implicit"
       |"-allow-sprop"|"-disallow-sprop"|"-sprop-cumulative"
+      |"-uip"|"-no-uip"
       |"-impredicative-set"|"-vm"
       |"-indices-matter"|"-quick"|"-type-in-type"
       |"-async-proofs-always-delegate"|"-async-proofs-never-reopen-branch"
