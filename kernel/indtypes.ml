@@ -20,7 +20,6 @@ open Declareops
 open Inductive
 open Environ
 open Reduction
-open Typeops
 open Entries
 open Pp
 open Context.Rel.Declaration
@@ -227,7 +226,8 @@ let infos_and_sort env ~isrecord ~nparams t =
     let t = whd_all env t in
       match kind t with
       | Prod (name,c1,c2) ->
-        let varj = infer_type env c1 in
+        let varj = Typeops.infer_type env c1 in
+        assert (varj.utj_val == c1); (* Relevances should already be fixed here *)
         let env1 = Environ.push_rel (LocalAssum (name,varj.utj_val)) env in
         let sj = varj.utj_type in
         let onlysprop = match onlysprop, Sorts.is_sprop sj with
@@ -293,7 +293,7 @@ let finish_infos level infos =
 
 let infer_constructor_packet env_ar_par ~isrecord params defu lc =
   (* type-check the constructors *)
-  let jlc = List.map (infer_type env_ar_par) lc in
+  let jlc = List.map (Typeops.infer_type env_ar_par) lc in
   let jlc = Array.of_list jlc in
   let min =
     (* Only generate SProp if target type. *)
@@ -305,11 +305,11 @@ let infer_constructor_packet env_ar_par ~isrecord params defu lc =
   let lc'' = Array.map (fun j -> Term.it_mkProd_or_LetIn j.utj_val params) jlc in
   (* compute the max of the sorts of the products of the constructors types *)
   let nparams = Context.Rel.nhyps params in
-  let osprop, infos, level = List.fold_left (fun (_osprop,infos,max) c ->
+  let osprop, infos, level = Array.fold_left (fun (_osprop,infos,max) {utj_val=c;_} ->
       let osprop', levels, (info, eqnlvl) = infos_and_sort env_ar_par ~isrecord ~nparams c in
       let max = if Environ.uip env_ar_par then max else Universe.sup max eqnlvl in
       (* We only care about onlysprop for records, so exactly 1 constructor *)
-      osprop', info::infos, sup_unforced_args info levels max) (OnlySProp,[],min) lc in
+      osprop', info::infos, sup_unforced_args info levels max) (OnlySProp,[],min) jlc in
   let level, infos = finish_infos level infos in
   (lc'', osprop, infos, level)
 
@@ -319,7 +319,7 @@ let cumulate_arity_large_levels env sign =
     (fun d (lev,env) ->
      match d with
      | LocalAssum (_,t) ->
-	let tj = infer_type env t in
+        let tj = Typeops.infer_type env t in
         let u = Sorts.univ_of_sort tj.utj_type in
 	  (Universe.sup u lev, push_rel d env)
      | LocalDef _ ->
@@ -415,8 +415,7 @@ let typecheck_inductive env mie =
     | Polymorphic_ind_entry (_, ctx) -> push_context ctx env
     | Cumulative_ind_entry (_, cumi) -> push_context (Univ.CumulativityInfo.univ_context cumi) env
   in
-  let env_params = check_context env' mie.mind_entry_params in
-  let paramsctxt = mie.mind_entry_params in
+  let env_params, paramsctxt = Typeops.check_context env' mie.mind_entry_params in
   (* We first type arity of each inductive definition *)
   (* This allows building the environment of arities and to share *)
   (* the set of constraints *)
@@ -433,14 +432,14 @@ let typecheck_inductive env mie =
 	         (** We have an algebraic universe as the conclusion of the arity,
 		     typecheck the dummy Π ctx, Prop and do a special case for the conclusion.
 		 *)
-	         let proparity = infer_type env_params (mkArity (ctx, Sorts.prop)) in
+                 let proparity = Typeops.infer_type env_params (mkArity (ctx, Sorts.prop)) in
 		 let (cctx, _) = destArity proparity.utj_val in
 		   (* Any universe is well-formed, we don't need to check [s] here *)
 		   mkArity (cctx, s)
 	       | _ -> 
-		 let arity = infer_type env_params ind.mind_entry_arity in
+                 let arity = Typeops.infer_type env_params ind.mind_entry_arity in
 		   arity.utj_val
-	   else let arity = infer_type env_params ind.mind_entry_arity in
+           else let arity = Typeops.infer_type env_params ind.mind_entry_arity in
 		  arity.utj_val
 	 in
 	 let (sign, deflev) = dest_arity env_params arity in

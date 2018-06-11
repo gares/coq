@@ -1,5 +1,6 @@
 (* -*- mode: coq; coq-prog-args: ("-allow-sprop" "-uip") -*- *)
 
+Set Warnings "+bad-relevance".
 
 (** Case inversion, conversion and universe polymorphism. *)
 Set Universe Polymorphism.

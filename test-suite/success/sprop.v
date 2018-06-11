@@ -1,5 +1,7 @@
 (* -*- mode: coq; coq-prog-args: ("-allow-sprop") -*- *)
 
+Set Warnings "+bad-relevance".
+
 Check SProp.
 
 Definition iUnit : SProp := forall A : SProp, A -> A.
@@ -219,3 +221,17 @@ Section sFix.
     F x (fun (y:nat) (h: y < x) => sFix y (sAcc_inv x a y h)).
 
 End sFix.
+
+(** Relevance repairs *)
+
+Fail Definition fix_relevance : _ -> nat := fun _ : iUnit => 0.
+
+Set Warnings "-bad-relevance".
+Definition fix_relevance : _ -> nat := fun _ : iUnit => 0.
+
+(* relevance isn't fixed when checking P x == P y *)
+Fail Definition relevance_unfixed := fun (A:SProp) (P:A -> Prop) x y (v:P x) => v : P y.
+
+(* but the kernel is fine *)
+Definition relevance_unfixed := fun (A:SProp) (P:A -> Prop) x y (v:P x) =>
+                                  ltac:(refine (_:P y);exact_no_check v).
