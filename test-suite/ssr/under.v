@@ -19,10 +19,11 @@ Lemma test :
   (big (fun x => mk_body (leb x 3) (S x + x) x))
  = 3.
 Proof.
-
+ Set Debug Ssreflect.
  under i : {1}eq_big.
-  { by []. }
-  { move=> Pi. by []. }
+
+  { by apply over. }
+  { move=> Pi. by apply over. }
  rewrite /=.
 
  case: admit.
