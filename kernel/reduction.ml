@@ -313,12 +313,15 @@ let rec skip_pattern infos n c1 c2 =
 
 (* Conversion between  [lft1]term1 and [lft2]term2 *)
 let rec ccnv cv_pb l2r infos lft1 lft2 term1 term2 cuniv =
-  let env = info_env infos.cnv_inf in
-  let relevances = info_relevances infos.cnv_inf in
-  if try Retypeops.relevance_of_fterm env relevances lft1 term1 == Sorts.Irrelevant with _ -> false
-  then cuniv
-  else
+  try
     eqappr cv_pb l2r infos (lft1, (term1,[])) (lft2, (term2,[])) cuniv
+  with NotConvertible ->
+    let env = info_env infos.cnv_inf in
+    let relevances = info_relevances infos.cnv_inf in
+    if try Retypeops.relevance_of_fterm env relevances lft1 term1 == Sorts.Irrelevant with Not_found -> false
+    (* Not_found can happen, try running seq *)
+    then cuniv
+    else raise NotConvertible
 
 (* Conversion between [lft1](hd1 v1) and [lft2](hd2 v2) *)
 and eqappr cv_pb l2r infos (lft1,st1) (lft2,st2) cuniv =
