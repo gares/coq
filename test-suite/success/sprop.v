@@ -84,73 +84,6 @@ Fail Definition pb_which b (w:which_pb b) : bool
      | is_pf => false
      end.
 
-Inductive sNZ : nat -> SProp
-  := snz : forall n, sNZ (S n).
-
-Definition sPred (n:nat) (s:sNZ n) : nat :=
-  match s with snz k => k end.
-
-Definition spred1 n (s : sNZ (S n))
-  : sPred (S n) s = sPred (S n) (snz n)
-  := eq_refl.
-Definition spred2 n (s : sNZ (S n))
-  : sPred (S n) (snz n) = n
-  := eq_refl.
-Definition spred3 n (s:sNZ (S n))
-  : sPred (S n) s = n
-  := eq_trans (spred1 n s) (spred2 n s).
-
-Definition sPred_S n (s:sNZ (S n))
-  : sPred (S n) s = n
-  := eq_refl.
-
-Module IsPair_nosec.
-
-  Inductive IsPair (A:Type) (B:A -> Type) : sigT B -> SProp :=
-    ispair : forall x y, IsPair A B (existT B x y).
-
-  Definition p1 A B p (i : IsPair A B p) : A :=
-    match i with ispair _ _ x _ => x end.
-
-  Definition p1_comp A B (x:A) (y:B x) (i : IsPair A B (existT B x y))
-    : p1 A B _ i = x
-    := eq_refl.
-
-  (** There used to be a debruijn bug such that it reduced to [fun ... => y].
-      The kernel checks after the reduction so this tests that bug is properly gone. *)
-  Definition p1_lazy
-    : forall A B x y (_:IsPair _ _ _), A
-    := Eval lazy in fun A B (x:A) (y:B x) => p1 A B (existT B x y).
-
-End IsPair_nosec.
-
-Module IsPair_sec.
-
-  Section Sec.
-    Variables (A : Type) (B: A -> Type).
-    Inductive IsPair : sigT B -> SProp :=
-      ispair : forall x y, IsPair (existT B x y).
-
-    Definition p1 p (i: IsPair p) : A :=
-      match i with ispair x _ => x end.
-
-    Section Comp.
-      Variables (x:A) (y:B x) (i : IsPair (existT B x y)).
-
-      Eval lazy in p1 _ i.
-    End Comp.
-    Definition p1_compute_insec x y (i:IsPair (existT B x y)) : p1 (existT B x y) i = x
-      := eq_refl.
-  End Sec.
-
-  Definition p1_comp_nosec A B (x:A) (y:B x) (i : IsPair A B (existT B x y))
-    : p1 A B _ i = x
-    := eq_refl.
-
-  Eval lazy in fun A B (x:A) (y:B x) => p1 A B (existT B x y).
-
-End IsPair_sec.
-
 (* Non primitive because no arguments, but maybe we should allow it for sprops? *)
 Record UnitRecord : SProp := {}.
 
@@ -166,9 +99,13 @@ Set Primitive Projections.
 
 Fail Scheme Induction for sProd' Sort Set.
 
-Record NZpack := nzpack { nzval :> nat; nzprop : sNZ nzval }.
+Inductive Istrue : bool -> SProp := istrue : Istrue true.
 
-Definition NZpack_eta (x : NZpack) (i : sNZ x) : x = nzpack x i := @eq_refl NZpack x.
+Check (fun P v (e:Istrue true) => eq_refl : Istrue_rec P v _ e = v).
+
+Record Truepack := truepack { trueval :> bool; trueprop : Istrue trueval }.
+
+Definition Truepack_eta (x : Truepack) (i : Istrue x) : x = truepack x i := @eq_refl Truepack x.
 
 Class emptyclass : SProp := emptyinstance : forall A:SProp, A.
 
@@ -187,15 +124,15 @@ Definition spr2 (A:SProp) (B:A->SProp) (p:sSigma A B) : B (spr1 A B p)
 (* it's SProp so it computes properly *)
 
 (** Compare blocked invertcase *)
-Definition blocked1 (x:nat) (e:sNZ x) (a:nat) :=
+Definition blocked1 (x:bool) (e:Istrue x) (a:nat) :=
   match e with
-    snz _ => a
+    istrue => a
   end.
-Definition blocked2 (x:nat) (e:sNZ x) (a:nat) :=
+Definition blocked2 (x:bool) (e:Istrue x) (a:nat) :=
   match e with
-    snz _ => 0+a
+    istrue => 0+a
   end.
-Check fun x (e:sNZ x) a => eq_refl : (blocked1 x e a) = (blocked2 x e a).
+Check fun x (e:Istrue x) a => eq_refl : (blocked1 x e a) = (blocked2 x e a).
 
 (** Fixpoints on SProp values are only allowed to produce SProp results *)
 Inductive sAcc (x:nat) : SProp := sAcc_in : (forall y, y < x -> sAcc y) -> sAcc x.

@@ -202,8 +202,11 @@ let make_infos_gen env nparams k levels t =
   if not ok then None, eqnlvl (* XXX is this correct? *)
   else
     let trees =
-      (* All arguments must be forced, no projections *)
-      if Array.for_all (fun forced -> forced == ForcedArg) forced
+      (* The out tree is used only for nonsquashed SProp inductives.
+         Most general condition: all non forced must be SProp.
+         To avoid having to generate projection terms in case inversion: all arguments forced.
+         To avoid having to do case inversion in extraction: no arguments. *)
+      if Array.is_empty forced
       then Some trees
       else None
     in
@@ -252,6 +255,7 @@ let sup_unforced_args info levels max =
 let finish_infos level infos =
   (** Current condition: all constructors invertible + condition to
       get some out_tree, see above *)
+  (* currently the [infos] list has at most one element if [level] is sprop *)
   if Universe.is_sprop level
   then if List.for_all (function
       | Some { ctor_out_tree = Some _; _ } -> true | Some { ctor_out_tree = None; _ } | None -> false)
