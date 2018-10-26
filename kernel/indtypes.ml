@@ -121,29 +121,7 @@ let ctor_invert_info env ((mi,ind),ctor) =
   | Some infos -> mib.mind_nparams, infos.ctor_arg_infos
   | None -> raise BadTree
 
-(** MatchArg variables not allowed in OutEqn.
-    eg [Im : forall x, im (f x)] with [f] non constructor,
-    then [Im] not invertible. *)
-let rec check_eqns forced = function
-  | OutVariable _ -> true
-  | OutInvert (_, args) -> Array.for_all (Option.cata (check_eqns forced) true) args
-  | OutEqn c ->
-    let rec check_occurs k c =
-      match kind c with
-      | Rel i when i > k ->
-        let i = i - k in
-        if i <= Array.length forced
-        then
-          begin match forced.(i-1) with
-            | ForcedArg -> true
-            | MatchArg -> false
-          end
-        else true (** parameter *)
-      | _ -> fold_constr_with_binders succ (fun k ok c -> ok && check_occurs k c) k true c
-    in
-    check_occurs 0 c
-
-let make_infos_gen env nparams k levels t =
+let compute_forced env nparams k t =
   let rec fold (forced,eqnlvl as acc) arg =
     try aux acc arg
     with BadTree ->
@@ -194,7 +172,32 @@ let make_infos_gen env nparams k levels t =
   in
   let args = match kind t with App (_,args) -> args | _ -> [||] in
   let args = Array.sub args nparams (Array.length args - nparams) in
-  let (forced, eqnlvl), trees = Array.fold_left_map fold (Int.Set.empty,Universe.sprop) args in
+  Array.fold_left_map fold (Int.Set.empty,Universe.sprop) args
+
+(** MatchArg variables not allowed in OutEqn.
+    eg [Im : forall x, im (f x)] with [f] non constructor,
+    then [Im] not invertible. *)
+let rec check_eqns forced = function
+  | OutVariable _ -> true
+  | OutInvert (_, args) -> Array.for_all (Option.cata (check_eqns forced) true) args
+  | OutEqn c ->
+    let rec check_occurs k c =
+      match kind c with
+      | Rel i when i > k ->
+        let i = i - k in
+        if i <= Array.length forced
+        then
+          begin match forced.(i-1) with
+            | ForcedArg -> true
+            | MatchArg -> false
+          end
+        else true (** parameter *)
+      | _ -> fold_constr_with_binders succ (fun k ok c -> ok && check_occurs k c) k true c
+    in
+    check_occurs 0 c
+
+let make_infos_gen env nparams k levels t =
+  let (forced, eqnlvl), trees = compute_forced env nparams k t in
   let forced = Array.init (List.length levels)
       (fun i -> if Int.Set.mem i forced then ForcedArg else MatchArg)
   in
