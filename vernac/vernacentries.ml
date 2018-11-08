@@ -407,8 +407,10 @@ let err_notfound_library ?from qid =
   | Some from ->
     str " with prefix " ++ DirPath.print from ++ str "."
   in
+  let bonus =
+    if !Flags.load_vos_libraries then " (While searching for a .vos file.)" else "" in
   user_err ?loc:qid.CAst.loc ~hdr:"locate_library"
-     (strbrk "Unable to locate library " ++ pr_qualid qid ++ prefix)
+     (strbrk "Unable to locate library " ++ pr_qualid qid ++ prefix ++ str bonus)
 
 let print_located_library qid =
   let open Loadpath in
@@ -799,7 +801,7 @@ let vernac_scheme l =
 	       Option.iter (fun lid -> Dumpglob.dump_definition lid false "def") lid;
 	       match s with
 	       | InductionScheme (_, r, _)
-	       | CaseScheme (_, r, _) 
+               | CaseScheme (_, r, _)
 	       | EqualityScheme r -> dump_global r) l;
   Indschemes.do_scheme l
 
@@ -1294,7 +1296,7 @@ let vernac_arguments ~section_local reference args more_implicits nargs_for_red 
     user_err Pp.(str "The \"&\" modifier should be put before any extra scope.");
 
   let scopes_specified = List.exists Option.has_some scopes in
-  
+
   if scopes_specified && clear_scopes_flag then
     user_err Pp.(str "The \"clear scopes\" flag is incompatible with scope annotations.");
 
@@ -1341,7 +1343,7 @@ let vernac_arguments ~section_local reference args more_implicits nargs_for_red 
        if not (Name.equal prev name) then save_example_renaming (prev,name);
        name :: rename prev_names names
   in
-  
+
   let names = rename prev_names names in
   let renaming_specified = Option.has_some !example_renaming in
 
