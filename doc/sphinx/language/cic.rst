@@ -36,21 +36,26 @@ Sorts
 ~~~~~~~~~~~
 
 All sorts have a type and there is an infinite well-founded typing
-hierarchy of sorts whose base sorts are :math:`\Prop` and :math:`\Set`.
+hierarchy of sorts whose base sorts are :math:`\SProp`, :math:`\Prop`
+and :math:`\Set`.
 
 The sort :math:`\Prop` intends to be the type of logical propositions. If :math:`M` is a
 logical proposition then it denotes the class of terms representing
 proofs of :math:`M`. An object :math:`m` belonging to :math:`M` witnesses the fact that :math:`M` is
 provable. An object of type :math:`\Prop` is called a proposition.
 
+The sort :math:`\SProp` is like :math:`\Prop` but the propositions in
+:math:`\SProp` are known to have irrelevant proofs (all proofs are
+equal). Objects of type :math:`\SProp` are called strict propositions.
+
 The sort :math:`\Set` intends to be the type of small sets. This includes data
 types such as booleans and naturals, but also products, subsets, and
 function types over these data types.
 
-:math:`\Prop` and :math:`\Set` themselves can be manipulated as ordinary terms.
+:math:`\SProp`, :math:`\Prop` and :math:`\Set` themselves can be manipulated as ordinary terms.
 Consequently they also have a type. Because assuming simply that :math:`\Set`
 has type :math:`\Set` leads to an inconsistent theory :cite:`Coq86`, the language of
-|Cic| has infinitely many sorts. There are, in addition to :math:`\Set` and :math:`\Prop`
+|Cic| has infinitely many sorts. There are, in addition to the base sorts,
 a hierarchy of universes :math:`\Type(i)` for any integer :math:`i`.
 
 Like :math:`\Set`, all of the sorts :math:`\Type(i)` contain small sets such as
@@ -63,7 +68,7 @@ Formally, we call :math:`\Sort` the set of sorts which is defined by:
 
 .. math::
    
-   \Sort \equiv \{\Prop,\Set,\Type(i)\;|\; i~∈ ℕ\}
+   \Sort \equiv \{\SProp,\Prop,\Set,\Type(i)\;|\; i~∈ ℕ\}
 
 Their properties, such as: :math:`\Prop:\Type(1)`, :math:`\Set:\Type(1)`, and
 :math:`\Type(i):\Type(i+1)`, are defined in Section :ref:`subtyping-rules`.
@@ -113,7 +118,7 @@ language of the *Calculus of Inductive Constructions* is built from
 the following rules.
 
 
-#. the sorts :math:`\Set`, :math:`\Prop`, :math:`\Type(i)` are terms.
+#. the sorts :math:`\SProp`, :math:`\Prop`, :math:`\Set`, :math:`\Type(i)` are terms.
 #. variables, hereafter ranged over by letters :math:`x`, :math:`y`, etc., are terms
 #. constants, hereafter ranged over by letters :math:`c`, :math:`d`, etc., are terms.
 #. if :math:`x` is a variable and :math:`T`, :math:`U` are terms then
@@ -172,7 +177,7 @@ implicative proposition, to denote :math:`\nat →\Prop` which is the type of
 unary predicates over the natural numbers, etc.
 
 Let us assume that ``mult`` is a function of type :math:`\nat→\nat→\nat` and ``eqnat`` a
-predicate of type \nat→\nat→ \Prop. The λ-abstraction can serve to build
+predicate of type :math:`\nat→\nat→\Prop`. The λ-abstraction can serve to build
 “ordinary” functions as in :math:`λ x:\nat.(\kw{mult}~x~x)` (i.e.
 :g:`fun x:nat => mult x x`
 in |Coq| notation) but may build also predicates over the natural
@@ -293,6 +298,12 @@ following rules.
    ---------------
    \WF{E;c:=t:T}{}
 
+.. inference:: Ax-SProp
+
+   \WFE{\Gamma}
+   ----------------------
+   \WTEG{\SProp}{\Type(1)}
+
 .. inference:: Ax-Prop
 
    \WFE{\Gamma}
@@ -325,6 +336,14 @@ following rules.
    ----------------------------------------------------------
    \WTEG{c}{T}
 
+.. inference:: Prod-SProp
+
+   \WTEG{T}{s}
+   s \in {\Sort}
+   \WTE{\Gamma::(x:T)}{U}{\SProp}
+   -----------------------------
+   \WTEG{\forall~x:T,U}{\SProp}
+
 .. inference:: Prod-Prop
 
    \WTEG{T}{s}
@@ -336,14 +355,15 @@ following rules.
 .. inference:: Prod-Set
 
    \WTEG{T}{s}
-   s \in \{\Prop, \Set\}
+   s \in \{\SProp, \Prop, \Set\}
    \WTE{\Gamma::(x:T)}{U}{\Set}
    ----------------------------
    \WTEG{\forall~x:T,U}{\Set}
 
 .. inference:: Prod-Type
 
-   \WTEG{T}{\Type(i)}
+   \WTEG{T}{s}
+   s \in \{\SProp, \Type{i}\}
    \WTE{\Gamma::(x:T)}{U}{\Type(i)}
    --------------------------------
    \WTEG{\forall~x:T,U}{\Type(i)}
@@ -524,6 +544,14 @@ for :math:`x` an arbitrary variable name fresh in :math:`t`.
    because the type of the reduced term :math:`∀ x:\Type(2),\Type(1)` would not be
    convertible to the type of the original term :math:`∀ x:\Type(1),\Type(1).`
 
+.. _proof-irrelevance:
+
+Proof Irrelevance
+~~~~~~~~~~~~~~~~~
+
+It is legal to identify any two terms whose common type is a strict
+proposition :math:`A : \SProp`. Terms in a strict propositions are
+therefore called *irrelevant*.
 
 .. _convertibility:
 
@@ -540,7 +568,7 @@ We say that two terms :math:`t_1` and :math:`t_2` are
 global environment :math:`E` and local context :math:`Γ` iff there
 exist terms :math:`u_1` and :math:`u_2` such that :math:`E[Γ] ⊢ t_1 \triangleright
 … \triangleright u_1` and :math:`E[Γ] ⊢ t_2 \triangleright … \triangleright u_2` and either :math:`u_1` and
-:math:`u_2` are identical, or they are convertible up to η-expansion,
+:math:`u_2` are identical up to irrelevant subterms, or they are convertible up to η-expansion,
 i.e. :math:`u_1` is :math:`λ x:T. u_1'` and :math:`u_2 x` is
 recursively convertible to :math:`u_1'` , or, symmetrically,
 :math:`u_2` is :math:`λx:T. u_2'` 
@@ -612,6 +640,7 @@ a *subtyping* relation inductively defined by:
 #. for any :math:`i`, :math:`E[Γ] ⊢ \Set ≤_{βδιζη} \Type(i)`,
 #. :math:`E[Γ] ⊢ \Prop ≤_{βδιζη} \Set`, hence, by transitivity,
    :math:`E[Γ] ⊢ \Prop ≤_{βδιζη} \Type(i)`, for any :math:`i`
+   (note: :math:`\SProp` is not related by cumulativity to any other term)
 #. if :math:`E[Γ] ⊢ T =_{βδιζη} U` and
    :math:`E[Γ::(x:T)] ⊢ T' ≤_{βδιζη} U'` then
    :math:`E[Γ] ⊢ ∀x:T, T′ ≤_{βδιζη} ∀ x:U, U′`.
@@ -982,9 +1011,9 @@ provided that the following side conditions hold:
 One can remark that there is a constraint between the sort of the
 arity of the inductive type and the sort of the type of its
 constructors which will always be satisfied for the impredicative
-sort :math:`\Prop` but may fail to define inductive definition on sort :math:`\Set` and
-generate constraints between universes for inductive definitions in
-the Type hierarchy.
+sorts :math:`\SProp` and :math:`\Prop` but may fail to define
+inductive definition on sort :math:`\Set` and generate constraints
+between universes for inductive definitions in the Type hierarchy.
 
 
 .. example::
@@ -1334,14 +1363,15 @@ There is no restriction on the sort of the predicate to be eliminated.
 
 The case of Inductive definitions of sort :math:`\Prop` is a bit more
 complicated, because of our interpretation of this sort. The only
-harmless allowed elimination, is the one when predicate :math:`P` is also of
-sort :math:`\Prop`.
+harmless allowed eliminations, are the ones when predicate :math:`P`
+is also of sort :math:`\Prop` or is of the morally smaller sort
+:math:`\SProp`.
 
 .. inference:: Prop
 	       
-   ~
-   ---------------
-   [I:Prop|I→Prop]
+   s ∈ \{\SProp,\Prop\}
+   --------------------
+   [I:Prop|I→s]
 
 
 :math:`\Prop` is the type of logical propositions, the proofs of properties :math:`P` in
@@ -1429,6 +1459,12 @@ type.
 An empty definition has no constructors, in that case also,
 elimination on any sort is allowed.
 
+.. _Empty-and-singleton-eliminaton-for-SProp:
+
+Inductive types in :math:`\SProp` have even stricter restrictions on
+their eliminations than those in :math:`\Prop`: to eliminate into any
+relevant type (which includes types in :math:`\Prop`) if the inductive
+has a constructor it must have no arguments.
 
 .. _Type-of-branches:
 
