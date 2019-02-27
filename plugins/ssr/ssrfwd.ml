@@ -444,5 +444,5 @@ let undertac ist varnames ((dir,mult),_ as rule) hint =
               (if hint = nullhint then [None] else snd hint))
            @ [betaiota])
   in
-  (Proofview.V82.tactic (Ssrequality.ssrrewritetac ~map_redex ist [rule]) <*>
+  (Proofview.V82.tactic (Ssrequality.ssrrewritetac ~under:true ~map_redex ist [rule]) <*>
      intro_lock varnames <*> undertacs)
