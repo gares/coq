@@ -138,7 +138,7 @@ Qed.
 Lemma test_big_andb (F : nat -> nat) (m n : nat) :
   \sum_(0 <= i < 5 | odd i && (i == 1)) i = 1.
 Proof.
-under i: eq_bigl by rewrite andb_idl; first by move/eqP->.
+under i: eq_bigl by rewrite andb_idl; last by move/eqP->.
 under i: eq_bigr by move/eqP=>{1}->. (* the 2nd occ should not be touched *)
 myadmit.
 Qed.
