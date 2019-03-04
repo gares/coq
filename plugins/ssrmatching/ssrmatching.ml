@@ -361,10 +361,9 @@ let isRigid c = match kind c with
   | _ -> false
 
 let hole_var = mkVar (Id.of_string "_")
-let pr_constr_pat c0 =
+let pr_constr_pat env sigma c0 =
   let rec wipe_evar c =
     if isEvar c then hole_var else map wipe_evar c in
-  let sigma, env = Pfedit.get_current_context () in
   pr_constr_env env sigma (wipe_evar c0)
 
 (* Turn (new) evars into metas *)
@@ -416,7 +415,7 @@ let mk_tpattern ?p_origin ?(hack=false) env sigma0 (ise, t) ok dir p =
       (match p_origin with None -> CErrors.user_err Pp.(str "indeterminate pattern")
       | Some (dir, rule) ->
 	errorstrm (str "indeterminate " ++ pr_dir_side dir
-          ++ str " in " ++ pr_constr_pat rule))
+          ++ str " in " ++ pr_constr_pat env ise rule))
     | LetIn (_, v, _, b) ->
       if b <> mkRel 1 then KpatLet, f, a else KpatFlex, v, a
     | Lambda _ -> KpatLam, f, a
@@ -636,8 +635,8 @@ let assert_done r =
 let assert_done_multires r = 
   match !r with
   | None -> CErrors.anomaly (str"do_once never called.")
-  | Some (n, xs) ->
-      r := Some (n+1,xs);
+  | Some (e, n, xs) ->
+      r := Some (e, n+1,xs);
       try List.nth xs n with Failure _ -> raise NoMatch
 
 type subst = Environ.env -> constr -> constr -> int -> constr
@@ -683,14 +682,15 @@ let mk_tpattern_matcher ?(all_instances=false)
        | _ -> false)
     | _ -> unif_EQ env sigma u.up_f in
 let p2t p = mkApp(p.up_f,p.up_a) in 
-let source () = match upats_origin, upats with
+let source env = match upats_origin, upats with
   | None, [p] -> 
       (if fixed_upat ise p then str"term " else str"partial term ") ++
-      pr_constr_pat (p2t p) ++ spc()
+      pr_constr_pat env ise (p2t p) ++ spc()
   | Some (dir,rule), [p] -> str"The " ++ pr_dir_side dir ++ str" of " ++ 
-      pr_constr_pat rule ++ fnl() ++ ws 4 ++ pr_constr_pat (p2t p) ++ fnl()
+      pr_constr_pat env ise rule ++ fnl() ++ ws 4 ++
+      pr_constr_pat env ise (p2t p) ++ fnl()
   | Some (dir,rule), _ -> str"The " ++ pr_dir_side dir ++ str" of " ++ 
-      pr_constr_pat rule ++ spc()
+      pr_constr_pat env ise rule ++ spc()
   | _, [] | None, _::_::_ ->
       CErrors.anomaly (str"mk_tpattern_matcher with no upats_origin.") in
 let on_instance, instances =
@@ -720,23 +720,23 @@ let rec uniquize = function
       if not all_instances then match_upats_FO upats env sigma0 ise c;
       failed_because_of_TC:=match_upats_HO ~on_instance upats env sigma0 ise c;
       raise NoMatch
-    with FoundUnif sigma_u -> 0,[sigma_u]
+    with FoundUnif sigma_u -> env,0,[sigma_u]
     | (NoMatch|NoProgress) when all_instances && instances () <> [] ->
-      0, uniquize (instances ())
+      env, 0, uniquize (instances ())
     | NoMatch when (not raise_NoMatch) ->
       if !failed_because_of_TC then
-        errorstrm (source ()++strbrk"matches but type classes inference fails")
+        errorstrm (source env++strbrk"matches but type classes inference fails")
       else
-        errorstrm (source () ++ str "does not match any subterm of the goal")
+        errorstrm (source env ++ str "does not match any subterm of the goal")
     | NoProgress when (not raise_NoMatch) ->
         let dir = match upats_origin with Some (d,_) -> d | _ ->
           CErrors.anomaly (str"mk_tpattern_matcher with no upats_origin.") in
-        errorstrm (str"all matches of "++source()++
+        errorstrm (str"all matches of "++source env++
           str"are equal to the " ++ pr_dir_side (inv_dir dir))
     | NoProgress -> raise NoMatch);
   let sigma, _, ({up_f = pf; up_a = pa} as u) =
     if all_instances then assert_done_multires upat_that_matched
-    else List.hd (snd(assert_done upat_that_matched)) in
+    else List.hd (pi3(assert_done upat_that_matched)) in
 (*   pp(lazy(str"sigma@tmatch=" ++ pr_evar_map None sigma)); *)
   if !skip_occ then ((*ignore(k env u.up_t 0);*) c) else
   let match_EQ = match_EQ env sigma u in
@@ -765,18 +765,18 @@ let rec uniquize = function
       mkApp (f', Array.map_left (subst_loop acc) a) in
   subst_loop (env,h) c) : find_P),
 ((fun () ->
-  let sigma, uc, ({up_f = pf; up_a = pa} as u) =
+  let env, (sigma, uc, ({up_f = pf; up_a = pa} as u)) =
     match !upat_that_matched with
-    | Some (_,x) -> List.hd x | None when raise_NoMatch -> raise NoMatch
+    | Some (env,_,x) -> env,List.hd x | None when raise_NoMatch -> raise NoMatch
     | None -> CErrors.anomaly (str"companion function never called.") in
   let p' = mkApp (pf, pa) in
   if max_occ <= !nocc then p', u.up_dir, (sigma, uc, u.up_t)
   else errorstrm (str"Only " ++ int !nocc ++ str" < " ++ int max_occ ++
         str(String.plural !nocc " occurrence") ++ match upats_origin with
-        | None -> str" of" ++ spc() ++ pr_constr_pat p'
+        | None -> str" of" ++ spc() ++ pr_constr_pat env sigma p'
         | Some (dir,rule) -> str" of the " ++ pr_dir_side dir ++ fnl() ++
-            ws 4 ++ pr_constr_pat p' ++ fnl () ++ 
-            str"of " ++ pr_constr_pat rule)) : conclude)
+            ws 4 ++ pr_constr_pat env sigma p' ++ fnl () ++
+            str"of " ++ pr_constr_pat env sigma rule)) : conclude)
 
 type ('ident, 'term) ssrpattern = 
   | T of 'term
@@ -815,8 +815,8 @@ let pr_pattern_aux pr_constr = function
       pr_constr e ++ str " in " ++ pr_constr x ++ str " in " ++ pr_constr t
   | E_As_X_In_T (e,x,t) ->
       pr_constr e ++ str " as " ++ pr_constr x ++ str " in " ++ pr_constr t
-let pp_pattern (sigma, p) =
-  pr_pattern_aux (fun t -> pr_constr_pat (EConstr.Unsafe.to_constr (pi3 (nf_open_term sigma sigma (EConstr.of_constr t))))) p
+let pp_pattern env (sigma, p) =
+  pr_pattern_aux (fun t -> pr_constr_pat env sigma (EConstr.to_constr ~abort_on_undefined_evars:false sigma t)) p
 let pr_cpattern = pr_term
 
 let wit_rpatternty = add_genarg "rpatternty" pr_pattern
@@ -1246,8 +1246,10 @@ let fill_occ_term env cl occ sigma0 (sigma, t) =
     if sigma' != sigma0 then raise NoMatch
     else cl, (Evd.merge_universe_context sigma' uc, t')
   with _ ->
-    errorstrm (str "partial term " ++ pr_constr_pat (EConstr.Unsafe.to_constr t)
-            ++ str " does not match any subterm of the goal")
+    errorstrm (str "partial term " ++
+               pr_constr_pat env sigma
+                (EConstr.to_constr ~abort_on_undefined_evars:false sigma t) ++
+               str " does not match any subterm of the goal")
 
 let pf_fill_occ_term gl occ t =
   let sigma0 = project gl and env = pf_env gl and concl = pf_concl gl in

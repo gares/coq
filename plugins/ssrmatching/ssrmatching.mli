@@ -46,7 +46,7 @@ type ('ident, 'term) ssrpattern =
   | E_As_X_In_T of 'term * 'ident * 'term
 
 type pattern = evar_map * (constr, constr) ssrpattern
-val pp_pattern : pattern -> Pp.t
+val pp_pattern : Environ.env -> pattern -> Pp.t
 
 (** Extracts the redex and applies to it the substitution part of the pattern.
   @raise Anomaly if called on [In_T] or [In_X_In_T] *)
