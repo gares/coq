@@ -811,6 +811,6 @@ let strip s =
 let terminal s =
   let s = strip s in
   let () = match s with "" -> failwith "empty token." | _ -> () in
-  if is_ident_not_keyword s then IDENT s
-  else if is_number s then INT s
-  else KEYWORD s
+  if is_ident_not_keyword s then "IDENT", Some s
+  else if is_number s then "INT", Some s
+  else "", Some s
