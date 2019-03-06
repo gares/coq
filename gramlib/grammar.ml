@@ -1,7 +1,7 @@
 (* camlp5r *)
 (* grammar.ml,v *)
 (* Copyright (c) INRIA 2007-2017 *)
-
+open gramlib
 open Gramext
 open Format
 
@@ -11,6 +11,9 @@ type ('a, 'b) eq = Refl : ('a, 'a) eq
 
 module type GLexerType = sig
   type te
+  val loc_of : te -> Loc.t
+  val loc_before : te -> Loc.t
+  val pos_of : te -> int
   val lexer : te Plexing.lexer
 end
 
@@ -91,7 +94,7 @@ let tokens con =
 type 'a ty_entry = {
   ename : string;
   mutable estart : int -> 'a parser_t;
-  mutable econtinue : int -> int -> 'a -> 'a parser_t;
+  mutable econtinue : levn:int -> initial_tok:L.te option -> 'a -> 'a parser_t;
   mutable edesc : 'a ty_desc;
 }
 
@@ -760,13 +763,16 @@ let print_entry ppf e =
   end;
   fprintf ppf " ]@]"
 
-let floc = ref (fun _ -> failwith "internal error when computing location")
-
-let loc_of_token_interval bp ep =
-  if bp == ep then
-    if bp == 0 then Ploc.dummy else Ploc.after (!floc (bp - 1)) 0 1
-  else
-    let loc1 = !floc bp in let loc2 = !floc (pred ep) in Loc.merge loc1 loc2
+let loc_of_token_interval tok strm =
+  match tok with
+  | None -> Ploc.dummy
+  | Some tok ->
+      let bp = L.loc_of tok in
+      match Stream.peek strm with
+      | None -> bp
+      | Some next_tok ->
+          let ep = L.loc_before next_tok in
+          Loc.merge bp ep
 
 let name_of_symbol : type s a. s ty_entry -> (s, a) ty_symbol -> string =
   fun entry ->
@@ -914,11 +920,12 @@ let top_tree : type s a. s ty_entry -> (s, a) ty_tree -> (s, a) ty_tree =
   | LocAct (_, _) | DeadEnd -> raise Stream.Failure
 
 let skip_if_empty bp p strm =
-  if Stream.count strm == bp then fun a -> p strm
+  (*XXX*) match bp with None -> raise Stream.Failure | Some bp ->
+  if Stream.count strm == L.pos_of bp then fun a -> p strm
   else raise Stream.Failure
 
-let continue entry bp a s son p1 (strm__ : _ Stream.t) =
-  let a = (entry_of_symb entry s).econtinue 0 bp a strm__ in
+let continue entry initial_tok a s son p1 (strm__ : _ Stream.t) =
+  let a = (entry_of_symb entry s).econtinue ~levn:0 ~initial_tok a strm__ in
   let act =
     try p1 strm__ with
       Stream.Failure -> raise (Stream.Error (tree_failed entry a s son))
@@ -991,7 +998,7 @@ let rec parser_of_tree : type s r. s ty_entry -> int -> int -> (s, r) ty_tree ->
           let p1 = parser_of_tree entry nlevn alevn son in
           let p1 = parser_cont p1 entry nlevn alevn s son in
           (fun (strm__ : _ Stream.t) ->
-             let bp = Stream.count strm__ in
+             let bp = Stream.peek strm__ in
              let a = ps strm__ in
              let act =
                try p1 bp a strm__ with
@@ -1021,7 +1028,7 @@ let rec parser_of_tree : type s r. s ty_entry -> int -> int -> (s, r) ty_tree ->
           let p1 = parser_cont p1 entry nlevn alevn s son in
           let p2 = parser_of_tree entry nlevn alevn bro in
           (fun (strm : _ Stream.t) ->
-             let bp = Stream.count strm in
+             let bp = Stream.peek strm in
              match try Some (ps strm) with Stream.Failure -> None with
                Some a ->
                  begin match
@@ -1042,14 +1049,14 @@ let rec parser_of_tree : type s r. s ty_entry -> int -> int -> (s, r) ty_tree ->
           fun (strm__ : _ Stream.t) ->
             try p1 strm__ with Stream.Failure -> p2 strm__
 and parser_cont : type s a r.
-  (a -> r) parser_t -> s ty_entry -> int -> int -> (s, a) ty_symbol -> (s, a -> r) ty_tree -> int -> a -> (a -> r) parser_t =
+  (a -> r) parser_t -> s ty_entry -> int -> int -> (s, a) ty_symbol -> (s, a -> r) ty_tree -> L.te option -> a -> (a -> r) parser_t =
   fun p1 entry nlevn alevn s son bp a (strm__ : _ Stream.t) ->
   try p1 strm__ with
     Stream.Failure ->
       recover parser_of_tree entry nlevn alevn bp a s son strm__
 and parser_of_token_list : type s r f.
   s ty_entry -> (s, string) ty_symbol -> (s, string -> r) ty_tree ->
-    (r, f) tok_list -> (int -> string -> (string -> r) parser_t) -> f parser_t -> _ -> _ -> f parser_t =
+    (r, f) tok_list -> (L.te option -> string -> (string -> r) parser_t) -> f parser_t -> _ -> _ -> f parser_t =
   fun entry s son pf p1 p2 rev_tokl last_tok ->
   let plast : r parser_t =
     let n = List.length rev_tokl + 1 in
@@ -1062,7 +1069,7 @@ and parser_of_token_list : type s r f.
       | None -> raise Stream.Failure
     in
     fun (strm : _ Stream.t) ->
-      let bp = Stream.count strm in
+      let bp = Stream.peek strm in
       let a = ps strm in
       match try Some (p1 bp a strm) with Stream.Failure -> None with
         Some act -> act a
@@ -1212,10 +1219,9 @@ and parser_of_symbol : type s a.
   | Stree t ->
       let pt = parser_of_tree entry 1 0 t in
       (fun (strm__ : _ Stream.t) ->
-         let bp = Stream.count strm__ in
+         let bp = Stream.peek strm__ in
          let a = pt strm__ in
-         let ep = Stream.count strm__ in
-         let loc = loc_of_token_interval bp ep in a loc)
+         let loc = loc_of_token_interval bp strm__ in a loc)
   | Snterm e -> (fun (strm__ : _ Stream.t) -> e.estart 0 strm__)
   | Snterml (e, l) ->
       (fun (strm__ : _ Stream.t) -> e.estart (level_number e l) strm__)
@@ -1259,27 +1265,25 @@ let rec start_parser_of_levels entry clevn =
                  else
                  *)
                  let (strm__ : _ Stream.t) = strm in
-                 let bp = Stream.count strm__ in
+                 let initial_tok = Stream.peek strm__ in
                  let act = p2 strm__ in
-                 let ep = Stream.count strm__ in
-                 let a = act (loc_of_token_interval bp ep) in
-                 entry.econtinue levn bp a strm)
+                 let a = act (loc_of_token_interval initial_tok strm__) in
+                 entry.econtinue ~levn ~initial_tok a strm)
           | _ ->
               fun levn strm ->
                 if levn > clevn then p1 levn strm
                 else
                   let (strm__ : _ Stream.t) = strm in
-                  let bp = Stream.count strm__ in
+                  let initial_tok = Stream.peek strm__ in
                   match try Some (p2 strm__) with Stream.Failure -> None with
                     Some act ->
-                      let ep = Stream.count strm__ in
-                      let a = act (loc_of_token_interval bp ep) in
-                      entry.econtinue levn bp a strm
+                      let a = act (loc_of_token_interval initial_tok strm__) in
+                      entry.econtinue ~levn ~initial_tok a strm
                   | _ -> p1 levn strm__
 
 let rec continue_parser_of_levels entry clevn =
   function
-    [] -> (fun levn bp a (strm__ : _ Stream.t) -> raise Stream.Failure)
+    [] -> (fun ~levn:_ ~initial_tok:_ a (strm__ : _ Stream.t) -> raise Stream.Failure)
   | lev :: levs ->
       let p1 = continue_parser_of_levels entry (succ clevn) levs in
       match lev.lsuffix with
@@ -1291,24 +1295,23 @@ let rec continue_parser_of_levels entry clevn =
             | RightA -> clevn
           in
           let p2 = parser_of_tree entry (succ clevn) alevn tree in
-          fun levn bp a strm ->
-            if levn > clevn then p1 levn bp a strm
+          fun ~levn ~initial_tok a strm ->
+            if levn > clevn then p1 ~levn ~initial_tok a strm
             else
               let (strm__ : _ Stream.t) = strm in
-              try p1 levn bp a strm__ with
+              try p1 ~levn ~initial_tok a strm__ with
                 Stream.Failure ->
                   let act = p2 strm__ in
-                  let ep = Stream.count strm__ in
-                  let a = act a (loc_of_token_interval bp ep) in
-                  entry.econtinue levn bp a strm
+                  let a = act a (loc_of_token_interval initial_tok strm__) in
+                  entry.econtinue ~levn ~initial_tok a strm
 
 let continue_parser_of_entry entry =
   match entry.edesc with
     Dlevels elev ->
       let p = continue_parser_of_levels entry 0 elev in
-      (fun levn bp a (strm__ : _ Stream.t) ->
-         try p levn bp a strm__ with Stream.Failure -> a)
-  | Dparser p -> fun levn bp a (strm__ : _ Stream.t) -> raise Stream.Failure
+      (fun ~levn ~initial_tok a (strm__ : _ Stream.t) ->
+         try p ~levn ~initial_tok a strm__ with Stream.Failure -> a)
+  | Dparser p -> fun ~levn:_ ~initial_tok:_ a (strm__ : _ Stream.t) -> raise Stream.Failure
 
 let empty_entry ename levn strm =
   raise (Stream.Error ("entry [" ^ ename ^ "] is empty"))
@@ -1326,9 +1329,9 @@ let init_entry_functions entry =
     (fun lev strm ->
        let f = start_parser_of_entry entry in entry.estart <- f; f lev strm);
   entry.econtinue <-
-    (fun lev bp a strm ->
+    (fun ~levn ~initial_tok a strm ->
        let f = continue_parser_of_entry entry in
-       entry.econtinue <- f; f lev bp a strm)
+       entry.econtinue <- f; f ~levn ~initial_tok a strm)
 
 let extend_entry ~warning entry position rules =
     let elev = levels_of_rules ~warning entry position rules in
@@ -1346,9 +1349,9 @@ let delete_rule entry sl =
            let f = start_parser_of_entry entry in
            entry.estart <- f; f lev strm);
       entry.econtinue <-
-        (fun lev bp a strm ->
+        (fun ~levn ~initial_tok a strm ->
            let f = continue_parser_of_entry entry in
-           entry.econtinue <- f; f lev bp a strm)
+           entry.econtinue <- f; f ~levn ~initial_tok a strm)
   | Dparser _ -> ()
 
 (* Normal interface *)
@@ -1362,41 +1365,36 @@ let parse_parsable entry p =
   let efun = entry.estart 0 in
   let ts = p.pa_tok_strm in
   let cs = p.pa_chr_strm in
-  let fun_loc = p.pa_loc_func in
-  let restore =
-    let old_floc = !floc in
-    let old_tc = !token_count in
-    fun () -> floc := old_floc; token_count := old_tc
-  in
+  let fun_loc = L.loc_of in
   let get_loc () =
     try
+      match Stream.peek ts with
+      | Some t -> fun_loc t
+      | None -> Ploc.make_unlined (Stream.count cs, Stream.count cs + 1)
+(*
       let cnt = Stream.count ts in
-      (* Ensure that the token at location cnt has been peeked so that
-         the location function knows about it *)
-      let _ = Stream.peek ts in
-      let loc = fun_loc cnt in
+      let loc = fun_loc (Stream.peek ts) in
       if !token_count - 1 <= cnt then loc
       else Loc.merge loc (fun_loc (!token_count - 1))
+*)
     with Failure _ -> Ploc.make_unlined (Stream.count cs, Stream.count cs + 1)
   in
-  floc := fun_loc;
   token_count := 0;
-  try let r = efun ts in restore (); r with
+  try efun ts with
     Stream.Failure ->
       let loc = get_loc () in
-      restore ();
       Ploc.raise loc (Stream.Error ("illegal begin of " ^ entry.ename))
   | Stream.Error _ as exc ->
-      let loc = get_loc () in restore (); Ploc.raise loc exc
+      let loc = get_loc () in Ploc.raise loc exc
   | exc ->
       let loc = Stream.count cs, Stream.count cs + 1 in
-      restore (); Ploc.raise (Ploc.make_unlined loc) exc
+      Ploc.raise (Ploc.make_unlined loc) exc
 
 (* Unsafe *)
 
 let clear_entry e =
   e.estart <- (fun _ (strm__ : _ Stream.t) -> raise Stream.Failure);
-  e.econtinue <- (fun _ _ _ (strm__ : _ Stream.t) -> raise Stream.Failure);
+  e.econtinue <- (fun ~levn:_ ~initial_tok:_ _ (strm__ : _ Stream.t) -> raise Stream.Failure);
   match e.edesc with
     Dlevels _ -> e.edesc <- Dlevels []
   | Dparser _ -> ()
@@ -1410,7 +1408,7 @@ let clear_entry e =
         let create n =
           { ename = n; estart = empty_entry n;
            econtinue =
-             (fun _ _ _ (strm__ : _ Stream.t) -> raise Stream.Failure);
+             (fun ~levn:_ ~initial_tok:_ _ (strm__ : _ Stream.t) -> raise Stream.Failure);
            edesc = Dlevels []}
         let parse (e : 'a e) p : 'a =
           parse_parsable e p
@@ -1421,7 +1419,7 @@ let clear_entry e =
           { ename = n;
            estart = (fun _ -> p);
            econtinue =
-             (fun _ _ _ (strm__ : _ Stream.t) -> raise Stream.Failure);
+             (fun ~levn:_ ~initial_tok:_ _ (strm__ : _ Stream.t) -> raise Stream.Failure);
            edesc = Dparser p}
         let print ppf e = fprintf ppf "%a@." print_entry e
       end
