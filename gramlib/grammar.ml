@@ -9,14 +9,17 @@ type ('a, 'b) eq = Refl : ('a, 'a) eq
 
 (* Functorial interface *)
 
-module type GLexerType = sig type te val lexer : te Plexing.lexer end
+module type GLexerType = sig
+  type te
+  val lexer : te Plexing.lexer
+end
 
 module type S =
   sig
     type te
     type parsable
-    val parsable : char Stream.t -> parsable
-    val tokens : string -> (string * int) list
+    val parsable : te Plexing.lexer_func -> char Stream.t -> parsable
+    val tokens : string -> (string option * int) list
     module Entry :
       sig
         type 'a e
@@ -1350,10 +1353,10 @@ let delete_rule entry sl =
 
 (* Normal interface *)
 
-type parsable =
-  { pa_chr_strm : char Stream.t;
-    pa_tok_strm : L.te Stream.t;
-    pa_loc_func : Plexing.location_function }
+type parsable = {
+  pa_chr_strm : char Stream.t;
+  pa_tok_strm : L.te Stream.t;
+}
 
 let parse_parsable entry p =
   let efun = entry.estart 0 in
@@ -1398,9 +1401,9 @@ let clear_entry e =
     Dlevels _ -> e.edesc <- Dlevels []
   | Dparser _ -> ()
 
-    let parsable cs =
-      let (ts, lf) = L.lexer.Plexing.tok_func cs in
-      {pa_chr_strm = cs; pa_tok_strm = ts; pa_loc_func = lf}
+    let parsable tok_func cs =
+      let ts = tok_func cs in
+      {pa_chr_strm = cs; pa_tok_strm = ts }
     module Entry =
       struct
         type 'a e = 'a ty_entry

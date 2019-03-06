@@ -77,11 +77,6 @@ module Map : module type of CMap
 
 module Stack : module type of CStack
 
-(** {6 Streams. } *)
-
-val stream_nth : int -> 'a Stream.t -> 'a
-val stream_njunk : int -> 'a Stream.t -> unit
-
 (** {6 Matrices. } *)
 
 val matrix_transpose : 'a list list -> 'a list list

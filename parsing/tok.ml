@@ -9,10 +9,25 @@
 (************************************************************************)
 
 (** The type of token for the Coq lexer and parser *)
+module Blank = struct
+  type t = {
+    loc : Loc.t;
+    v : kind;
+  }
+  and kind =
+  | Blanks of string
+  | Comment of string
+end
 
 let string_equal (s1 : string) s2 = s1 = s2
 
-type t =
+type t = {
+  v : kind;
+  loc : Loc.t;
+  blanks_before : Blank.t list;
+  pos : int
+}
+and kind =
   | KEYWORD of string
   | PATTERNIDENT of string
   | IDENT of string
@@ -23,7 +38,10 @@ type t =
   | BULLET of string
   | EOI
 
-let equal t1 t2 = match t1, t2 with
+let mk_token  ~loc ~pos ?(blanks_rev=[]) v =
+  { v; loc; blanks_before = List.rev blanks_rev; pos }
+
+let equal t1 t2 = match t1.v, t2.v with
 | IDENT s1, KEYWORD s2 -> string_equal s1 s2
 | KEYWORD s1, KEYWORD s2 -> string_equal s1 s2
 | PATTERNIDENT s1, PATTERNIDENT s2 -> string_equal s1 s2
@@ -36,7 +54,7 @@ let equal t1 t2 = match t1, t2 with
 | EOI, EOI -> true
 | _ -> false
 
-let extract_string diff_mode = function
+let extract_string diff_mode t = match t.v with
   | KEYWORD s -> s
   | IDENT s -> s
   | STRING s ->
@@ -60,7 +78,7 @@ let extract_string diff_mode = function
   | BULLET s -> s
   | EOI -> ""
 
-let to_string = function
+let to_string_kind t = match t with
   | KEYWORD s -> Format.sprintf "%S" s
   | IDENT s -> Format.sprintf "IDENT %S" s
   | PATTERNIDENT s -> Format.sprintf "PATTERNIDENT %S" s
@@ -71,7 +89,18 @@ let to_string = function
   | BULLET s -> Format.sprintf "BULLET %S" s
   | EOI -> "EOI"
 
-let match_keyword kwd = function
+let to_string { loc; v; blanks_before } =
+  String.concat "\n" (List.map
+    (function
+    | { Blank.v = Blank.Blanks s; loc } ->
+          Loc.to_string loc ^ Printf.sprintf ": BLANK %S" s
+    | { Blank.v = Blank.Comment s; loc } ->
+          Loc.to_string loc ^ Printf.sprintf ": COMMENT %S" s)
+    blanks_before) ^
+  (if blanks_before = [] then "" else "\n") ^
+  Loc.to_string loc ^ ": " ^ to_string_kind v
+
+let match_keyword kwd t = match t.v with
   | KEYWORD kwd' when kwd = kwd' -> true
   | _ -> false
 
@@ -109,3 +138,12 @@ let match_pattern (key, value) =
   | "BULLET" ->  (function { v = BULLET s } -> cond s  | _ -> err ())
   | "EOI" -> (function { v = EOI } -> cond "" | _ -> err ())
   | p -> CErrors.anomaly Pp.(str "Tok: unknown pattern " ++ str p)
+
+(* Stream *)
+
+let stream_nth n st =
+  try (List.nth (Stream.npeek (n+1) st) n).v
+  with Failure _ -> raise Stream.Failure
+
+let stream_njunk n st =
+  Util.repeat n Stream.junk st

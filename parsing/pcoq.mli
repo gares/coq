@@ -21,7 +21,7 @@ sig
   type t
   val make : ?file:Loc.source -> char Stream.t -> t
   (* Get comment parsing information from the Lexer *)
-  val comment_state : t -> ((int * int) * string) list
+  val get_all_tokens : t -> Tok.t list
 end
 
 module Entry : sig

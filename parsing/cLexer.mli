@@ -25,21 +25,6 @@ val terminal : string -> Tok.pattern
 
 (** The lexer of Coq: *)
 
-(* modtype Grammar.GLexerType: sig
-     type te val
-     lexer : te Plexing.lexer
-   end
-
-where
-
-  type lexer 'te =
-    { tok_func : lexer_func 'te;
-      tok_using : pattern -> unit;
-      tok_removing : pattern -> unit;
-      tok_match : pattern -> 'te -> string;
-      tok_text : pattern -> string;
-      tok_comm : mutable option (list location) }
- *)
 include Gramlib.Grammar.GLexerType with type te = Tok.t
 
 module Error : sig
@@ -48,22 +33,20 @@ module Error : sig
   val to_string : t -> string
 end
 
-(* Mainly for comments state, etc... *)
-type lexer_state
+(** Create a lexer.  diff_mode:true enables alternate handling for computing
+   diffs.  It ensures that, ignoring white space, the concatenated tokens
+   equal the input string.  Specifically:
+   - for strings, return the enclosing quotes as tokens and treat the quoted
+     value as if it was unquoted, possibly becoming multiple tokens
+   - for comments, return the ( * as a token and treat the contents of the
+     comment as if it was not in a comment, possibly becoming multiple tokens
+   - return any unrecognized Ascii or UTF-8 character as a string
 
-val init_lexer_state : Loc.source -> lexer_state
-val set_lexer_state : lexer_state -> unit
-val get_lexer_state : unit -> lexer_state
-val drop_lexer_state : unit -> unit
-val get_comment_state : lexer_state -> ((int * int) * string) list
-
-(** Create a lexer.  true enables alternate handling for computing diffs.
-It ensures that, ignoring white space, the concatenated tokens equal the input
-string.  Specifically:
-- for strings, return the enclosing quotes as tokens and treat the quoted value
-as if it was unquoted, possibly becoming multiple tokens
-- for comments, return the "(*" as a token and treat the contents of the comment as if
-it was not in a comment, possibly becoming multiple tokens
-- return any unrecognized Ascii or UTF-8 character as a string
+   The companion getter returns the list of token lexed so far (if
+   log_tokens:true). This is used by the beautifier.
 *)
-val make_lexer : diff_mode:bool -> Tok.t Gramlib.Plexing.lexer
+val make_lexer_func :
+  diff_mode:bool -> log_tokens:bool -> Loc.source ->
+    Tok.t Gramlib.Plexing.lexer_func * (unit -> Tok.t list)
+
+val lexer : Tok.t Gramlib.Plexing.lexer

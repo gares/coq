@@ -15,7 +15,13 @@
        rule "an entry cannot call an entry of another grammar" by
        normal OCaml typing. *)
 
-module type GLexerType = sig type te val lexer : te Plexing.lexer end
+module type GLexerType = sig
+  type te
+  val loc_of : te -> Loc.t
+  val loc_before : te -> Loc.t
+  val pos_of : te -> int
+  val lexer : te Plexing.lexer
+end
    (** The input signature for the functor [Grammar.GMake]: [te] is the
        type of the tokens. *)
 
@@ -23,8 +29,8 @@ module type S =
   sig
     type te
     type parsable
-    val parsable : char Stream.t -> parsable
-    val tokens : string -> (string * int) list
+    val parsable : te Plexing.lexer_func -> char Stream.t -> parsable
+    val tokens : string -> (string option * int) list
     module Entry :
       sig
         type 'a e

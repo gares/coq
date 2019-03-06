@@ -22,13 +22,10 @@ type pattern = string * string option
 (** Lexer type *)
 
 type 'te lexer =
-  { tok_func : 'te lexer_func;
+  {
     tok_using : pattern -> unit;
     tok_removing : pattern -> unit;
     tok_match : pattern -> 'te -> string;
     tok_text : pattern -> string;
   }
-and 'te lexer_func = char Stream.t -> 'te Stream.t * location_function
-and location_function = int -> Loc.t
-  (** The type of a function giving the location of a token in the
-      source from the token number in the stream (starting from zero). *)
+type 'te lexer_func = char Stream.t -> 'te Stream.t
