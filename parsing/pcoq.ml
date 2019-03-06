@@ -19,81 +19,37 @@ module G : sig
 
   include Grammar.S with type te = Tok.t
 
-(* where Grammar.S
-
-module type S =
-  sig
-    type te = 'x;
-    type parsable = 'x;
-    value parsable : Stream.t char -> parsable;
-    value tokens : string -> list (string * int);
-    value glexer : Plexing.lexer te;
-    value set_algorithm : parse_algorithm -> unit;
-    module Entry :
-      sig
-        type e 'a = 'y;
-        value create : string -> e 'a;
-        value parse : e 'a -> parsable -> 'a;
-        value parse_token_stream : e 'a -> Stream.t te -> 'a;
-        value name : e 'a -> string;
-        value of_parser : string -> (Stream.t te -> 'a) -> e 'a;
-        value print : Format.formatter -> e 'a -> unit;
-        external obj : e 'a -> Gramext.g_entry te = "%identity";
-      end
-    ;
-    module Unsafe :
-      sig
-        value gram_reinit : Plexing.lexer te -> unit;
-        value clear_entry : Entry.e 'a -> unit;
-      end
-    ;
-    value extend :
-      Entry.e 'a -> option Gramext.position ->
-        list
-          (option string * option Gramext.g_assoc *
-           list (list (Gramext.g_symbol te) * Gramext.g_action)) ->
-        unit;
-    value delete_rule : Entry.e 'a -> list (Gramext.g_symbol te) -> unit;
-  end
-  *)
-
   type coq_parsable
 
   val coq_parsable : ?file:Loc.source -> char Stream.t -> coq_parsable
   val entry_create : string -> 'a entry
   val entry_parse : 'a entry -> coq_parsable -> 'a
 
-  val comment_state : coq_parsable -> ((int * int) * string) list
+  val get_all_tokens : coq_parsable -> Tok.t list
 
 end with type 'a Entry.e = 'a Extend.entry = struct
 
   include Grammar.GMake(CLexer)
 
-  type coq_parsable = parsable * CLexer.lexer_state ref
+  type coq_parsable = parsable * (unit -> Tok.t list)
 
   let coq_parsable ?(file=Loc.ToplevelInput) c =
-    let state = ref (CLexer.init_lexer_state file) in
-    CLexer.set_lexer_state !state;
-    let a = parsable c in
-    state := CLexer.get_lexer_state ();
-    (a,state)
+    let f, get_log =
+      CLexer.make_lexer_func ~diff_mode:false ~log_tokens:!Flags.beautify
+        file in
+    let a = parsable f c in
+    (a,get_log)
 
   let entry_create = Entry.create
 
-  let entry_parse e (p,state) =
-    CLexer.set_lexer_state !state;
-    try
-      let c = Entry.parse e p in
-      state := CLexer.get_lexer_state ();
-      c
+  let entry_parse e (p,_) =
+    try Entry.parse e p
     with Ploc.Exc (loc,e) ->
-      CLexer.drop_lexer_state ();
       let loc' = Loc.get_loc (Exninfo.info e) in
       let loc = match loc' with None -> loc | Some loc -> loc in
       Loc.raise ~loc e
 
-  let comment_state (p,state) =
-    CLexer.get_comment_state !state
+  let get_all_tokens (_,get_log) = get_log ()
 
 end
 
@@ -101,7 +57,7 @@ module Parsable =
 struct
   type t = G.coq_parsable
   let make = G.coq_parsable
-  let comment_state = G.comment_state
+  let get_all_tokens = G.get_all_tokens
 end
 
 module Entry =
@@ -113,6 +69,7 @@ struct
   let parse = G.entry_parse
   let print = G.Entry.print
   let of_parser = G.Entry.of_parser
+  let of_lookahead = G.Entry.of_lookahead
   let name = G.Entry.name
   let parse_token_stream = G.Entry.parse_token_stream
 

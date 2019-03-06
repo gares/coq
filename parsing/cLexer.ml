@@ -16,6 +16,8 @@ open Gramlib
 (* Dictionaries: trees annotated with string options, each node being a map
    from chars to dictionaries (the subtrees). A trie, in other words. *)
 
+let debug_lexer = false
+
 module CharOrd = struct type t = char let compare : char -> char -> int = compare end
 module CharMap = Map.Make (CharOrd)
 
@@ -383,102 +385,40 @@ let rec string loc ~comm_level bp len s = match Stream.peek s with
      let loc = set_loc_pos loc bp ep in
      err loc Unterminated_string
 
-(* To associate locations to a file name *)
-let current_file = ref Loc.ToplevelInput
+let push_blank c (_, loc, b as x) = Buffer.add_char b c; x
+let push_blanks s (_, loc, b as x) = String.iter (Buffer.add_char b) s; x
 
-(* Utilities for comments in beautify *)
-let comment_begin = ref None
-let comm_loc bp = match !comment_begin with
-| None -> comment_begin := Some bp
-| _ -> ()
-
-let comments = ref []
-let current_comment = Buffer.create 8192
-let between_commands = ref true
-
-(* The state of the lexer visible from outside *)
-type lexer_state = int option * string * bool * ((int * int) * string) list * Loc.source
-
-let init_lexer_state f = (None,"",true,[],f)
-let set_lexer_state (o,s,b,c,f) =
-  comment_begin := o;
-  Buffer.clear current_comment; Buffer.add_string current_comment s;
-  between_commands := b;
-  comments := c;
-  current_file := f
-let get_lexer_state () =
-  (!comment_begin, Buffer.contents current_comment, !between_commands, !comments, !current_file)
-let drop_lexer_state () =
-    set_lexer_state (init_lexer_state Loc.ToplevelInput)
-
-let get_comment_state (_,_,_,c,_) = c
-
-let real_push_char c = Buffer.add_char current_comment c
-
-(* Add a char if it is between two commands, if it is a newline or
-   if the last char is not a space itself. *)
-let push_char c =
-  if
-    !between_commands || List.mem c ['\n';'\r'] ||
-    (List.mem c [' ';'\t']&&
-     (Int.equal (Buffer.length current_comment) 0 ||
-      not (let s = Buffer.contents current_comment in
-           List.mem s.[String.length s - 1] [' ';'\t';'\n';'\r'])))
-  then
-    real_push_char c
-
-let push_string s = Buffer.add_string current_comment s
-
-let null_comment s =
-  let rec null i =
-    i<0 || (List.mem s.[i] [' ';'\t';'\n';'\r'] && null (i-1)) in
-  null (String.length s - 1)
-
-let comment_stop ep =
-  let current_s = Buffer.contents current_comment in
-  (if !Flags.beautify && Buffer.length current_comment > 0 &&
-    (!between_commands || not(null_comment current_s)) then
-    let bp = match !comment_begin with
-        Some bp -> bp
-      | None ->
-          Feedback.msg_notice
-            (str "No begin location for comment '"
-             ++ str current_s ++str"' ending at  "
-             ++ int ep);
-          ep-1 in
-    comments := ((bp,ep),current_s) :: !comments);
-  Buffer.clear current_comment;
-  comment_begin := None;
-  between_commands := false
-
-let rec comment loc bp s =
+let rec comment loc bp cb s =
   let bp2 = Stream.count s in
   match Stream.peek s with
     Some '(' ->
       Stream.junk s;
-      let loc =
+      let cb, loc =
         try
           match Stream.peek s with
             Some '*' ->
               Stream.junk s;
-              push_string "(*"; comment loc bp s
-          | _ -> push_string "("; loc
+              let cb = push_blanks "(*" cb in
+              comment loc bp cb s
+          | _ -> push_blank '(' cb, loc
         with Stream.Failure -> raise (Stream.Error "")
       in
-      comment loc bp s
+      comment loc bp cb s
   | Some '*' ->
       Stream.junk s;
       begin try
         match Stream.peek s with
-          Some ')' -> Stream.junk s; push_string "*)"; loc
-        | _ -> real_push_char '*'; comment loc bp s
+          Some ')' -> Stream.junk s; push_blanks "*)" cb, loc
+        | _ -> let cb = push_blank '*' cb in comment loc bp cb s
       with Stream.Failure -> raise (Stream.Error "")
       end
   | Some '"' ->
       Stream.junk s;
       let loc, len = string loc ~comm_level:(Some 0) bp2 0 s in
-      push_string "\""; push_string (get_buff len); push_string "\"";
-      comment loc bp s
+      let cb = push_blank '"' cb in
+      let cb = push_blanks (get_buff len) cb in
+      let cb = push_blank '"' cb in
+      comment loc bp cb s
   | _ ->
     match try Some (Stream.empty s) with Stream.Failure -> None with
     | Some _ ->
@@ -490,10 +430,12 @@ let rec comment loc bp s =
             Some ('\n' as z) ->
               Stream.junk s;
               let ep = Stream.count s in
-              real_push_char z; comment (bump_loc_line loc ep) bp s
+              let cb = push_blank z cb in
+              comment (bump_loc_line loc ep) bp cb s
           | Some z ->
               Stream.junk s;
-              real_push_char z; comment loc bp s
+              let cb = push_blank z cb in
+              comment loc bp cb s
           | _ -> raise Stream.Failure
 
 (* Parse a special token, using the [token_tree] *)
@@ -507,7 +449,7 @@ let rec progress_further loc last nj tt cs =
 and update_longest_valid_token loc last nj tt cs =
   match tt.node with
   | Some _ as last' ->
-    stream_njunk nj cs;
+    Util.repeat nj Stream.junk cs;
     progress_further loc last' 0 tt cs
   | None ->
     progress_further loc last nj tt cs
@@ -539,27 +481,31 @@ let find_keyword loc id s =
   | None -> raise Not_found
   | Some c -> KEYWORD c
 
-let process_sequence loc bp c cs =
+let process_sequence pos loc bp c blanks_rev cs =
   let rec aux n cs =
     match Stream.peek cs with
     | Some c' when c == c' -> Stream.junk cs; aux (n+1) cs
-    | _ -> BULLET (String.make n c), set_loc_pos loc bp (Stream.count cs)
+    | _ ->
+       let ep = Stream.count cs in
+       Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~pos ~blanks_rev
+         (BULLET (String.make n c))
   in
   aux 1 cs
 
 (* Must be a special token *)
-let process_chars ~diff_mode loc bp c cs =
+let process_chars ~diff_mode pos loc bp c blanks_rev cs =
   let t = progress_from_byte loc None (-1) !token_tree cs c in
   let ep = Stream.count cs in
   match t with
-    | Some t -> (KEYWORD t, set_loc_pos loc bp ep)
+    | Some t ->
+        Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~pos ~blanks_rev (KEYWORD t)
     | None ->
         let ep' = bp + utf8_char_size loc cs c in
         if diff_mode then begin
           let len = ep' - bp in
           ignore (store 0 c);
           ignore (nstore (len - 1) 1 cs);
-          IDENT (get_buff len), set_loc_pos loc bp ep
+          Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~pos ~blanks_rev (IDENT (get_buff len))
         end else begin
           njunk (ep' - ep) cs;
           let loc = set_loc_pos loc bp ep' in
@@ -568,7 +514,8 @@ let process_chars ~diff_mode loc bp c cs =
 
 (* Parse what follows a dot *)
 
-let parse_after_dot ~diff_mode loc c bp s = match Stream.peek s with
+let parse_after_dot ~diff_mode pos loc c bp blanks_rev s =
+  match Stream.peek s with
   | Some ('a'..'z' | 'A'..'Z' | '_' as d) ->
       Stream.junk s;
       let len =
@@ -576,26 +523,35 @@ let parse_after_dot ~diff_mode loc c bp s = match Stream.peek s with
           Stream.Failure -> raise (Stream.Error "")
       in
       let field = get_buff len in
-      (try find_keyword loc ("."^field) s with Not_found -> FIELD field)
+      let ep = Stream.count s in
+      Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~pos ~blanks_rev
+        (try find_keyword loc ("."^field) s with Not_found -> (FIELD field))
   | _ ->
       match lookup_utf8 loc s with
       | Utf8Token (st, n) when Unicode.is_valid_ident_initial st ->
           let len = ident_tail loc (nstore n 0 s) s in
           let field = get_buff len in
-          (try find_keyword loc ("."^field) s with Not_found -> FIELD field)
-      | AsciiChar | Utf8Token _ | EmptyStream -> fst (process_chars ~diff_mode loc bp c s)
+          let ep = Stream.count s in
+          Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~pos ~blanks_rev
+            (try find_keyword loc ("."^field) s with Not_found -> (FIELD field))
+      | AsciiChar | Utf8Token _ | EmptyStream ->
+         process_chars ~diff_mode pos loc bp c blanks_rev s
 
 (* Parse what follows a question mark *)
 
-let parse_after_qmark ~diff_mode loc bp s =
+let parse_after_qmark ~diff_mode pos loc bp blanks_rev s =
+  let ep = Stream.count s in
   match Stream.peek s with
-    | Some ('a'..'z' | 'A'..'Z' | '_') -> LEFTQMARK
-    | None -> KEYWORD "?"
+    | Some ('a'..'z' | 'A'..'Z' | '_') ->
+        Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~pos  ~blanks_rev LEFTQMARK
+    | None ->
+        Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~pos  ~blanks_rev (KEYWORD "?")
     | _ ->
         match lookup_utf8 loc s with
-          | Utf8Token (st, _) when Unicode.is_valid_ident_initial st -> LEFTQMARK
+          | Utf8Token (st, _) when Unicode.is_valid_ident_initial st ->
+              Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~pos  ~blanks_rev LEFTQMARK
           | AsciiChar | Utf8Token _ | EmptyStream ->
-            fst (process_chars ~diff_mode loc bp '?' s)
+              process_chars ~diff_mode pos loc bp '?' blanks_rev s
 
 let blank_or_eof cs =
   match Stream.peek cs with
@@ -605,46 +561,63 @@ let blank_or_eof cs =
 
 (* Parse a token in a char stream *)
 
-let rec next_token ~diff_mode loc s =
+
+let mk_empty_cb bp = (false, bp, Buffer.create 60)
+let empty_cb bp b = Buffer.clear b; (false, bp, b)
+
+let push_comment (_, bp, b) = (true, bp, b)
+
+let commit_blank loc ep (bcomment, bp, chars) blanks_rev =
+  let loc = { loc with Loc.bp; ep} in
+  if Buffer.length chars == 0 then empty_cb ep chars, blanks_rev
+  else
+    let open Tok.Blank in
+    let data = Buffer.contents chars in
+    empty_cb ep chars,
+    if bcomment then { v = Comment data; loc } :: blanks_rev
+                else { v = Blanks data; loc } :: blanks_rev
+
+(* [cb] is the current blank with its initial location
+   [blanks_rev] is the list of blanks (rev order) so far *)
+let rec next_token ~diff_mode between_commands pos loc cb blanks_rev s =
   let bp = Stream.count s in
   match Stream.peek s with
   | Some ('\n' as c) ->
       Stream.junk s;
       let ep = Stream.count s in
-      comm_loc bp; push_char c; next_token ~diff_mode (bump_loc_line loc ep) s
+      let cb = push_blank c cb in
+      let loc = bump_loc_line loc ep in
+      next_token ~diff_mode between_commands pos loc cb blanks_rev s
   | Some (' ' | '\t' | '\r' as c) ->
       Stream.junk s;
-      comm_loc bp; push_char c; next_token ~diff_mode loc s
+      let cb = push_blank c cb in
+      next_token ~diff_mode between_commands pos loc cb blanks_rev s
   | Some ('.' as c) ->
       Stream.junk s;
+      let _, blanks_rev = commit_blank loc bp cb blanks_rev in
       let t =
-        try parse_after_dot ~diff_mode loc c bp s with
+        try parse_after_dot ~diff_mode pos loc c bp blanks_rev s with
           Stream.Failure -> raise (Stream.Error "")
       in
       let ep = Stream.count s in
-      comment_stop bp;
       (* We enforce that "." should either be part of a larger keyword,
          for instance ".(", or followed by a blank or eof. *)
-      let () = match t with
+      let () = match t.Tok.v with
       | KEYWORD ("." | "...") ->
         if not (blank_or_eof s) then
 	  err (set_loc_pos loc bp (ep+1)) Undefined_token;
-	between_commands := true;
       | _ -> ()
       in
-      t, set_loc_pos loc bp ep
+      t
   | Some ('-' | '+' | '*' as c) ->
       Stream.junk s;
-      let t,new_between_commands =
-        if !between_commands then process_sequence loc bp c s, true
-        else process_chars ~diff_mode loc bp c s,false
-      in
-      comment_stop bp; between_commands := new_between_commands; t
+      let _, blanks_rev = commit_blank loc bp cb blanks_rev in
+      if between_commands then process_sequence pos loc bp c blanks_rev s
+      else process_chars ~diff_mode pos loc bp c blanks_rev s
   | Some '?' ->
       Stream.junk s;
-      let ep = Stream.count s in
-      let t = parse_after_qmark ~diff_mode loc bp s in
-      comment_stop bp; (t, set_loc_pos loc bp ep)
+      let _, blanks_rev = commit_blank loc bp cb blanks_rev in
+      parse_after_qmark ~diff_mode pos loc bp blanks_rev s
   | Some ('a'..'z' | 'A'..'Z' | '_' as c) ->
       Stream.junk s;
       let len =
@@ -653,8 +626,9 @@ let rec next_token ~diff_mode loc s =
       in
       let ep = Stream.count s in
       let id = get_buff len in
-      comment_stop bp;
-      (try find_keyword loc id s with Not_found -> IDENT id), set_loc_pos loc bp ep
+      let _, blanks_rev = commit_blank loc bp cb blanks_rev in
+      Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~pos ~blanks_rev
+        (try find_keyword loc id s with Not_found -> IDENT id)
   | Some ('0'..'9' as c) ->
       Stream.junk s;
       let len =
@@ -662,8 +636,9 @@ let rec next_token ~diff_mode loc s =
           Stream.Failure -> raise (Stream.Error "")
       in
       let ep = Stream.count s in
-      comment_stop bp;
-      (INT (get_buff len), set_loc_pos loc bp ep)
+      let _, blanks_rev = commit_blank loc bp cb blanks_rev in
+      Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~blanks_rev ~pos
+        (INT (get_buff len))
   | Some '\"' ->
       Stream.junk s;
       let (loc, len) =
@@ -671,8 +646,9 @@ let rec next_token ~diff_mode loc s =
           Stream.Failure -> raise (Stream.Error "")
       in
       let ep = Stream.count s in
-      comment_stop bp;
-      (STRING (get_buff len), set_loc_pos loc bp ep)
+      let _, blanks_rev = commit_blank loc bp cb blanks_rev in
+      Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~blanks_rev ~pos
+        (STRING (get_buff len))
   | Some ('(' as c) ->
       Stream.junk s;
       begin try
@@ -680,54 +656,51 @@ let rec next_token ~diff_mode loc s =
         | Some '*' when diff_mode ->
             Stream.junk s;
             let ep = Stream.count s in
-            (IDENT "(*", set_loc_pos loc bp ep)
+            let _, blanks_rev = commit_blank loc bp cb blanks_rev in
+            Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~blanks_rev ~pos
+              (IDENT "(*")
         | Some '*' ->
             Stream.junk s;
-            comm_loc bp;
-            push_string "(*";
-            let loc = comment loc bp s in next_token ~diff_mode loc s
-        | _ -> let t = process_chars ~diff_mode loc bp c s in comment_stop bp; t
+            let cb, blanks_rev = commit_blank loc bp cb blanks_rev in
+            let cb = push_comment cb in
+            let cb = push_blanks "(*" cb in
+            let cb, loc = comment loc bp cb s in
+            let cb, blanks_rev = commit_blank loc (Stream.count s) cb blanks_rev in
+            next_token ~diff_mode between_commands pos loc cb blanks_rev s
+        | _ ->
+            let _, blanks_rev = commit_blank loc bp cb blanks_rev in
+            process_chars ~diff_mode pos loc bp c blanks_rev s
       with Stream.Failure -> raise (Stream.Error "")
       end
   | Some ('{' | '}' as c) ->
       Stream.junk s;
-      let ep = Stream.count s in
-      let t,new_between_commands =
-        if !between_commands then (KEYWORD (String.make 1 c), set_loc_pos loc bp ep), true
-        else process_chars ~diff_mode loc bp c s, false
-      in
-      comment_stop bp; between_commands := new_between_commands; t
+      let _, blanks_rev = commit_blank loc bp cb blanks_rev in
+      if between_commands then
+        let ep = Stream.count s in
+        Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~pos ~blanks_rev
+          (KEYWORD (String.make 1 c))
+      else
+        process_chars ~diff_mode pos loc bp c blanks_rev s
   | _ ->
       match lookup_utf8 loc s with
         | Utf8Token (st, n) when Unicode.is_valid_ident_initial st ->
             let len = ident_tail loc (nstore n 0 s) s in
             let id = get_buff len in
             let ep = Stream.count s in
-            comment_stop bp;
-            (try find_keyword loc id s with Not_found -> IDENT id), set_loc_pos loc bp ep
+            let _, blanks_rev = commit_blank loc bp cb blanks_rev in
+            let k = try find_keyword loc id s with Not_found -> IDENT id in
+            Tok.mk_token ~loc:(set_loc_pos loc bp ep) ~pos ~blanks_rev k
         | AsciiChar | Utf8Token _ ->
-            let t = process_chars ~diff_mode loc bp (Stream.next s) s in
-            comment_stop bp; t
+            let _, blanks_rev = commit_blank loc bp cb blanks_rev in
+            process_chars ~diff_mode pos loc bp (Stream.next s) blanks_rev s
         | EmptyStream ->
-            comment_stop bp; (EOI, set_loc_pos loc bp (bp+1))
+            let _, blanks_rev = commit_blank loc bp cb blanks_rev in
+            Tok.mk_token ~loc:(set_loc_pos loc bp (bp+1)) ~blanks_rev ~pos EOI
 
-(* (* Debug: uncomment this for tracing tokens seen by coq...*)
-let next_token ~diff_mode loc s =
-  let (t,loc as r) = next_token ~diff_mode loc s in
-  Printf.eprintf "(line %i, %i-%i)[%s]\n%!" (Ploc.line_nb loc) (Ploc.first_pos loc) (Ploc.last_pos loc) (Tok.to_string t);
-  r *)
-
-(* Location table system for creating tables associating a token count
-   to its location in a char stream (the source) *)
-
-let locerr () = invalid_arg "Lexer: location function"
-
-let loct_create () = Hashtbl.create 207
-
-let loct_func loct i =
-  try Hashtbl.find loct i with Not_found -> locerr ()
-
-let loct_add loct i loc = Hashtbl.add loct i loc
+let next_token ~diff_mode between_commands pos loc cb bs s =
+  let t = next_token ~diff_mode between_commands pos loc cb bs s in
+  if debug_lexer then Printf.eprintf "%s\n\n%!" (Tok.to_string t);
+  t
 
 (** {6 The lexer of Coq} *)
 
@@ -740,43 +713,77 @@ let loct_add loct i loc = Hashtbl.add loct i loc
    lexer. B.B. *)
 
 type te = Tok.t
+let loc_of { Tok.loc } = loc
+let to_string { Tok.v } = Tok.to_string_kind v
 
 (** Names of tokens, for this lexer, used in Grammar error messages *)
 
 let token_text = function
-  | ("", t) -> "'" ^ t ^ "'"
-  | ("IDENT", "") -> "identifier"
-  | ("IDENT", t) -> "'" ^ t ^ "'"
-  | ("INT", "") -> "integer"
-  | ("INT", s) -> "'" ^ s ^ "'"
-  | ("STRING", "") -> "string"
-  | ("EOI", "") -> "end of input"
-  | (con, "") -> con
-  | (con, prm) -> con ^ " \"" ^ prm ^ "\""
+  | ("", Some t) -> "'" ^ t ^ "'"
+  | ("IDENT", None) -> "identifier"
+  | ("IDENT", Some t) -> "'" ^ t ^ "'"
+  | ("INT", None) -> "integer"
+  | ("INT", Some s) -> "'" ^ s ^ "'"
+  | ("STRING", None) -> "string"
+  | ("EOI", None) -> "end of input"
+  | (con, None) -> con
+  | (con, Some prm) -> con ^ " \"" ^ prm ^ "\""
 
-let func next_token cs =
-  let loct = loct_create () in
-  let cur_loc = ref (Loc.create !current_file 1 0 0 0) in
-  let ts =
+
+let make_lexer_func ~diff_mode ~log_tokens current_file =
+  let cur_loc = ref (Loc.create current_file 1 0 0 0) in
+  let between_commands = ref true in
+  let log = ref [] in
+  begin fun cs ->
     Stream.from
       (fun i ->
-         let (tok, loc) = next_token !cur_loc cs in
-	 cur_loc := after loc;
-         loct_add loct i loc; Some tok)
-  in
-  (ts, loct_func loct)
+         let tok = next_token ~diff_mode !between_commands i !cur_loc
+                     (mk_empty_cb !cur_loc.Loc.ep) [] cs in
+         cur_loc := after tok.Tok.loc;
+         (* We keep all tags since the beautifiers needs to recover
+            blanks/comments *)
+         if log_tokens then log := tok :: !log;
+         (* The lexer is *stateful*, in particular { and - + * are
+            not parsed the same between commands (BULLETS and KEYWORD "{")
+            or elsewhere (notations may glue "{{" into a single KEYWORD) *)
+         between_commands :=
+           begin match tok.Tok.v with
+           | BULLET _  | KEYWORD ("."|"...") -> true
+           | KEYWORD ("{"|"}") -> !between_commands
+           | _ -> false end;
+         Some tok)
+  end, begin fun () ->
+    !log
+  end
 
-let make_lexer ~diff_mode = {
-  Plexing.tok_func = func (next_token ~diff_mode);
+let assert_contiguous l1 l2 t =
+  (* Declare ML Module seems to "parse" and obtains tons of EOI
+     that we have to skip *)
+  if l1.Loc.ep != l2.Loc.bp && t.Tok.v <> Tok.EOI then begin
+    Printf.eprintf "Hole at %s" (Tok.to_string t);
+    exit 1
+  end
+
+let rec _test_tokens loc l =
+  match l with
+  | [] -> ()
+  | { Tok.blanks_before = b::rest } as tok :: tl ->
+      let { Tok.Blank.loc = next } = b in
+      assert_contiguous loc next tok;
+      _test_tokens next ({tok with Tok.blanks_before = rest} :: tl)
+  | { Tok.blanks_before = []; loc = next } as tok :: rest ->
+      assert_contiguous loc next tok;
+      _test_tokens next rest
+
+let lexer = {
   Plexing.tok_using =
-    (fun pat -> match Tok.of_pattern pat with
-       | KEYWORD s -> add_keyword s
-       | _ -> ());
+    (fun pat -> match Tok.is_keyword pat with
+       | Some s -> add_keyword s
+       | None -> ());
   Plexing.tok_removing = (fun _ -> ());
   Plexing.tok_match = Tok.match_pattern;
-  Plexing.tok_text = token_text }
-
-let lexer = make_lexer ~diff_mode:false
+  Plexing.tok_text = token_text;
+}
 
 (** Terminal symbols interpretation *)
 

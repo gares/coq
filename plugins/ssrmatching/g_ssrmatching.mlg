@@ -66,10 +66,10 @@ END
 
 {
 
-let input_ssrtermkind strm = match Util.stream_nth 0 strm with
-  | Tok.KEYWORD "(" -> '('
-  | Tok.KEYWORD "@" -> '@'
-  | _ -> ' '
+let input_ssrtermkind first_token strm = match Util.stream_nth 0 strm with
+  | { Tok.v = Tok.KEYWORD "(" } -> '(', first_token
+  | { Tok.v = Tok.KEYWORD "@" } -> '@', first_token
+  | _ -> ' ', first_token
 let ssrtermkind = Pcoq.Entry.of_parser "ssrtermkind" input_ssrtermkind
 
 }

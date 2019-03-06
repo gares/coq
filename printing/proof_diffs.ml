@@ -80,21 +80,18 @@ let tokenize_string s =
   it never gets cleared. *)
   let rec stream_tok acc str =
     let e = Stream.next str in
-    if Tok.(equal e EOI) then
+    if e.Tok.v == Tok.EOI then
       List.rev acc
     else
       stream_tok ((Tok.extract_string true e) :: acc) str
   in
-  let st = CLexer.get_lexer_state () in
   try
     let istr = Stream.of_string s in
-    let lexer = CLexer.make_lexer ~diff_mode:true in
-    let lex = lexer.Gramlib.Plexing.tok_func istr in
-    let toks = stream_tok [] (fst lex) in
-    CLexer.set_lexer_state st;
+    let lexer, _ = CLexer.make_lexer_func ~diff_mode:true ~log_tokens:false Loc.ToplevelInput in
+    let lex = lexer istr in
+    let toks = stream_tok [] lex in
     toks
   with exn ->
-    CLexer.set_lexer_state st;
     raise (Diff_Failure "Input string is not lexable");;
 
 

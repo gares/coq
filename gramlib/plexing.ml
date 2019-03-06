@@ -4,13 +4,17 @@
 
 type pattern = string * string option
 
-type location_function = int -> Loc.t
-type 'te lexer_func = char Stream.t -> 'te Stream.t * location_function
+let to_string_pattern = function
+  | k, None -> k^"(_)"
+  | k, Some v -> k^"(\""^v^"\")"
+
+type 'te lexer_func = char Stream.t -> 'te Stream.t
 
 type 'te lexer =
-  { tok_func : 'te lexer_func;
+  {
     tok_using : pattern -> unit;
     tok_removing : pattern -> unit;
     tok_match : pattern -> 'te -> string;
     tok_text : pattern -> string;
   }
+

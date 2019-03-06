@@ -514,10 +514,10 @@ END
 {
 
 let only_starredidentrefs =
-  Pcoq.Entry.of_parser "test_only_starredidentrefs"
+  Pcoq.Entry.of_lookahead "test_only_starredidentrefs"
     (fun strm ->
       let rec aux n =
-      match Util.stream_nth n strm with
+      match (stream_nth n strm).v with
         | KEYWORD "." -> ()
         | KEYWORD ")" -> ()
         | (IDENT _ | KEYWORD "Type" | KEYWORD "*") -> aux (n+1)

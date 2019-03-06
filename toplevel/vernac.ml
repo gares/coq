@@ -102,7 +102,7 @@ let load_vernac_core ~echo ~check ~interactive ~state file =
     with
     | None ->
       input_cleanup ();
-      state, ids, Pcoq.Parsable.comment_state in_pa
+      state, ids, Pcoq.Parsable.get_all_tokens in_pa
     | Some ast ->
       (* Printing of AST for -compile-verbose *)
       Option.iter (vernac_echo ?loc:ast.CAst.loc) in_echo;
@@ -150,7 +150,14 @@ let pr_new_syntax ?loc ft_beautify ocom =
     Feedback.msg_info (hov 4 (str"New Syntax:" ++ fnl() ++ (hov 0 com)))
 
 (* load_vernac with beautify *)
-let beautify_pass ~doc ~comments ~ids ~filename =
+let beautify_pass ~doc ~all_tokens ~ids ~filename =
+  let comments =
+    all_tokens |> List.map (fun { Tok.blanks_before = bl } ->
+      bl |> CList.map_filter (function
+            | { Tok.Blank.v = Tok.Blank.Comment s; loc } ->
+                Some ((loc.Loc.bp, loc.Loc.ep),s)
+            | _ -> None))
+      |> List.flatten in
   let ft_beautify, close_beautify =
     if !Flags.beautify_file then
       let chan_beautify = open_out (filename^beautify_suffix) in
@@ -174,8 +181,9 @@ let beautify_pass ~doc ~comments ~ids ~filename =
 (* Main driver for file loading. For now, we only do one beautify
    pass. *)
 let load_vernac ~echo ~check ~interactive ~state filename =
-  let ostate, ids, comments = load_vernac_core ~echo ~check ~interactive ~state filename in
+  let ostate, ids, all_tokens = load_vernac_core ~echo ~check ~interactive ~state filename in
   (* Pass for beautify *)
-  if !Flags.beautify then beautify_pass ~doc:ostate.State.doc ~comments ~ids:List.(rev ids) ~filename;
+  if !Flags.beautify then
+    beautify_pass ~doc:ostate.State.doc ~all_tokens ~ids:List.(rev ids) ~filename;
   (* End pass *)
   ostate

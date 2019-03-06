@@ -36,10 +36,12 @@ let _ = List.iter CLexer.add_keyword tactic_kw
 
 let err () = raise Stream.Failure
 
+let stream_nth n s = (Util.stream_nth n s).v
+
 (* Hack to parse "(x:=t)" as an explicit argument without conflicts with the *)
 (* admissible notation "(x t)" *)
 let test_lpar_id_coloneq =
-  Pcoq.Entry.of_parser "lpar_id_coloneq"
+  Pcoq.Entry.of_lookahead "lpar_id_coloneq"
     (fun strm ->
       match stream_nth 0 strm with
         | KEYWORD "(" ->
@@ -53,7 +55,7 @@ let test_lpar_id_coloneq =
 
 (* Hack to recognize "(x)" *)
 let test_lpar_id_rpar =
-  Pcoq.Entry.of_parser "lpar_id_coloneq"
+  Pcoq.Entry.of_lookahead "lpar_id_coloneq"
     (fun strm ->
       match stream_nth 0 strm with
         | KEYWORD "(" ->
@@ -67,7 +69,7 @@ let test_lpar_id_rpar =
 
 (* idem for (x:=t) and (1:=t) *)
 let test_lpar_idnum_coloneq =
-  Pcoq.Entry.of_parser "test_lpar_idnum_coloneq"
+  Pcoq.Entry.of_lookahead "test_lpar_idnum_coloneq"
     (fun strm ->
       match stream_nth 0 strm with
         | KEYWORD "(" ->
@@ -84,21 +86,21 @@ open Extraargs
 
 (* idem for (x1..xn:t) [n^2 complexity but exceptional use] *)
 let check_for_coloneq =
-  Pcoq.Entry.of_parser "lpar_id_colon"
+  Pcoq.Entry.of_lookahead "lpar_id_colon"
     (fun strm ->
       let rec skip_to_rpar p n =
-	match List.last (Stream.npeek n strm) with
+        match stream_nth (n-1) strm with
         | KEYWORD "(" -> skip_to_rpar (p+1) (n+1)
         | KEYWORD ")" -> if Int.equal p 0 then n+1 else skip_to_rpar (p-1) (n+1)
 	| KEYWORD "." -> err ()
 	| _ -> skip_to_rpar p (n+1) in
       let rec skip_names n =
-	match List.last (Stream.npeek n strm) with
+        match stream_nth (n-1) strm with
         | IDENT _ | KEYWORD "_" -> skip_names (n+1)
 	| KEYWORD ":" -> skip_to_rpar 0 (n+1) (* skip a constr *)
 	| _ -> err () in
       let rec skip_binders n =
-	match List.last (Stream.npeek n strm) with
+        match stream_nth (n-1) strm with
         | KEYWORD "(" -> skip_binders (skip_names (n+1))
         | IDENT _ | KEYWORD "_" -> skip_binders (n+1)
 	| KEYWORD ":=" -> ()
@@ -108,7 +110,7 @@ let check_for_coloneq =
       | _ -> err ())
 
 let lookup_at_as_comma =
-  Pcoq.Entry.of_parser "lookup_at_as_comma"
+  Pcoq.Entry.of_lookahead "lookup_at_as_comma"
     (fun strm ->
       match stream_nth 0 strm with
 	| KEYWORD (","|"at"|"as") -> ()

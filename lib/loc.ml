@@ -24,6 +24,10 @@ type t = {
   ep : int; (** end position *)
 }
 
+let to_string { fname; line_nb; bp; ep; _ } =
+  let fname = match fname with ToplevelInput -> "stdin" | InFile s -> s in
+  Printf.sprintf "%s:%d(%d-%d)" fname line_nb bp ep
+
 let create fname line_nb bol_pos bp ep = {
   fname = fname; line_nb = line_nb; bol_pos = bol_pos;
   line_nb_last = line_nb; bol_pos_last = bol_pos; bp = bp; ep = ep;

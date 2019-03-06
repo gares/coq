@@ -24,6 +24,8 @@ type t = {
   ep : int; (** end position *)
 }
 
+val to_string : t -> string
+
 (** {5 Location manipulation} *)
 
 (** This is inherited from CAMPL4/5. *)

@@ -241,12 +241,12 @@ let set_prompt prompt =
 
 (* Read the input stream until a dot is encountered *)
 let parse_to_dot =
-  let rec dot st = match Stream.next st with
+  let rec dot st = match (Stream.next st).Tok.v with
     | Tok.KEYWORD ("."|"...") -> ()
     | Tok.EOI -> ()
     | _ -> dot st
   in
-  Pcoq.Entry.of_parser "Coqtoplevel.dot" dot
+  Pcoq.Entry.of_lookahead "Coqtoplevel.dot" dot
 
 (* If an error occurred while parsing, we try to read the input until a dot
    token is encountered.
