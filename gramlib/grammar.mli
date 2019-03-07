@@ -37,7 +37,10 @@ module type S =
         val create : string -> 'a e
         val parse : 'a e -> parsable -> 'a
         val name : 'a e -> string
-        val of_parser : string -> (te Stream.t -> 'a) -> 'a e
+        val of_lookahead : string -> (te Stream.t -> unit) -> unit e
+        type 'a parser_t =
+          te option -> te Stream.t -> 'a * te option
+        val of_parser : string -> 'a parser_t -> 'a e
         val parse_token_stream : 'a e -> te Stream.t -> 'a
         val print : Format.formatter -> 'a e -> unit
       end
