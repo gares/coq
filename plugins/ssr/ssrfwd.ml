@@ -359,25 +359,25 @@ let intro_lock ipats =
        end)
     end
   in
-  (Option.cata Ssripats.tclIPATssr (Proofview.tclUNIT ()) ipats) <*> lock_eq ()
+  Ssripats.tclIPATssr ipats <*> lock_eq ()
 
 let pretty_rename evar_map term varnames =
-  let rec aux term = function
-  | [] -> term
-  | Names.Name.Anonymous :: varnames ->
-      let name, types, body = EConstr.destLambda evar_map term in
-      let res = aux body varnames in
-      EConstr.mkLambda (name, types, res)
-  | Names.Name.Name _ as name :: varnames ->
-      let { Context.binder_relevance = r }, types, body =
-        EConstr.destLambda evar_map term in
-      let res = aux body varnames in
-      EConstr.mkLambda (Context.make_annot name r, types, res)
+  let rec aux term vars =
+    try
+      match vars with
+      | [] -> term
+      | Names.Name.Anonymous :: varnames ->
+          let name, types, body = EConstr.destLambda evar_map term in
+          let res = aux body varnames in
+          EConstr.mkLambda (name, types, res)
+      | Names.Name.Name _ as name :: varnames ->
+          let { Context.binder_relevance = r }, types, body =
+            EConstr.destLambda evar_map term in
+          let res = aux body varnames in
+          EConstr.mkLambda (Context.make_annot name r, types, res)
+    with DestKO -> term
   in
-     try aux term varnames with
-     | DestKO ->
-        ppdebug(lazy Pp.(str"under: cannot pretty-rename all bound variables with destLambda"));
-        term
+    aux term varnames
 
 let overtac = Proofview.V82.tactic (ssr_n_tac "over" ~-1)
 
@@ -405,14 +405,25 @@ let undertac ist ipats ((dir,_),_ as rule) hint =
       | _ -> List.rev acc in
     aux [] (Option.default [] ipats) in
 
+  (* If we find a "=> [|]" we add 1 | to get "=> [||]" for the extra
+   * goal (the one that is left once we run over) *)
+  let ipats =
+    match ipats with
+    | None -> [IPatNoop]
+    | Some (IPatCase(Regular []) :: _ as ipats) -> ipats 
+    | Some (IPatCase(Regular l) :: rest) -> IPatCase(Regular(l @ [[]])) :: rest
+    | Some (IPatCase(Block _) :: _ as l) -> l
+    | Some l -> [IPatCase(Regular [l;[]])] in
+
   let map_redex env evar_map ~before:_ ~after:t =
     ppdebug(lazy Pp.(str"under vars: " ++ prlist Names.Name.print varnames));
-    ppdebug(lazy Pp.(str"under: mapping:" ++ pr_econstr_env env evar_map t));
 
     let evar_map, ty = Typing.type_of env evar_map t in
     let new_t = (* pretty-rename the bound variables *)
       try begin match EConstr.destApp evar_map t with (f, ar) ->
             let lam = Array.last ar in
+            ppdebug(lazy Pp.(str"under: mapping:" ++
+                             pr_econstr_env env evar_map lam));
             let new_lam = pretty_rename evar_map lam varnames in
             let new_ar, len1 = Array.copy ar, pred (Array.length ar) in
             new_ar.(len1) <- new_lam;
@@ -442,4 +453,8 @@ let undertac ist ipats ((dir,_),_ as rule) hint =
               (if hint = nullhint then [None] else snd hint))
            @ [betaiota])
   in
-  (Proofview.V82.tactic (Ssrequality.ssrrewritetac ~under:true ~map_redex ist [rule]) <*> Tacticals.New.tclTRY (intro_lock ipats) <*> undertacs)
+  let rew =
+    Proofview.V82.tactic
+      (Ssrequality.ssrrewritetac ~under:true ~map_redex ist [rule])
+  in
+  rew <*> intro_lock ipats <*> undertacs
