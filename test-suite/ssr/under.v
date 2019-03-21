@@ -86,12 +86,14 @@ Lemma test_big_nested_1 (F G : nat -> nat) (m n : nat) :
   \sum_(0 <= i < m) \sum_(0 <= j < n | odd j) (j + i).
 Proof.
 (* in interactive mode *)
-under i Hi: eq_bigr.
-  under j Hj: eq_big.
+Set Debug Ssreflect.
+under eq_bigr => i Hi.
+  under eq_big => [j|j Hj].
   { rewrite muln1. over. }
   { rewrite addnC. over. }
+(* MISSING BETA *)
   over.
-done.
+by [].
 Qed.
 
 Lemma test_big_nested_2 (F G : nat -> nat) (m n : nat) :
@@ -99,7 +101,8 @@ Lemma test_big_nested_2 (F G : nat -> nat) (m n : nat) :
   \sum_(0 <= i < m) \sum_(0 <= j < n | odd j) (j + i).
 Proof.
 (* in one-liner mode *)
-under i Hi: eq_bigr by under j Hj: eq_big by [rewrite muln1 | rewrite addnC].
+TODO: parse a do with [|] and not a single tac...
+under eq_bigr => i Hi do under eq_big => j do [rewrite muln1 | (move=> Hj; rewrite addnC) ].
 done.
 Qed.
 

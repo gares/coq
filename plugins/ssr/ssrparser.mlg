@@ -2650,9 +2650,32 @@ TACTIC EXTEND ssrgenhave2
     V82.tactic (wlogtac ist pats fwd hint false (`Gen id)) }
 END
 
+{
+
+let check_under_arg ((_dir,mult),((_occ,_rpattern),_rule)) =
+  if mult <> nomult then
+    CErrors.user_err Pp.(str"under does not support multipliers")
+
+}
+
+
 TACTIC EXTEND under
-  | [ "under" ne_ident_list(names) ":" ssrrwarg(r) ssrhint(hint) ] ->
-    { Ssrfwd.undertac ist names r hint }
+  | [ "under" ssrrwarg(arg) ] -> {
+    check_under_arg arg;
+    Ssrfwd.undertac ist None arg nohint
+    }
+  | [ "under" ssrrwarg(arg) ssrintros_ne(ipats) ] -> {
+    check_under_arg arg;
+    Ssrfwd.undertac ist (Some ipats) arg nohint
+    }
+  | [ "under" ssrrwarg(arg) ssrintros_ne(ipats) "do" ssrtacarg(t) ] -> {
+    check_under_arg arg;
+    Ssrfwd.undertac ist (Some ipats) arg (mk_hint t)
+    }
+  | [ "under" ssrrwarg(arg) "do" ssrtacarg(t) ] -> { (* implicit "=> *" *)
+    check_under_arg arg;
+    Ssrfwd.undertac ist (Some [IPatAnon All]) arg (mk_hint t)
+    }
 END
 
 {
