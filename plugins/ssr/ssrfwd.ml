@@ -340,7 +340,8 @@ let rec intro_lock names = Proofview.Goal.enter begin fun gl ->
  let rec aux c =
   match EConstr.kind_of_type sigma c with
   | Term.SortType _ -> Proofview.tclUNIT ()
-  | (Term.ProdType (name,_,t) | Term.LetInType (name,_,_,t)) ->
+  | ( Term.ProdType ({ Context.binder_name = name },_,t)
+    | Term.LetInType ({ Context.binder_name = name },_,_,t) ) ->
       begin match names with
       | n :: names -> Ssripats.(tclIPAT @@ [Ssripats.IOpId n]) <*> intro_lock names
       | [] ->
@@ -380,11 +381,13 @@ end
 let rec pretty_rename evar_map term = function
   | [] -> term
   | varname :: varnames ->
-     try begin match EConstr.destLambda evar_map term with (_, types, body) ->
+     try begin
+       match EConstr.destLambda evar_map term
+       with ({ Context.binder_relevance = r }, types, body) ->
            let res = pretty_rename evar_map body varnames in
            let name = Names.Name.mk_name varname in
            (* Note: we don't explicitly check name \notin free_vars(res) here *)
-           EConstr.mkLambda (name, types, res)
+           EConstr.mkLambda (Context.make_annot name r, types, res)
          end
      with
      | DestKO ->
