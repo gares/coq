@@ -99,9 +99,12 @@ val new_doc  : stm_init_options -> doc * Stateid.t
     [sid] and non terminal [entry]. [entry] receives in input the current proof
     mode. [sid] should be associated with a valid parsing state (which may not
     be the case if an error was raised at parsing time). *)
-val parse_sentence :
-  doc:doc -> Stateid.t ->
-  entry:(Pvernac.proof_mode option -> 'a Pcoq.Entry.t) -> Pcoq.Parsable.t -> 'a
+type parsed_ast = private { ontop : Stateid.t; ast : Vernacexpr.vernac_control; next_parsing_state : Vernacstate.Parser.state; next_modtab_state : unit }
+type 'a parsed_toplevel_vernac = Vernac of parsed_ast | Toplevel of 'a
+val parse_sentence : (* could be moved outside of STM *)
+  doc:doc -> ontop:Stateid.t ->
+  entry:(Pvernac.proof_mode option -> 'a parsed_toplevel_vernac Pcoq.Entry.t) -> Pcoq.Parsable.t -> 'a parsed_toplevel_vernac
+
 
 (* Reminder: A parsable [pa] is constructed using
    [Pcoq.Parsable.t stream], where [stream : char Stream.t]. *)
@@ -112,8 +115,8 @@ val parse_sentence :
    sync, but it will eventually call edit_at on the fly if needed.
    If [newtip] is provided, then the returned state id is guaranteed
    to be [newtip] *)
-val add : doc:doc -> ontop:Stateid.t -> ?newtip:Stateid.t ->
-  bool -> Vernacexpr.vernac_control ->
+val add : doc:doc -> ?newtip:Stateid.t ->
+  bool -> parsed_ast ->
   doc * Stateid.t * [ `NewTip | `Unfocus of Stateid.t ]
 
 (* Returns the proof state before the last tactic that was applied at or before
