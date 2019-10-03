@@ -146,3 +146,9 @@ module Internal : sig
   val shrink_entry : EConstr.named_context -> 'a proof_entry -> 'a proof_entry * Constr.constr list
 
 end
+
+type opaque_body =
+| OpaqueDefined of Safe_typing.private_constants Entries.const_entry_body
+| OpaquePrivate of (Constr.t * Univ.ContextSet.t Opaqueproof.delayed_universes)
+
+val declare_opaque_hook : (Opaqueproof.opaque_id -> opaque_body -> unit) Hook.t

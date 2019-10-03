@@ -223,7 +223,7 @@ let cast_proof_entry e =
   }
 
 type ('a, 'b) effect_entry =
-| EffectEntry : (private_constants, private_constants Entries.const_entry_body) effect_entry
+| EffectEntry : (private_constants, unit) effect_entry
 | PureEntry : (unit, Constr.constr) effect_entry
 
 let cast_opaque_proof_entry (type a b) (entry : (a, b) effect_entry) (e : a proof_entry) : b opaque_entry =
@@ -266,7 +266,7 @@ let cast_opaque_proof_entry (type a b) (entry : (a, b) effect_entry) (e : a proo
       e.proof_entry_universes
     in
     body, univs
-  | EffectEntry -> e.proof_entry_body, e.proof_entry_universes
+  | EffectEntry -> (), e.proof_entry_universes
   in
   {
     opaque_entry_body = body;
@@ -289,9 +289,15 @@ let is_unsafe_typing_flags () =
   let flags = Environ.typing_flags (Global.env()) in
   not (flags.check_universes && flags.check_guarded && flags.check_positive)
 
+type opaque_body =
+| OpaqueDefined of Safe_typing.private_constants Entries.const_entry_body
+| OpaquePrivate of (Constr.t * Univ.ContextSet.t Opaqueproof.delayed_universes)
+
+let (declare_opaque, declare_opaque_hook) = Hook.make ()
+
 let define_constant ~name cd =
   (* Logically define the constant and its subproofs, no libobject tampering *)
-  let export, decl, unsafe = match cd with
+  let export, decl, unsafe, delayed = match cd with
   | DefinitionEntry de ->
     (* We deal with side effects *)
     if not de.proof_entry_opaque then
@@ -301,40 +307,59 @@ let define_constant ~name cd =
       let export = get_roles export eff in
       let de = { de with proof_entry_body = Future.from_val (body, ()) } in
       let cd = Entries.DefinitionEntry (cast_proof_entry de) in
-      export, ConstantEntry cd, false
+      export, ConstantEntry cd, false, None
     else
       let map (body, eff) = body, eff.Evd.seff_private in
       let body = Future.chain de.proof_entry_body map in
       let de = { de with proof_entry_body = body } in
       let de = cast_opaque_proof_entry EffectEntry de in
-      [], OpaqueEntry de, false
+      [], OpaqueEntry de, false, Some body
   | ParameterEntry e ->
-    [], ConstantEntry (Entries.ParameterEntry e), not (Lib.is_modtype_strict())
+    [], ConstantEntry (Entries.ParameterEntry e), not (Lib.is_modtype_strict()), None
   | PrimitiveEntry e ->
-    [], ConstantEntry (Entries.PrimitiveEntry e), false
+    [], ConstantEntry (Entries.PrimitiveEntry e), false, None
   in
   let kn = Global.add_constant name decl in
   if unsafe || is_unsafe_typing_flags() then feedback_axiom();
-  kn, export
+  kn, export, delayed
 
 let declare_constant ?(local = ImportDefaultBehavior) ~name ~kind cd =
   let () = check_exists name in
-  let kn, export = define_constant ~name cd in
+  let kn, export, delayed = define_constant ~name cd in
   (* Register the libobjects attached to the constants and its subproofs *)
+  let () = match delayed with
+  | None -> ()
+  | Some body ->
+    match (Global.lookup_constant kn).const_body with
+    | OpaqueDef o ->
+      let (_, _, _, i) = Opaqueproof.repr o in
+      Hook.get declare_opaque i (OpaqueDefined body)
+    | Def _ | Undef _ | Primitive _ -> assert false
+  in
   let () = List.iter register_side_effect export in
   let () = register_constant kn kind local in
   kn
 
 let declare_private_constant ?role ?(local = ImportDefaultBehavior) ~name ~kind de =
-  let kn, eff =
-    let de =
-      if not de.proof_entry_opaque then
-        DefinitionEff (cast_proof_entry de)
-      else
-        let de = cast_opaque_proof_entry PureEntry de in
-        OpaqueEff de
+  let de =
+    if not de.proof_entry_opaque then
+      DefinitionEff (cast_proof_entry de)
+    else
+      let de = cast_opaque_proof_entry PureEntry de in
+      OpaqueEff de
+  in
+  let kn, eff = Global.add_private_constant name de in
+  let cb = Global.lookup_constant kn in
+  let () = match cb.const_body, de with
+  | OpaqueDef o, OpaqueEff de ->
+    let (_, _, _, i) = Opaqueproof.repr o in
+    let univs = match de.opaque_entry_universes with
+    | Monomorphic_entry _ -> Opaqueproof.PrivateMonomorphic Univ.ContextSet.empty
+    | Polymorphic_entry (nas, _) -> Opaqueproof.PrivatePolymorphic (Array.length nas, Univ.ContextSet.empty)
     in
-    Global.add_private_constant name de
+    Hook.get declare_opaque i (OpaquePrivate (de.opaque_entry_body, univs))
+  | Def _, DefinitionEff _ -> ()
+  | (Def _ | Undef _ | OpaqueDef _ | Primitive _), (OpaqueEff _ | DefinitionEff _) -> assert false
   in
   let () = register_constant kn kind local in
   let seff_roles = match role with

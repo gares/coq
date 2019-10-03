@@ -66,6 +66,7 @@ type t = {
   parsing : Parser.state;
   system  : States.state;          (* summary + libstack *)
   lemmas  : LemmaStack.t option;   (* proofs of lemmas currently opened *)
+  opaques : Library.Opaques.t;     (* opaque proof terms *)
   shallow : bool                   (* is the state trimmed down (libstack) *)
 }
 
@@ -91,13 +92,15 @@ let do_if_not_cached rf f v =
 let freeze_interp_state ~marshallable =
   { system = update_cache s_cache (States.freeze ~marshallable);
     lemmas = !s_lemmas;
+    opaques = Library.Opaques.freeze ~marshallable;
     shallow = false;
     parsing = Parser.cur_state ();
   }
 
-let unfreeze_interp_state { system; lemmas; parsing } =
+let unfreeze_interp_state { system; lemmas; parsing; opaques } =
   do_if_not_cached s_cache States.unfreeze system;
   s_lemmas := lemmas;
+  Library.Opaques.unfreeze opaques;
   Pcoq.unfreeze parsing
 
 let make_shallow st =

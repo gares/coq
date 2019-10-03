@@ -49,7 +49,7 @@ type ('document,'counters) todo_proofs =
 val save_library_to :
   ('document,'counters) todo_proofs ->
   output_native_objects:bool ->
-  DirPath.t -> string -> Opaqueproof.opaquetab -> unit
+  DirPath.t -> string -> unit
 
 val load_library_todo
   :  CUnix.physical_path
@@ -75,7 +75,16 @@ val overwrite_library_filenames : string -> unit
 val native_name_from_filename : string -> string
 
 (** {6 Opaque accessors} *)
-val indirect_accessor : Opaqueproof.indirect_accessor
+
+module Opaques :
+sig
+  type t
+  val init : unit -> unit
+  val freeze : marshallable:bool -> t
+  val unfreeze : t -> unit
+end
+
+val indirect_accessor : Global.indirect_accessor
 
 (** Low-level state overwriting, not very safe *)
 val intern_state : string -> unit

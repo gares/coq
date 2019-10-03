@@ -100,12 +100,16 @@ let access_opaque_table dp i =
   assert (i < Array.length t);
   t.(i)
 
-let access_discharge = Cooking.cook_constr
-
-let indirect_accessor = {
-  Opaqueproof.access_proof = access_opaque_table;
-  Opaqueproof.access_discharge = access_discharge;
-}
+let indirect_accessor o =
+  let (sub, ci, dp, i) = Opaqueproof.repr o in
+  let c = access_opaque_table dp (i :> int) in
+  let c = match c with
+  | None ->  CErrors.user_err Pp.(str "Cannot access opaque delayed proof")
+  | Some c -> c
+  in
+  let (c, prv) = Cooking.cook_constr ci c in
+  let c = Mod_subst.(force_constr (List.fold_right subst_substituted sub (from_val c))) in
+  (c, prv)
 
 let () = Mod_checking.set_indirect_accessor indirect_accessor
 

@@ -29,8 +29,7 @@ type opaque
 
 val empty_opaquetab : opaquetab
 
-(** From a [proofterm] to some [opaque]. *)
-val create : DirPath.t -> proofterm -> opaquetab -> opaque * opaquetab
+val create : DirPath.t -> opaquetab -> opaque * opaquetab
 
 type work_list = (Univ.Instance.t * Id.t array) Cmap.t *
   (Univ.Instance.t * Id.t array) Mindmap.t
@@ -41,28 +40,16 @@ type cooking_info = {
 
 type opaque_proofterm = (Constr.t * unit delayed_universes) option
 
-type indirect_accessor = {
-  access_proof : DirPath.t -> int -> opaque_proofterm;
-  access_discharge : cooking_info list ->
-    (Constr.t * unit delayed_universes) -> (Constr.t * unit delayed_universes);
-}
 (** Opaque terms are indexed by their library
     dirpath and an integer index. The two functions above activate
     this indirect storage, by telling how to retrieve terms.
 *)
-
-(** From a [opaque] back to a [constr]. This might use the
-    indirect opaque accessor given as an argument. *)
-val force_proof : indirect_accessor -> opaquetab -> opaque -> constr * unit delayed_universes
-val force_constraints : indirect_accessor -> opaquetab -> opaque -> Univ.ContextSet.t
 
 val subst_opaque : substitution -> opaque -> opaque
 
 val discharge_opaque :
   cooking_info -> opaque -> opaque
 
-val join_opaque : ?except:Future.UUIDSet.t -> opaquetab -> opaque -> unit
+type opaque_id = private int
 
-val dump : ?except:Future.UUIDSet.t -> opaquetab ->
-  opaque_proofterm array *
-  int Future.UUIDMap.t
+val repr : opaque -> substitution list * cooking_info list * DirPath.t * opaque_id

@@ -1726,12 +1726,13 @@ end = struct (* {{{ *)
     | `OK { Proof_global.name } ->
         let con = Nametab.locate_constant (Libnames.qualid_of_ident name) in
         let c = Global.lookup_constant con in
-        let o = match c.Declarations.const_body with
+        let _o = match c.Declarations.const_body with
           | Declarations.OpaqueDef o -> o
           | _ -> assert false in
         (* No need to delay the computation, the future has been forced by
            the call to [check_task_aux] above. *)
-        let uc = Opaqueproof.force_constraints Library.indirect_accessor (Global.opaque_tables ()) o in
+        let uc = assert false in (* FIXME *)
+(*         let uc = Opaqueproof.force_constraints Library.indirect_accessor (Global.opaque_tables ()) o in *)
         let uc = Univ.hcons_universe_context_set uc in
         let (pr, priv, ctx) = Option.get (Global.body_of_constant_body Library.indirect_accessor c) in
         (* We only manipulate monomorphic terms here. *)
@@ -2728,7 +2729,7 @@ let rec check_no_err_states ~doc visited id =
 let join ~doc =
   let doc = wait ~doc in
   stm_prerr_endline (fun () -> "Joining the environment");
-  Global.join_safe_environment ();
+  (* FIXME: force pending opaque checks *)
   stm_prerr_endline (fun () -> "Joining Admitted proofs");
   join_admitted_proofs (VCS.get_branch_pos VCS.Branch.master);
   stm_prerr_endline (fun () -> "Checking no error states");
@@ -2813,7 +2814,7 @@ let snapshot_vio ~create_vos ~doc ~output_native_objects ldir long_f_dot_vo =
       then Library.ProofsTodoSomeEmpty except
       else Library.ProofsTodoSome (except,tasks,counters)
     in
-  Library.save_library_to todo_proofs ~output_native_objects ldir long_f_dot_vo (Global.opaque_tables ());
+  Library.save_library_to todo_proofs ~output_native_objects ldir long_f_dot_vo;
   doc
 
 let reset_task_queue = Slaves.reset_task_queue

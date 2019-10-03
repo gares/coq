@@ -146,7 +146,7 @@ let compile opts copts ~echo ~f_in ~f_out =
       let wall_clock2 = Unix.gettimeofday () in
       check_pending_proofs ();
       if mode <> BuildVok  (* Don't output proofs in -vok mode *)
-        then Library.save_library_to ~output_native_objects Library.ProofsTodoNone ldir long_f_dot_out (Global.opaque_tables ());
+        then Library.save_library_to ~output_native_objects Library.ProofsTodoNone ldir long_f_dot_out;
       Aux_file.record_in_aux_at "vo_compile_time"
         (Printf.sprintf "%.3f" (wall_clock2 -. wall_clock1));
       Aux_file.stop_aux_file ();

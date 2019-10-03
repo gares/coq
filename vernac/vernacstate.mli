@@ -37,6 +37,8 @@ type t =
   (** summary + libstack *)
   ; lemmas  : LemmaStack.t option
   (** proofs of lemmas currently opened *)
+  ; opaques : Library.Opaques.t
+  (** qed-terminated proofs *)
   ; shallow : bool
   (** is the state trimmed down (libstack) *)
   }

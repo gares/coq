@@ -63,11 +63,6 @@ val universes_of_private : private_constants -> Univ.ContextSet.t
 
 val is_curmod_library : safe_environment -> bool
 
-(* safe_environment has functional data affected by lazy computations,
- * thus this function returns a new safe_environment *)
-val join_safe_environment :
-  ?except:Future.UUIDSet.t -> safe_environment -> safe_environment
-
 val is_joined_environment : safe_environment -> bool
 (** {6 Enriching a safe environment } *)
 
@@ -75,7 +70,7 @@ val is_joined_environment : safe_environment -> bool
 
 type global_declaration =
 | ConstantEntry : Entries.constant_entry -> global_declaration
-| OpaqueEntry : private_constants Entries.const_entry_body Entries.opaque_entry -> global_declaration
+| OpaqueEntry : unit Entries.opaque_entry -> global_declaration
 
 type side_effect_declaration =
 | DefinitionEff : Entries.definition_entry -> side_effect_declaration
@@ -94,6 +89,10 @@ val add_constant :
 (** Similar to add_constant but also returns a certificate *)
 val add_private_constant :
   Label.t -> side_effect_declaration -> (Constant.t * private_constants) safe_transformer
+
+(** Fill an opaque body with its contents and check it *)
+val join_opaque : Opaqueproof.opaque_id -> private_constants Entries.proof_output ->
+  (Constr.t * Univ.ContextSet.t Opaqueproof.delayed_universes) safe_transformer
 
 (** Adding an inductive type *)
 
@@ -195,7 +194,7 @@ val module_of_library : compiled_library -> Declarations.module_body
 val start_library : DirPath.t -> ModPath.t safe_transformer
 
 val export :
-  ?except:Future.UUIDSet.t -> output_native_objects:bool ->
+  output_native_objects:bool ->
   safe_environment -> DirPath.t ->
     ModPath.t * compiled_library * native_library
 

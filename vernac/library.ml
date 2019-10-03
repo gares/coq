@@ -118,6 +118,8 @@ let libraries_filename_table = ref LibraryFilenameMap.empty
 (* These are the _ordered_ sets of loaded, imported and exported libraries *)
 let libraries_loaded_list = Summary.ref [] ~name:"LIBRARY-LOAD"
 
+(* Opaque proof tables *)
+
 (* various requests to the tables *)
 
 let find_library dir =
@@ -180,6 +182,41 @@ let register_loaded_library m =
     terms, and access them only when a specific command (e.g. Print or
     Print Assumptions) needs it. *)
 
+(** Current table of opaque terms *)
+
+module Opaques =
+struct
+  type t = Opaqueproof.proofterm Int.Map.t
+  let state : t ref = ref Int.Map.empty
+  let init () = state := Int.Map.empty
+  let freeze ~marshallable =
+    if marshallable then
+      !state (* FIXME *)
+    else !state
+  let unfreeze s = state := s
+end
+
+let current_opaques = Opaques.state
+
+let of_opaque_id (i : Opaqueproof.opaque_id) = (i :> int)
+
+let declare_opaque i body =
+  (* TODO: remove the hook and don't rely on global effect *)
+  let proof = match body with
+  | Declare.OpaqueDefined body ->
+    Future.chain body begin fun (body, eff) ->
+      Global.join_opaque i (body, eff)
+    end
+  | Declare.OpaquePrivate body ->
+    (* Joining was already done at private declaration time *)
+    Future.from_val body
+  in
+  let n = of_opaque_id i in
+  let () = assert (not @@ Int.Map.mem n !current_opaques) in
+  current_opaques := Int.Map.add n proof !current_opaques
+
+let () = Hook.set Declare.declare_opaque_hook declare_opaque
+
 (** Delayed / available tables of opaque terms *)
 
 type 'a table_status =
@@ -211,13 +248,26 @@ let access_table what tables dp i =
   in
   assert (i < Array.length t); t.(i)
 
-let access_opaque_table dp i =
-  let what = "opaque proofs" in
-  access_table what opaque_tables dp i
+let access_opaque_table o =
+  let (sub, ci, dp, i) = Opaqueproof.repr o in
+  if DirPath.equal dp (Global.current_dirpath ()) then
+    try
+      let pf = Int.Map.find (i :> int) !current_opaques in
+      let c, ctx = Future.force pf in
+      let ctx = match ctx with
+      | Opaqueproof.PrivateMonomorphic _ -> Opaqueproof.PrivateMonomorphic ()
+      | Opaqueproof.PrivatePolymorphic _ as ctx -> ctx
+      in
+      let (c, ctx) = Cooking.cook_constr ci (c, ctx) in
+      let c = Mod_subst.(force_constr (List.fold_right subst_substituted sub (from_val c))) in
+      Some (c, ctx)
+    with Not_found -> None
+  else
+    let what = "opaque proofs" in
+    access_table what opaque_tables dp (i :> int)
 
 let indirect_accessor = {
-  Opaqueproof.access_proof = access_opaque_table;
-  Opaqueproof.access_discharge = Cooking.cook_constr;
+  Global.access_proof = access_opaque_table;
 }
 
 (************************************************************************)
@@ -435,7 +485,7 @@ type ('document,'counters) todo_proofs =
  | ProofsTodoSomeEmpty of Future.UUIDSet.t (* for .vos *)
  | ProofsTodoSome of Future.UUIDSet.t * ((Future.UUID.t,'document) Stateid.request * bool) list * 'counters (* for .vio *)
 
-let save_library_to todo_proofs ~output_native_objects dir f otab =
+let save_library_to todo_proofs ~output_native_objects dir f =
   assert(
     let expected_extension = match todo_proofs with
       | ProofsTodoNone -> ".vo"
@@ -448,8 +498,29 @@ let save_library_to todo_proofs ~output_native_objects dir f otab =
     | ProofsTodoSomeEmpty except -> except
     | ProofsTodoSome (except,l,_) -> except
     in
-  let cenv, seg, ast = Declaremods.end_library ~output_native_objects ~except dir in
-  let opaque_table, f2t_map = Opaqueproof.dump ~except otab in
+  let cenv, seg, ast = Declaremods.end_library ~output_native_objects dir in
+  let n = try 1 + fst (Int.Map.max_binding !current_opaques) with Not_found -> 0 in
+  let opaque_table = Array.make n None in
+  let fold i cu f2t_map =
+    let uid = Future.uuid cu in
+    let f2t_map = Future.UUIDMap.add uid i f2t_map in
+    let c =
+      if Future.is_val cu then
+        let (c, priv) = Future.force cu in
+        let priv = match priv with
+        | Opaqueproof.PrivateMonomorphic _ -> Opaqueproof.PrivateMonomorphic ()
+        | Opaqueproof.PrivatePolymorphic _ as p -> p
+        in
+        Some (c, priv)
+      else if Future.UUIDSet.mem uid except then None
+      else
+        CErrors.anomaly
+          Pp.(str"Proof object "++int i++str" is not checked nor to be checked")
+    in
+    let () = opaque_table.(i) <- c in
+    f2t_map
+  in
+  let f2t_map = Int.Map.fold fold !current_opaques Future.UUIDMap.empty in
   let tasks, utab =
     match todo_proofs with
     | ProofsTodoNone -> None, None

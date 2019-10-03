@@ -8,6 +8,6 @@
 (*         *     (see LICENSE file for the text of the license)         *)
 (************************************************************************)
 
-val set_indirect_accessor : Opaqueproof.indirect_accessor -> unit
+val set_indirect_accessor : (Opaqueproof.opaque -> Constr.t * unit Opaqueproof.delayed_universes) -> unit
 
 val check_module : Environ.env -> Names.ModPath.t -> Declarations.module_body -> unit
