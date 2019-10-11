@@ -104,12 +104,16 @@ EXISTINGMLI := $(call find, '*.mli')
 GENMLGFILES:= $(MLGFILES:.mlg=.ml)
 # GRAMFILES must be in linking order
 GRAMFILES=$(addprefix gramlib/.pack/gramlib__,Ploc Plexing Gramext Grammar)
-GRAMMLFILES := $(addsuffix .ml, $(GRAMFILES)) $(addsuffix .mli, $(GRAMFILES))
-GENGRAMFILES := $(GRAMMLFILES) gramlib/.pack/gramlib.ml
-GENMLFILES:=$(LEXFILES:.mll=.ml) $(YACCFILES:.mly=.ml) $(GENMLGFILES)  ide/coqide_os_specific.ml kernel/copcodes.ml kernel/uint63.ml
+GRAMMLFILES := $(addsuffix .ml, $(GRAMFILES))
+GRAMMLIFILES := $(addsuffix .mli, $(GRAMFILES))
+GENGRAMMLFILES := $(GRAMMLFILES) gramlib/.pack/gramlib.ml
+GENGRAMMLIFILES := $(GRAMMLIFILES)
+GENGRAMFILES := $(GENGRAMMLFILES) $(GENGRAMMLIFILES)
+GENMLFILES:=$(LEXFILES:.mll=.ml) $(YACCFILES:.mly=.ml) $(GENMLGFILES) $(GENGRAMMLFILES) ide/coqide_os_specific.ml kernel/copcodes.ml kernel/uint63.ml
+GENMLIFILES:= $(GENGRAMMLIFILES)
 GENHFILES:=kernel/byterun/coq_instruct.h kernel/byterun/coq_jumptbl.h
 GENFILES:=$(GENMLFILES) $(GENMLIFILES) $(GENHFILES) kernel/genOpcodeFiles.exe
-COQ_EXPORTED += GRAMFILES GRAMMLFILES GENGRAMFILES GENMLFILES GENHFILES GENFILES
+COQ_EXPORTED += GRAMFILES GRAMMLFILES GRAMMLIFILES GENGRAMMLFILES GENGRAMMLIFILES GENGRAMFILES GENMLFILES GENHFILES GENFILES
 
 ## More complex file lists
 
