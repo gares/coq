@@ -1520,7 +1520,7 @@ end = struct (* {{{ *)
       let fix_exn = Future.fix_exn_of future_proof in
       (* STATE: We use the current installed imperative state *)
       let st = State.freeze () in
-      if not drop then begin
+      if not drop && VCS.is_interactive () then begin
         let checked_proof = Future.chain future_proof (fun p ->
           let opaque = Proof_global.Opaque in
 
