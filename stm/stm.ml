@@ -2520,6 +2520,7 @@ let known_state ~doc ?(redefine_qed=false) ~cache id =
                       Some(PG_compat.close_proof ~opaque
                                 ~keep_body_ucst_separate:false
                                 (State.exn_on id ~valid:eop)) in
+                let { Vernacstate.opaques } = Vernacstate.freeze_interp_state ~marshallable:false in
                 if keep <> VtKeep VtKeepAxiom then
                   reach view.next;
                 let wall_clock2 = Unix.gettimeofday () in
@@ -2530,6 +2531,9 @@ let known_state ~doc ?(redefine_qed=false) ~cache id =
                     let control, pe = extract_pe x in
                     stm_qed_delay_proof ~id ~st ~proof ~info ~loc ~control pe
                 in
+                let st = Vernacstate.freeze_interp_state ~marshallable:false in
+                Vernacstate.unfreeze_interp_state { st with Vernacstate.opaques };
+           
                 let wall_clock3 = Unix.gettimeofday () in
                 Aux_file.record_in_aux_at ?loc:x.expr.CAst.loc "proof_check_time"
                   (Printf.sprintf "%.3f" (wall_clock3 -. wall_clock2));
