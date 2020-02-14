@@ -572,6 +572,7 @@ let detype_case computable detype detype_eqns testdep avoid data p c bl =
       let bl' = Array.map detype bl in
       let (nal,d) = it_destRLambda_or_LetIn_names constagsl.(0) bl'.(0) in
       GLetTuple (nal,(alias,pred),tomatch,d)
+      (*
   | IfStyle, None ->
       let bl' = Array.map detype bl in
       let nondepbrs =
@@ -582,6 +583,7 @@ let detype_case computable detype detype_eqns testdep avoid data p c bl =
       else
         let eqnl = detype_eqns constructs constagsl bl in
         GCases (tag,pred,[tomatch,(alias,aliastyp)],eqnl)
+        *)
   | _ ->
       let eqnl = detype_eqns constructs constagsl bl in
       GCases (tag,pred,[tomatch,(alias,aliastyp)],eqnl)
