@@ -152,13 +152,13 @@ Declare Scope boolean_if_scope.
 Delimit Scope boolean_if_scope with BOOL_IF.
 
 Notation "'if' c 'return' R 'then' vT 'else' vF" :=
-  (if c is true as c in bool return R then vT else vF) : boolean_if_scope.
+  (if c is true as c in bool return R then vT else vF) (only parsing) : boolean_if_scope.
 
 Notation "'if' c 'then' vT 'else' vF" :=
-  (if c%bool is true as _ in bool return _ then vT else vF) : boolean_if_scope.
+  (if c%bool is true as _ in bool return _ then vT else vF) (only parsing) : boolean_if_scope.
 
 Notation "'if' c 'as' x 'return' R 'then' vT 'else' vF" :=
-  (if c%bool is true as x in bool return R then vT else vF) : boolean_if_scope.
+  (if c%bool is true as x in bool return R then vT else vF) (only parsing) : boolean_if_scope.
 
 Open Scope boolean_if_scope.
 
