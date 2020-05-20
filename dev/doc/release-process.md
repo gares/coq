@@ -23,7 +23,7 @@ in time.
   commit* as the one that updates `coq_version` in
   [`configure.ml`](../../configure.ml), and once again later on before
   the next branch point with the `--release` flag (see next section).
-- [ ] Put the corresponding alpha tag using `git tag -s`.
+- [ ] Put the corresponding alpha tag using `git tag -s -m 'First commit after vX.X branching point.'`.
   The `VX.X+alpha` tag marks the first commit to be in `master` and not in the
   branch of the previous version. Note that this commit is the first commit
   in the first PR merged in master, not the merge commit for that PR.
