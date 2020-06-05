@@ -3,7 +3,7 @@
  (synopsis "Coq's Document Manager and Proof Checking Scheduler")
  (public_name coq.stm)
  (wrapped false)
- (libraries sysinit))
+ (libraries sysinit lwt.unix))
 
 (env
   (dev
