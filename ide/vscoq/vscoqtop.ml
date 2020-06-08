@@ -117,7 +117,7 @@ let textDocumentDidOpen params : unit Lwt.t =
   let text = textDocument |> member "text" |> to_string in
   let document = create_document (get_init_state ()) text in
   Hashtbl.add documents uri document;
-  send_highlights uri document <&>
+  send_highlights uri document >>= fun () ->
   publish_diagnostics uri document
 
 
@@ -138,7 +138,7 @@ let textDocumentDidChange params : unit Lwt.t =
   let document = Hashtbl.find documents uri in
   let new_doc = DocumentManager.apply_text_edits document textEdits in
   Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
+  send_highlights uri new_doc >>= fun () ->
   publish_diagnostics uri new_doc
 
 let textDocumentDidSave params : unit Lwt.t =
@@ -149,7 +149,7 @@ let textDocumentDidSave params : unit Lwt.t =
   let document = Hashtbl.find documents uri in
   let new_doc = DocumentManager.validate_document document in
   Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
+  send_highlights uri new_doc >>= fun () ->
   publish_diagnostics uri new_doc
 
 let mk_goal sigma g =
@@ -200,7 +200,7 @@ let mk_proofview loc Proof.{ goals; shelf; given_up; sigma } =
 
 let progress_hook uri doc : unit Lwt.t =
   let open Lwt.Infix in
-  send_highlights uri doc <&>
+  send_highlights uri doc >>= fun () ->
   publish_diagnostics uri doc
 
 let coqtopInterpretToPoint ~id params : unit Lwt.t =
@@ -212,8 +212,8 @@ let coqtopInterpretToPoint ~id params : unit Lwt.t =
   let progress_hook = progress_hook uri in
   DocumentManager.interpret_to_position ~progress_hook document loc >>= fun (new_doc, proof) ->
   Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
-  publish_diagnostics uri new_doc <&>
+  send_highlights uri new_doc >>= fun () ->
+  publish_diagnostics uri new_doc >>= fun () ->
   match proof with
   | None -> Lwt.return ()
   | Some (proofview, pos) ->
@@ -227,8 +227,8 @@ let coqtopStepBackward ~id params : unit Lwt.t =
   let document = Hashtbl.find documents uri in
   DocumentManager.interpret_to_previous document >>= fun (new_doc, proof) ->
   Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
-  publish_diagnostics uri new_doc <&>
+  send_highlights uri new_doc >>= fun () ->
+  publish_diagnostics uri new_doc >>= fun () ->
   match proof with
   | None -> Lwt.return ()
   | Some (proofview, pos) ->
@@ -242,8 +242,8 @@ let coqtopStepForward ~id params : unit Lwt.t =
   let document = Hashtbl.find documents uri in
   DocumentManager.interpret_to_next document >>= fun (new_doc, proof) ->
   Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
-  publish_diagnostics uri new_doc <&>
+  send_highlights uri new_doc >>= fun () ->
+  publish_diagnostics uri new_doc >>= fun () ->
   match proof with
   | None -> Lwt.return ()
   | Some (proofview, pos) ->
@@ -257,7 +257,7 @@ let coqtopResetCoq ~id params : unit Lwt.t =
   let document = Hashtbl.find documents uri in
   let new_doc = DocumentManager.reset (get_init_state ()) document in
   Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
+  send_highlights uri new_doc >>= fun () ->
   publish_diagnostics uri new_doc
 
 let coqtopInterpretToEnd ~id params : unit Lwt.t =
@@ -268,8 +268,8 @@ let coqtopInterpretToEnd ~id params : unit Lwt.t =
   let progress_hook = progress_hook uri in
   DocumentManager.interpret_to_end ~progress_hook document >>= fun (new_doc, proof) ->
   Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
-  publish_diagnostics uri new_doc <&>
+  send_highlights uri new_doc >>= fun () ->
+  publish_diagnostics uri new_doc >>= fun () ->
   match proof with
   | None -> Lwt.return ()
   | Some (proofview, pos) ->
