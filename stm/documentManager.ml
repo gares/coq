@@ -26,7 +26,7 @@ type range =
     range_end : position;
   }
 
-let log msg = Format.eprintf "@[%s@]@\n%!" msg
+let log msg = Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
 
 type text_edit = range * string
 
@@ -219,6 +219,8 @@ module ParsedDoc : sig
 
   val string_of_diff : diff -> string
 
+  val hack : t -> sentence_id -> Scheduler.ast option
+
 end = struct
 
   type t = {
@@ -226,6 +228,12 @@ end = struct
     sentences_by_end : sentence LM.t;
     schedule : Scheduler.schedule;
   }
+
+  let hack { sentences_by_id; _ } id =
+    match SM.find id sentences_by_id with
+    | { ast = ValidAst(a,_) } -> Some a
+    | _ -> None
+    | exception Not_found -> None
 
   let empty = {
     sentences_by_id = SM.empty;
@@ -455,7 +463,7 @@ type document = {
   more_to_parse : bool;
 }
 
-type progress_hook = document -> unit Lwt.t
+type progress_hook = document option -> unit Lwt.t
 
 let parsed_ranges doc = ParsedDoc.parsed_ranges doc.raw_doc doc.parsed_doc
 
@@ -467,7 +475,6 @@ let executed_ranges doc =
 
 let diagnostics doc =
   let exec_errors = ExecutionManager.errors doc.execution_state in
-  log @@ "exec errors in diags: " ^ string_of_int (List.length exec_errors);
   let mk_exec_diag (id,oloc,message) =
     ParsedDoc.make_diagnostic doc.raw_doc doc.parsed_doc id oloc message Error
   in
@@ -638,8 +645,8 @@ let apply_text_edits document edits =
     let executed_loc = Option.map (min parsed_loc) document.executed_loc in
     { document with parsed_loc; executed_loc }
 
-let interpret_to_loc ~after ?(progress_hook=fun doc -> Lwt.return ()) doc loc : (document * proof_data) Lwt.t =
-  log @@ "Interpreting to loc " ^ string_of_int loc;
+let interpret_to_loc ~after ?(progress_hook=fun doc -> Lwt.return ()) doc loc : (document * proof_data * 'a ExecutionManager.actions) Lwt.t =
+  log @@ "[DM] Interpreting to loc " ^ string_of_int loc;
   let rec make_progress doc =
     let open Lwt.Infix in
     let doc = validate_document doc in
@@ -650,11 +657,11 @@ let interpret_to_loc ~after ?(progress_hook=fun doc -> Lwt.return ()) doc loc : 
     executing the sentence, which is unnatural. *)
     let find = if after then ParsedDoc.find_sentence else ParsedDoc.find_sentence_before in
     match find doc.parsed_doc loc with
-    | None -> (* document is empty *) Lwt.return (doc, None)
+    | None -> (* document is empty *) Lwt.return (doc, None, [])
     | Some { id; stop; start } ->
-      let progress_hook st = progress_hook { doc with execution_state = st; executed_loc = Some stop } in
-      ExecutionManager.observe progress_hook (ParsedDoc.schedule doc.parsed_doc) id doc.execution_state >>= fun st ->
-      log @@ "Observed " ^ Stateid.to_string id;
+      let progress_hook st = progress_hook (Option.map (fun st -> { doc with execution_state = st; executed_loc = Some stop }) st) in
+      ExecutionManager.observe ~hack:(ParsedDoc.hack doc.parsed_doc) progress_hook (ParsedDoc.schedule doc.parsed_doc) id doc.execution_state >>= fun (st,actions) ->
+      log @@ "[DM] Observed " ^ Stateid.to_string id;
       let doc = { doc with execution_state = st } in
       if doc.parsed_loc < loc && doc.more_to_parse then
         make_progress doc
@@ -664,7 +671,7 @@ let interpret_to_loc ~after ?(progress_hook=fun doc -> Lwt.return ()) doc loc : 
         | None -> None
         | Some pv -> let pos = RawDoc.position_of_loc doc.raw_doc stop in Some (pv, pos)
       in
-      Lwt.return ({ doc with executed_loc }, proof_data)
+      Lwt.return ({ doc with executed_loc }, proof_data, actions)
   in
   make_progress doc
 
@@ -674,13 +681,13 @@ let interpret_to_position ?progress_hook doc pos =
 
 let interpret_to_previous doc =
   match doc.executed_loc with
-  | None -> Lwt.return (doc, None)
+  | None -> Lwt.return (doc, None, [])
   | Some loc ->
     interpret_to_loc ~after:false doc (loc-1)
 
 let interpret_to_next doc =
   match doc.executed_loc with
-  | None -> Lwt.return (doc, None)
+  | None -> Lwt.return (doc, None, [])
   | Some stop ->
     interpret_to_loc ~after:true doc (stop+1)
 
