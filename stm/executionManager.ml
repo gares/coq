@@ -9,7 +9,7 @@
 (************************************************************************)
 open Scheduler
 
-let log msg = Format.eprintf "@[%s@]@\n%!" msg
+let log msg = Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
 
 type sentence_id = Stateid.t
 type ast = Vernacexpr.vernac_control
@@ -34,29 +34,61 @@ let init vernac_state = {
     cache = SM.empty;
   }
 
-  let base_vernac_st base_id =
-    match base_id with
-    | None -> st.initial
-    | Some base_id ->
-      begin match SM.find_opt base_id st.cache with
-      | Some (Success vernac_st) -> vernac_st
-      | Some (Error (_, vernac_st)) -> vernac_st (* Error resiliency *)
-      | _ -> CErrors.anomaly Pp.(str "Missing state in cache (execute): " ++ Stateid.print base_id)
-      end
-  in
+let base_vernac_st st base_id =
+  match base_id with
+  | None -> st.initial
+  | Some base_id ->
+    begin match SM.find_opt base_id st.cache with
+    | Some (Success vernac_st) -> vernac_st
+    | Some (Error (_, vernac_st)) -> vernac_st (* Error resiliency *)
+    | _ -> CErrors.anomaly Pp.(str "Missing state in cache (execute): " ++ Stateid.print base_id)
+    end
+
+
+let string_of_cache = function
+  | None -> "-"
+  | Some (Success _) -> "OK"
+  | Some (Error _) -> "ERR"
+  | Some Executing -> "?"
+
+let send_report st ids =
+  ids |> List.iter (fun id ->
+    log @@ Printf.sprintf "back to %d report %s is %s" (Unix.getppid ())
+             (Stateid.to_string id)
+             (string_of_cache (SM.find_opt id st.cache)))
+
+let rec delegate ~hack st base_id ids : unit Lwt.t =
+  let open Lwt.Infix in
+  let _, tasks_rev = List.fold_left (fun (base,acc) id ->
+    match hack id with
+    | None -> Some id, acc (* error resiliency, we skip the proof step *)
+    | Some ast -> Some id, (base,Exec(id, ast)) :: acc) (base_id,[]) ids in
+  let tasks = List.rev tasks_rev in
+  Lwt_io.flush_all () >>= fun () ->
+  let pid = Lwt_unix.fork () in
+  if pid = 0 then
+    Lwt_list.fold_left_s (execute ~hack) st tasks >>= fun final_st ->
+    send_report final_st ids;
+    exit 0
+  else begin
+    log @@ "Forked pid " ^ string_of_int pid;
+    Lwt.return ()
+  end
+
 and execute ~hack st task : state Lwt.t =
+  let open Lwt.Infix in
   match task with
   | base_id, Skip id ->
-    let vernac_st = base_vernac_st base_id in
-    { st with cache = SM.add id (Success vernac_st) st.cache }
+    let vernac_st = base_vernac_st st base_id in
+    Lwt.return { st with cache = SM.add id (Success vernac_st) st.cache }
   | base_id, Exec(id,ast) ->
     log @@ "Going to execute: " ^ Stateid.to_string id ^ " : " ^ (Pp.string_of_ppcmds @@ Ppvernac.pr_vernac ast);
-    let vernac_st = base_vernac_st base_id in
+    let vernac_st = base_vernac_st st base_id in
     begin try
       Sys.(set_signal sigint (Signal_handle(fun _ -> raise Break)));
       let vernac_st = Vernacinterp.interp ~st:vernac_st ast in (* TODO set status to "Executing" *)
       Sys.(set_signal sigint Signal_ignore);
-      { st with cache = SM.add id (Success vernac_st) st.cache }
+      Lwt.return { st with cache = SM.add id (Success vernac_st) st.cache }
     with
     | Sys.Break as exn ->
       let exn = Exninfo.capture exn in
@@ -67,16 +99,17 @@ and execute ~hack st task : state Lwt.t =
       Sys.(set_signal sigint Signal_ignore);
       let loc = Loc.get_loc info in
       let msg = CErrors.iprint (e, info) in
-      { st with cache = SM.add id (Error ((loc, Pp.string_of_ppcmds msg), vernac_st)) st.cache }
+      Lwt.return { st with cache = SM.add id (Error ((loc, Pp.string_of_ppcmds msg), vernac_st)) st.cache }
     end
   | base_id, OpaqueProof (id,ids) ->
-    let vernac_st = base_vernac_st base_id in
+    let vernac_st = base_vernac_st st base_id in
+    delegate ~hack st base_id ids >>= fun () ->
     begin try
       Sys.(set_signal sigint (Signal_handle(fun _ -> raise Break)));
       let ast = Vernacexpr.{ expr = VernacEndProof Admitted; attrs = []; control = [] } in
       let vernac_st = Vernacinterp.interp ~st:vernac_st (CAst.make ast) in (* TODO set status to "Executing" *)
       Sys.(set_signal sigint Signal_ignore);
-      { st with cache = SM.add id (Success vernac_st) st.cache }
+      Lwt.return { st with cache = SM.add id (Success vernac_st) st.cache }
     with
     | Sys.Break as exn ->
       let exn = Exninfo.capture exn in
@@ -87,7 +120,7 @@ and execute ~hack st task : state Lwt.t =
       Sys.(set_signal sigint Signal_ignore);
       let loc = Loc.get_loc info in
       let msg = CErrors.iprint (e, info) in
-      { st with cache = SM.add id (Error ((loc, Pp.string_of_ppcmds msg), vernac_st)) st.cache }
+      Lwt.return { st with cache = SM.add id (Error ((loc, Pp.string_of_ppcmds msg), vernac_st)) st.cache }
     end
   | _ -> CErrors.anomaly Pp.(str "task not supported yet")
 
