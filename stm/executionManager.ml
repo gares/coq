@@ -34,7 +34,6 @@ let init vernac_state = {
     cache = SM.empty;
   }
 
-let execute st task =
   let base_vernac_st base_id =
     match base_id with
     | None -> st.initial
@@ -45,6 +44,7 @@ let execute st task =
       | _ -> CErrors.anomaly Pp.(str "Missing state in cache (execute): " ++ Stateid.print base_id)
       end
   in
+and execute ~hack st task : state Lwt.t =
   match task with
   | base_id, Skip id ->
     let vernac_st = base_vernac_st base_id in
@@ -91,7 +91,7 @@ let execute st task =
     end
   | _ -> CErrors.anomaly Pp.(str "task not supported yet")
 
-let observe progress_hook schedule id st : state Lwt.t =
+let observe ~hack progress_hook schedule id st : state Lwt.t =
   log @@ "Observe " ^ Stateid.to_string id;
   let rec build_tasks id tasks =
     begin match SM.find_opt id st.cache with
@@ -122,7 +122,7 @@ let observe progress_hook schedule id st : state Lwt.t =
     if !interrupted then Lwt.return st
     else
     try
-      let st = execute st task in
+      execute ~hack st task >>= fun st ->
       progress_hook st >>= fun () -> Lwt.return st
     with Sys.Break -> (interrupted := true; Lwt.return st)
   in

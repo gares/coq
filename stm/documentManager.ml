@@ -219,6 +219,8 @@ module ParsedDoc : sig
 
   val string_of_diff : diff -> string
 
+  val hack : t -> sentence_id -> Scheduler.ast option
+
 end = struct
 
   type t = {
@@ -226,6 +228,12 @@ end = struct
     sentences_by_end : sentence LM.t;
     schedule : Scheduler.schedule;
   }
+
+  let hack { sentences_by_id; _ } id =
+    match SM.find id sentences_by_id with
+    | { ast = ValidAst(a,_) } -> Some a
+    | _ -> None
+    | exception Not_found -> None
 
   let empty = {
     sentences_by_id = SM.empty;
@@ -653,7 +661,7 @@ let interpret_to_loc ~after ?(progress_hook=fun doc -> Lwt.return ()) doc loc : 
     | None -> (* document is empty *) Lwt.return (doc, None)
     | Some { id; stop; start } ->
       let progress_hook st = progress_hook { doc with execution_state = st; executed_loc = Some stop } in
-      ExecutionManager.observe progress_hook (ParsedDoc.schedule doc.parsed_doc) id doc.execution_state >>= fun st ->
+      ExecutionManager.observe ~hack:(ParsedDoc.hack doc.parsed_doc) progress_hook (ParsedDoc.schedule doc.parsed_doc) id doc.execution_state >>= fun st ->
       log @@ "Observed " ^ Stateid.to_string id;
       let doc = { doc with execution_state = st } in
       if doc.parsed_loc < loc && doc.more_to_parse then
