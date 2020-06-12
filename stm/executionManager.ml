@@ -16,6 +16,7 @@ type ast = Vernacexpr.vernac_control
 
 module SM = Map.Make (Stateid)
 
+type remote_feedback = OK | ERROR of string Loc.located
 type execution_status =
   | Executing
   | Success of Vernacstate.t
@@ -26,8 +27,6 @@ type state = {
   initial : Vernacstate.t;
   cache : execution_status SM.t;
 }
-
-type progress_hook = state -> unit Lwt.t
 
 let init vernac_state = {
     initial = vernac_state;
@@ -49,7 +48,7 @@ let string_of_cache = function
   | None -> "-"
   | Some (Success _) -> "OK"
   | Some (Error _) -> "ERR"
-  | Some Executing -> "?"
+  | Some (Executing _) -> "?"
 
 let send_report st ids =
   ids |> List.iter (fun id ->
@@ -57,30 +56,72 @@ let send_report st ids =
              (Stateid.to_string id)
              (string_of_cache (SM.find_opt id st.cache)))
 
-let rec delegate ~hack st base_id ids : unit Lwt.t =
+let return_update ~update_id_entry id ex st =
   let open Lwt.Infix in
-  let _, tasks_rev = List.fold_left (fun (base,acc) id ->
-    match hack id with
-    | None -> Some id, acc (* error resiliency, we skip the proof step *)
-    | Some ast -> Some id, (base,Exec(id, ast)) :: acc) (base_id,[]) ids in
+  update_id_entry id ex >>= fun () ->
+  Lwt.return { st with cache = SM.add id ex st.cache }
+
+(* Like Lwt.wait but the resolved is remote, via IPC *)
+let lwt_wait_remote chan : remote_feedback Lwt.t * remote_feedback Lwt.u =
+  assert false
+
+let remote_tasks_for ~hack ~update_id_entry st base_id ids chan =
+   let open Lwt.Infix in
+   Lwt_list.fold_left_s (fun (base,acc,st) id ->
+     match hack id with
+     | None -> Lwt.return (Some id, acc, st) (* error resiliency, we skip the proof step, TODO: mark in st SKIP *)
+     | Some ast ->
+         let p,r = lwt_wait_remote chan in
+         Lwt.on_success p (fun x -> update_id_entry id x);
+         return_update ~update_id_entry id Executing st >>= fun st ->
+         Lwt.return (Some id, (base,Exec(id, ast),id,r) :: acc,st)) (base_id,[],st) ids
+  >>= fun (_, tasks_rev,st) ->
   let tasks = List.rev tasks_rev in
+  Lwt.return (tasks, st)
+
+let rec delegate ~hack ~update_id_entry st base_id ids : state Lwt.t =
+  let open Lwt.Infix in
+  let open Lwt_unix in
+  let chan = socket PF_INET SOCK_STREAM 0 in
+  bind chan (ADDR_INET (Unix.inet_addr_loopback,0)) >>= fun () ->
+  listen chan 1;
+  let address = getsockname chan in
+
+  remote_tasks_for ~hack ~update_id_entry st base_id ids chan >>= fun (tasks, st) ->
   Lwt_io.flush_all () >>= fun () ->
   let pid = Lwt_unix.fork () in
   if pid = 0 then
-    Lwt_list.fold_left_s (execute ~hack) st tasks >>= fun final_st ->
+    let chan = socket PF_INET SOCK_STREAM 0 in
+    connect chan address >>= fun () ->
+    Lwt_list.fold_left_s (execute_remote ~hack ~update_id_entry:update_id_entry_remote) st tasks >>= fun final_st ->
     send_report final_st ids;
     exit 0
   else begin
+    accept chan >>= fun (worker, worker_addr) -> (* TODO: timeout *)
+    close chan >>= fun () ->
     log @@ "Forked pid " ^ string_of_int pid;
-    Lwt.return ()
+    Lwt.return st
   end
 
-and execute ~hack st task : state Lwt.t =
+and execute_remote ~hack ~update_id_entry st remote_task : state Lwt.t =
   let open Lwt.Infix in
+  let base, task, id, promise_resolver = remote_task in
+  execute ~hack ~update_id_entry st (base,task) >>= fun st ->
+  begin match SM.find id st.cache with
+  | Error (msg, _) -> Lwt.wakeup promise_resolver (ERROR msg)
+  | Success _vst -> Lwt.wakeup promise_resolver OK (* TODO: sent vst back? *)
+  | Executing _ -> assert false (* TODO: double delegation? *)
+  | exception Not_found -> assert false (* looks like an invartiant of execute *)
+  end;
+  Lwt.return st
+
+and execute ~hack ~update_id_entry st task : state Lwt.t =
+  let open Lwt.Infix in
+  let return = return_update ~update_id_entry in
   match task with
   | base_id, Skip id ->
     let vernac_st = base_vernac_st st base_id in
-    Lwt.return { st with cache = SM.add id (Success vernac_st) st.cache }
+    return id (Success vernac_st) st
   | base_id, Exec(id,ast) ->
     log @@ "Going to execute: " ^ Stateid.to_string id ^ " : " ^ (Pp.string_of_ppcmds @@ Ppvernac.pr_vernac ast);
     let vernac_st = base_vernac_st st base_id in
@@ -88,7 +129,7 @@ and execute ~hack st task : state Lwt.t =
       Sys.(set_signal sigint (Signal_handle(fun _ -> raise Break)));
       let vernac_st = Vernacinterp.interp ~st:vernac_st ast in (* TODO set status to "Executing" *)
       Sys.(set_signal sigint Signal_ignore);
-      Lwt.return { st with cache = SM.add id (Success vernac_st) st.cache }
+      return id (Success vernac_st) st
     with
     | Sys.Break as exn ->
       let exn = Exninfo.capture exn in
@@ -99,17 +140,17 @@ and execute ~hack st task : state Lwt.t =
       Sys.(set_signal sigint Signal_ignore);
       let loc = Loc.get_loc info in
       let msg = CErrors.iprint (e, info) in
-      Lwt.return { st with cache = SM.add id (Error ((loc, Pp.string_of_ppcmds msg), vernac_st)) st.cache }
+      return id (Error ((loc, Pp.string_of_ppcmds msg), vernac_st)) st
     end
   | base_id, OpaqueProof (id,ids) ->
     let vernac_st = base_vernac_st st base_id in
-    delegate ~hack st base_id ids >>= fun () ->
+    delegate ~hack ~update_id_entry st base_id ids >>= fun st ->
     begin try
       Sys.(set_signal sigint (Signal_handle(fun _ -> raise Break)));
       let ast = Vernacexpr.{ expr = VernacEndProof Admitted; attrs = []; control = [] } in
       let vernac_st = Vernacinterp.interp ~st:vernac_st (CAst.make ast) in (* TODO set status to "Executing" *)
       Sys.(set_signal sigint Signal_ignore);
-      Lwt.return { st with cache = SM.add id (Success vernac_st) st.cache }
+      return id (Success vernac_st) st
     with
     | Sys.Break as exn ->
       let exn = Exninfo.capture exn in
@@ -120,11 +161,11 @@ and execute ~hack st task : state Lwt.t =
       Sys.(set_signal sigint Signal_ignore);
       let loc = Loc.get_loc info in
       let msg = CErrors.iprint (e, info) in
-      Lwt.return { st with cache = SM.add id (Error ((loc, Pp.string_of_ppcmds msg), vernac_st)) st.cache }
+      return id (Error ((loc, Pp.string_of_ppcmds msg), vernac_st)) st
     end
   | _ -> CErrors.anomaly Pp.(str "task not supported yet")
 
-let observe ~hack progress_hook schedule id st : state Lwt.t =
+let observe ~hack ~update_state schedule id st : state Lwt.t =
   log @@ "Observe " ^ Stateid.to_string id;
   let rec build_tasks id tasks =
     begin match SM.find_opt id st.cache with
@@ -132,7 +173,7 @@ let observe ~hack progress_hook schedule id st : state Lwt.t =
       (* We reached an already computed state *)
       log @@ "Reached computed state " ^ Stateid.to_string id;
       tasks
-    | Some Executing -> CErrors.anomaly Pp.(str "depending on a state that is being executed")
+    | Some (Executing _) -> CErrors.anomaly Pp.(str "depending on a state that is being executed")
     | Some (Error _) ->
       (* We try to be resilient to an error *)
       log @@ "Error resiliency on state " ^ Stateid.to_string id;
@@ -148,15 +189,15 @@ let observe ~hack progress_hook schedule id st : state Lwt.t =
       end
     end
   in
+  let update_id_entry id ex : unit Lwt.t =
+    update_state ~f:(fun st -> { st with cache = SM.add id ex st.cache }) in
   let tasks = build_tasks id [] in
   let interrupted = ref false in
   let execute st task =
     let open Lwt.Infix in
     if !interrupted then Lwt.return st
     else
-    try
-      execute ~hack st task >>= fun st ->
-      progress_hook st >>= fun () -> Lwt.return st
+    try execute ~hack ~update_id_entry st task
     with Sys.Break -> (interrupted := true; Lwt.return st)
   in
   Lwt_list.fold_left_s execute st tasks
@@ -200,7 +241,7 @@ let get_parsing_state_after st id =
 let get_proofview st id =
   match SM.find_opt id st.cache with
   | None -> log "Cannot find state for proofview"; None
-  | Some Executing -> log "Proofview requested in state under execution"; None
+  | Some (Executing _) -> log "Proofview requested in state under execution"; None
   | Some (Error _) -> log "Proofview requested in error state"; None
   | Some (Success st) ->
     Vernacstate.unfreeze_interp_state st;

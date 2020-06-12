@@ -23,7 +23,47 @@ let get_init_state () =
   | Some st -> st
   | None -> CErrors.anomaly Pp.(str "Initial state not available")
 
-let documents : (string, document) Hashtbl.t = Hashtbl.create 39
+type uri = string
+module GlobalLSPState : sig
+
+  val register_observer : (uri * document -> unit Lwt.t) -> unit
+
+  (* Thread safe, f must be fast since it is run with the lock *)
+  val update_document : uri -> f:(document -> document Lwt.t) -> unit Lwt.t
+  val add_document : uri -> document -> unit Lwt.t
+  val get_document : uri -> document
+
+end = struct
+
+
+  let observer = ref None
+  let register_observer f = observer := Some f
+  let notify_observer important doc : unit Lwt.t =
+    if not important then Lwt.return ()
+    else
+      match !observer with
+      | None -> Lwt.return ()
+      | Some f -> f doc
+
+  let documents : (uri, document) Hashtbl.t = Hashtbl.create 39
+  let m = Lwt_mutex.create ()
+
+  let update_document uri ~f : unit Lwt.t =
+    let open Lwt.Infix in
+    Lwt_mutex.with_lock m (fun () ->
+      f (Hashtbl.find documents uri) >>= fun new_doc ->
+      Hashtbl.replace documents uri new_doc;
+      notify_observer true (uri,new_doc))
+
+  let add_document uri doc : unit Lwt.t =
+    let open Lwt.Infix in
+    Lwt_mutex.with_lock m (fun () ->
+      Hashtbl.add documents uri doc;
+      notify_observer true (uri,doc))
+
+  let get_document uri = Hashtbl.find documents uri
+
+end
 
 let log msg = Format.eprintf "@[%s@]@\n%!" msg
 
@@ -109,6 +149,13 @@ let send_highlights uri doc : unit Lwt.t =
   in
   output_json @@ mk_notification ~event:"coqtop/updateHighlights" ~params
 
+let progress_hook (uri, doc) : unit Lwt.t =
+  let open Lwt.Infix in
+  send_highlights uri doc <&>
+  publish_diagnostics uri doc
+
+let () = GlobalLSPState.register_observer progress_hook
+
 let textDocumentDidOpen params : unit Lwt.t =
   let open Yojson.Basic.Util in
   let open Lwt.Infix in
@@ -116,10 +163,7 @@ let textDocumentDidOpen params : unit Lwt.t =
   let uri = textDocument |> member "uri" |> to_string in
   let text = textDocument |> member "text" |> to_string in
   let document = create_document (get_init_state ()) text in
-  Hashtbl.add documents uri document;
-  send_highlights uri document <&>
-  publish_diagnostics uri document
-
+  GlobalLSPState.add_document uri document
 
 let textDocumentDidChange params : unit Lwt.t =
   let open Yojson.Basic.Util in
@@ -135,22 +179,16 @@ let textDocumentDidChange params : unit Lwt.t =
     DocumentManager.({ range_start; range_end }, text)
   in
   let textEdits = List.map read_edit contentChanges in
-  let document = Hashtbl.find documents uri in
-  let new_doc = DocumentManager.apply_text_edits document textEdits in
-  Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
-  publish_diagnostics uri new_doc
+  GlobalLSPState.update_document uri ~f:(fun document ->
+    Lwt.return @@ DocumentManager.apply_text_edits document textEdits)
 
 let textDocumentDidSave params : unit Lwt.t =
   let open Yojson.Basic.Util in
   let open Lwt.Infix in
   let textDocument = params |> member "textDocument" in
   let uri = textDocument |> member "uri" |> to_string in
-  let document = Hashtbl.find documents uri in
-  let new_doc = DocumentManager.validate_document document in
-  Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
-  publish_diagnostics uri new_doc
+  GlobalLSPState.update_document uri ~f:(fun document ->
+    Lwt.return @@ DocumentManager.validate_document document)
 
 let mk_goal sigma g =
   let env = Goal.V82.env sigma g in
@@ -198,23 +236,14 @@ let mk_proofview loc Proof.{ goals; shelf; given_up; sigma } =
     "focus", mk_loc loc
   ]
 
-let progress_hook uri doc : unit Lwt.t =
-  let open Lwt.Infix in
-  send_highlights uri doc <&>
-  publish_diagnostics uri doc
-
 let coqtopInterpretToPoint ~id params : unit Lwt.t =
   let open Yojson.Basic.Util in
   let open Lwt.Infix in
+  let open GlobalLSPState in
   let uri = params |> member "uri" |> to_string in
   let loc = params |> member "location" |> parse_loc in
-  let document = Hashtbl.find documents uri in
-  let progress_hook = progress_hook uri in
-  DocumentManager.interpret_to_position ~progress_hook document loc >>= fun (new_doc, proof) ->
-  Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
-  publish_diagnostics uri new_doc <&>
-  match proof with
+  let update_document = update_document uri in
+  DocumentManager.interpret_to_position ~update_document (get_document uri) loc >>= function
   | None -> Lwt.return ()
   | Some (proofview, pos) ->
     let result = mk_proofview pos proofview in
@@ -223,13 +252,10 @@ let coqtopInterpretToPoint ~id params : unit Lwt.t =
 let coqtopStepBackward ~id params : unit Lwt.t =
   let open Yojson.Basic.Util in
   let open Lwt.Infix in
+  let open GlobalLSPState in
   let uri = params |> member "uri" |> to_string in
-  let document = Hashtbl.find documents uri in
-  DocumentManager.interpret_to_previous document >>= fun (new_doc, proof) ->
-  Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
-  publish_diagnostics uri new_doc <&>
-  match proof with
+  let update_document = update_document uri in
+  DocumentManager.interpret_to_previous ~update_document (get_document uri) >>= function
   | None -> Lwt.return ()
   | Some (proofview, pos) ->
     let result = mk_proofview pos proofview in
@@ -238,13 +264,10 @@ let coqtopStepBackward ~id params : unit Lwt.t =
 let coqtopStepForward ~id params : unit Lwt.t =
   let open Yojson.Basic.Util in
   let open Lwt.Infix in
+  let open GlobalLSPState in
   let uri = params |> member "uri" |> to_string in
-  let document = Hashtbl.find documents uri in
-  DocumentManager.interpret_to_next document >>= fun (new_doc, proof) ->
-  Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
-  publish_diagnostics uri new_doc <&>
-  match proof with
+  let update_document = update_document uri in
+  DocumentManager.interpret_to_next ~update_document (get_document uri) >>= function
   | None -> Lwt.return ()
   | Some (proofview, pos) ->
     let result = mk_proofview pos proofview in
@@ -254,23 +277,15 @@ let coqtopResetCoq ~id params : unit Lwt.t =
   let open Yojson.Basic.Util in
   let open Lwt.Infix in
   let uri = params |> member "uri" |> to_string in
-  let document = Hashtbl.find documents uri in
-  let new_doc = DocumentManager.reset (get_init_state ()) document in
-  Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
-  publish_diagnostics uri new_doc
+  GlobalLSPState.update_document uri ~f:(DocumentManager.reset (get_init_state ()))
 
 let coqtopInterpretToEnd ~id params : unit Lwt.t =
   let open Yojson.Basic.Util in
   let open Lwt.Infix in
+  let open GlobalLSPState in
   let uri = params |> member "uri" |> to_string in
-  let document = Hashtbl.find documents uri in
-  let progress_hook = progress_hook uri in
-  DocumentManager.interpret_to_end ~progress_hook document >>= fun (new_doc, proof) ->
-  Hashtbl.replace documents uri new_doc;
-  send_highlights uri new_doc <&>
-  publish_diagnostics uri new_doc <&>
-  match proof with
+  let update_document = update_document uri in
+  DocumentManager.interpret_to_end ~update_document (get_document uri) >>= function
   | None -> Lwt.return ()
   | Some (proofview, pos) ->
     let result = mk_proofview pos proofview in

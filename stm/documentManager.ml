@@ -463,8 +463,6 @@ type document = {
   more_to_parse : bool;
 }
 
-type progress_hook = document -> unit Lwt.t
-
 let parsed_ranges doc = ParsedDoc.parsed_ranges doc.raw_doc doc.parsed_doc
 
 let executed_ranges doc =
@@ -646,7 +644,10 @@ let apply_text_edits document edits =
     let executed_loc = Option.map (min parsed_loc) document.executed_loc in
     { document with parsed_loc; executed_loc }
 
-let interpret_to_loc ~after ?(progress_hook=fun doc -> Lwt.return ()) doc loc : (document * proof_data) Lwt.t =
+type updater = f:(document -> (document * bool) Lwt.t) -> unit Lwt.t
+
+let interpret_to_loc ~after ~update_document doc loc : proof_data Lwt.t =
+  let commit_document doc = update_document ~f:(fun _ -> Lwt.return doc) in
   log @@ "Interpreting to loc " ^ string_of_int loc;
   let rec make_progress doc =
     let open Lwt.Infix in
@@ -658,46 +659,45 @@ let interpret_to_loc ~after ?(progress_hook=fun doc -> Lwt.return ()) doc loc : 
     executing the sentence, which is unnatural. *)
     let find = if after then ParsedDoc.find_sentence else ParsedDoc.find_sentence_before in
     match find doc.parsed_doc loc with
-    | None -> (* document is empty *) Lwt.return (doc, None)
+    | None -> (* document is empty *) Lwt.return None
     | Some { id; stop; start } ->
-      let progress_hook st = progress_hook { doc with execution_state = st; executed_loc = Some stop } in
-      ExecutionManager.observe ~hack:(ParsedDoc.hack doc.parsed_doc) progress_hook (ParsedDoc.schedule doc.parsed_doc) id doc.execution_state >>= fun st ->
+      let update_state ~f = update_document ~f:(fun doc -> f doc.execution_state >>= fun st -> Lwt.return { doc with execution_state = st }) in
+      ExecutionManager.observe ~hack:(ParsedDoc.hack doc.parsed_doc)
+        ~update_state
+        (ParsedDoc.schedule doc.parsed_doc) id doc.execution_state
+      >>= fun proof_data ->
       log @@ "Observed " ^ Stateid.to_string id;
-      let doc = { doc with execution_state = st } in
       if doc.parsed_loc < loc && doc.more_to_parse then
         make_progress doc
       else
-      let executed_loc = Some stop in
-      let proof_data = match ExecutionManager.get_proofview st id with
-        | None -> None
-        | Some pv -> let pos = RawDoc.position_of_loc doc.raw_doc stop in Some (pv, pos)
-      in
-      Lwt.return ({ doc with executed_loc }, proof_data)
+        commit_document { doc with executed_loc = Some stop } >>= fun () ->
+        Lwt.return @@
+          Option.map (fun pv -> let pos = RawDoc.position_of_loc doc.raw_doc stop in pv, pos) proof_data
   in
   make_progress doc
 
-let interpret_to_position ?progress_hook doc pos =
+let interpret_to_position ~update_document doc pos =
   let loc = RawDoc.loc_of_position doc.raw_doc pos in
-  interpret_to_loc ~after:false ?progress_hook doc loc
+  interpret_to_loc ~after:false ~update_document  doc loc
 
-let interpret_to_previous doc =
+let interpret_to_previous ~update_document doc =
   match doc.executed_loc with
-  | None -> Lwt.return (doc, None)
+  | None -> Lwt.return None
   | Some loc ->
-    interpret_to_loc ~after:false doc (loc-1)
+    interpret_to_loc ~after:false ~update_document doc (loc-1)
 
-let interpret_to_next doc =
+let interpret_to_next ~update_document doc =
   match doc.executed_loc with
-  | None -> Lwt.return (doc, None)
+  | None -> Lwt.return None
   | Some stop ->
-    interpret_to_loc ~after:true doc (stop+1)
+    interpret_to_loc ~after:true ~update_document doc (stop+1)
 
-let interpret_to_end ?progress_hook doc =
-  interpret_to_loc ~after:false ?progress_hook doc (RawDoc.end_loc doc.raw_doc)
+let interpret_to_end ~update_document  doc =
+  interpret_to_loc ~after:false ~update_document doc (RawDoc.end_loc doc.raw_doc)
 
 let reset vernac_state doc =
   let execution_state = ExecutionManager.init vernac_state in
-  validate_document
+  Lwt.return @@ validate_document
     { doc with parsed_loc = -1;
       executed_loc = None;
       parsed_doc = ParsedDoc.empty;

@@ -20,11 +20,11 @@ type ast = Vernacexpr.vernac_control
 type state
 (** Execution state, includes the cache *)
 
-type progress_hook = state -> unit Lwt.t
-
 val init : Vernacstate.t -> state
 
-val observe : hack:(sentence_id -> ast option) -> progress_hook -> schedule -> sentence_id -> state -> state Lwt.t
+type updater = f:(state -> state Lwt.t) -> unit Lwt.t
+
+val observe : hack:(sentence_id -> ast option) -> update_state:updater -> schedule -> sentence_id -> state -> Proof.data option Lwt.t
 val query : sentence_id -> state -> ast -> state
 
 val invalidate : schedule -> sentence_id -> state -> state
@@ -35,4 +35,3 @@ val executed_ids : state -> sentence_id list
 val is_executed : state -> sentence_id -> bool
 
 val get_parsing_state_after : state -> sentence_id -> Vernacstate.Parser.state option
-val get_proofview : state -> sentence_id -> Proof.data option
