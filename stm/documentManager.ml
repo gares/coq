@@ -463,7 +463,7 @@ type document = {
   more_to_parse : bool;
 }
 
-type progress_hook = document -> unit Lwt.t
+type progress_hook = document option -> unit Lwt.t
 
 let parsed_ranges doc = ParsedDoc.parsed_ranges doc.raw_doc doc.parsed_doc
 

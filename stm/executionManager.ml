@@ -27,7 +27,7 @@ type state = {
   cache : execution_status SM.t;
 }
 
-type progress_hook = state -> unit Lwt.t
+type progress_hook = state option -> unit Lwt.t
 
 let init vernac_state = {
     initial = vernac_state;

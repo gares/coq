@@ -200,6 +200,10 @@ let mk_proofview loc Proof.{ goals; shelf; given_up; sigma } =
 
 let progress_hook uri doc : unit Lwt.t =
   let open Lwt.Infix in
+  let doc =
+    match doc with
+    | None -> Hashtbl.find documents uri
+    | Some x -> x in
   send_highlights uri doc >>= fun () ->
   publish_diagnostics uri doc
 

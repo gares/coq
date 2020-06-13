@@ -33,7 +33,7 @@ type text_edit = range * string
 
 type proof_data = (Proof.data * position) option
 
-type progress_hook = document -> unit Lwt.t
+type progress_hook = document option -> unit Lwt.t
 
 val apply_text_edits : document -> text_edit list -> document
 (** [apply_text_edits doc edits] updates the text of [doc] with [edits]. The

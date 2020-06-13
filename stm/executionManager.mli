@@ -20,7 +20,7 @@ type ast = Vernacexpr.vernac_control
 type state
 (** Execution state, includes the cache *)
 
-type progress_hook = state -> unit Lwt.t
+type progress_hook = state option -> unit Lwt.t
 
 val init : Vernacstate.t -> state
 
