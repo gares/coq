@@ -187,7 +187,7 @@ module ParsedDoc : sig
   val schedule : t -> schedule
 
   val parsed_ranges : RawDoc.t -> t -> range list
-  val executed_ranges : RawDoc.t -> t -> ExecutionManager.state -> int -> range list
+  val executed_ranges : RawDoc.t -> t -> ExecutionManager.state -> int -> range list * range list
 
   val make_diagnostic : RawDoc.t -> t -> sentence_id -> Loc.t option -> string -> severity -> diagnostic
   val parse_errors : RawDoc.t -> t -> diagnostic list
@@ -411,7 +411,9 @@ end = struct
   let executed_ranges raw parsed execution_state executed_loc =
     let valid_ids = List.map (fun s -> s.id) @@ sentences_before parsed executed_loc in
     let executed_ids = List.filter (ExecutionManager.is_executed execution_state) valid_ids in
-    List.map (range_of_id raw parsed) executed_ids
+    let remotely_executed_ids = List.filter (ExecutionManager.is_remotely_executed execution_state) valid_ids in
+    List.map (range_of_id raw parsed) executed_ids,
+    List.map (range_of_id raw parsed) remotely_executed_ids
 
   let patch_sentence parsed scheduler_state_before id ({ ast; start; stop } : pre_sentence) =
     log @@ "Patching sentence " ^ Stateid.to_string id;
@@ -469,7 +471,7 @@ let parsed_ranges doc = ParsedDoc.parsed_ranges doc.raw_doc doc.parsed_doc
 
 let executed_ranges doc =
   match doc.executed_loc with
-  | None -> []
+  | None -> [],[]
   | Some loc ->
     ParsedDoc.executed_ranges doc.raw_doc doc.parsed_doc doc.execution_state loc
 

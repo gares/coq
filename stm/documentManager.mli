@@ -65,9 +65,9 @@ val parsed_ranges : document -> range list
 (** parsed_ranges [doc] returns the ranges corresponding to the sentences
     that have been parsed in [doc]. *)
 
-val executed_ranges : document -> range list
+val executed_ranges : document -> range list * range list
 (** parsed_ranges [doc] returns the ranges corresponding to the sentences
-    that have been executed in [doc]. *)
+    that have been executed and remotely execute in [doc]. *)
 
 val reset : Vernacstate.t -> document -> document
 

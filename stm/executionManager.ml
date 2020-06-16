@@ -351,7 +351,12 @@ let executed_ids st =
 
 let is_executed st id =
   match find_fulfilled_opt id st.cache with
-  | Some (Success _ | Error _) -> true
+  | Some (Success (Some _) | Error (_,Some _)) -> true
+  | _ -> false
+
+let is_remotely_executed st id =
+  match find_fulfilled_opt id st.cache with
+  | Some (Success None | Error (_,None)) -> true
   | _ -> false
 
 let query id st ast = assert false
