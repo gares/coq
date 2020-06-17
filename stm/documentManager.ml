@@ -574,8 +574,11 @@ let invalidate top_edit parsed_doc new_sentences exec_st =
   let stream = Stream.of_string text in
   let parsed_current = parse_more len stream current.parsed_doc () in
   *)
-  let rec invalidate_diff parsed_doc scheduler_state exec_st = let open ParsedDoc in function
-    | [] -> exec_st, parsed_doc
+  let rec invalidate_diff parsed_doc scheduler_state exec_st =
+    let open ParsedDoc in
+    let open Lwt.Infix in
+    function
+    | [] -> Lwt.return (exec_st, parsed_doc)
     | Equal s :: diffs ->
       let patch_sentence (parsed_doc,scheduler_state) (old_s,new_s) =
         ParsedDoc.patch_sentence parsed_doc scheduler_state old_s new_s
@@ -583,7 +586,8 @@ let invalidate top_edit parsed_doc new_sentences exec_st =
       let parsed_doc, scheduler_state = List.fold_left patch_sentence (parsed_doc, scheduler_state) s in
       invalidate_diff parsed_doc scheduler_state exec_st diffs
     | Deleted ids :: diffs ->
-      let exec_st = List.fold_left (fun st id -> ExecutionManager.invalidate (ParsedDoc.schedule parsed_doc) id st) exec_st ids in
+      Lwt_list.fold_left_s (fun st id ->
+        ExecutionManager.invalidate (ParsedDoc.schedule parsed_doc) id st) exec_st ids >>= fun exec_st ->
       let parsed_doc = List.fold_left ParsedDoc.remove_sentence parsed_doc ids in
       (* FIXME update scheduler state, maybe invalidate after diff zone *)
       invalidate_diff parsed_doc scheduler_state exec_st diffs
@@ -603,17 +607,18 @@ let invalidate top_edit parsed_doc new_sentences exec_st =
 
 (** Validate document when raw text has changed *)
 let validate_document ({ parsed_loc; raw_doc; parsed_doc; execution_state } as document) =
+  let open Lwt.Infix in
   match ParsedDoc.state_at_pos parsed_doc execution_state parsed_loc with
-  | None -> document
+  | None -> Lwt.return document
   | Some (stop, parsing_state, _scheduler_state) ->
     let text = RawDoc.text raw_doc in
     let stream = Stream.of_string text in
     while Stream.count stream < stop do Stream.junk stream done;
     log @@ Format.sprintf "Parsing more from pos %i" stop;
     let new_sentences, more_to_parse = parse_more parsing_state stream raw_doc (* TODO invalidate first *) in
-    let execution_state, parsed_doc = invalidate (stop+1) document.parsed_doc new_sentences execution_state in
+    invalidate (stop+1) document.parsed_doc new_sentences execution_state >>= fun (execution_state, parsed_doc) ->
     let parsed_loc = ParsedDoc.pos_at_end parsed_doc in
-    { document with parsed_doc; execution_state; more_to_parse; parsed_loc }
+    Lwt.return { document with parsed_doc; execution_state; more_to_parse; parsed_loc }
 
 let create_document vernac_state text =
   let raw_doc = RawDoc.create text in
@@ -651,7 +656,7 @@ let interpret_to_loc ~after ?(progress_hook=fun doc -> Lwt.return ()) doc loc : 
   log @@ "[DM] Interpreting to loc " ^ string_of_int loc;
   let rec make_progress doc =
     let open Lwt.Infix in
-    let doc = validate_document doc in
+    validate_document doc >>= fun doc ->
     log @@ ParsedDoc.to_string doc.parsed_doc;
     log @@ Scheduler.string_of_schedule @@ ParsedDoc.schedule doc.parsed_doc;
     (** We jump to the sentence before the position, otherwise jumping to the
