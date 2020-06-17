@@ -117,7 +117,7 @@ let textDocumentDidOpen params : unit Lwt.t =
   let textDocument = params |> member "textDocument" in
   let uri = textDocument |> member "uri" |> to_string in
   let text = textDocument |> member "text" |> to_string in
-  let document = create_document (get_init_state ()) text in
+  create_document (get_init_state ()) text >>= fun document ->
   Hashtbl.add documents uri document;
   send_highlights uri document >>= fun () ->
   publish_diagnostics uri document
@@ -149,7 +149,7 @@ let textDocumentDidSave params : unit Lwt.t =
   let textDocument = params |> member "textDocument" in
   let uri = textDocument |> member "uri" |> to_string in
   let document = Hashtbl.find documents uri in
-  let new_doc = DocumentManager.validate_document document in
+  DocumentManager.validate_document document >>= fun new_doc ->
   Hashtbl.replace documents uri new_doc;
   send_highlights uri new_doc >>= fun () ->
   publish_diagnostics uri new_doc
@@ -264,7 +264,7 @@ let coqtopResetCoq ~id params : unit Lwt.t =
   let open Lwt.Infix in
   let uri = params |> member "uri" |> to_string in
   let document = Hashtbl.find documents uri in
-  let new_doc = DocumentManager.reset (get_init_state ()) document in
+  DocumentManager.reset (get_init_state ()) document >>= fun new_doc ->
   Hashtbl.replace documents uri new_doc;
   send_highlights uri new_doc >>= fun () ->
   publish_diagnostics uri new_doc
@@ -322,11 +322,17 @@ let islave_default_opts =
 let islave_init run_mode ~opts =
   Coqtop.init_toploop opts
 
+type actors = [ `Ui of Yojson.Basic.t | `Workers of ExecutionManager.action ] Lwt.t
+
+let ui () =
+  let open Lwt.Infix in
+  read_request Lwt_io.stdin >>= fun req ->
+  log "[T] UI req ready"; Lwt.return @@ `Ui req
+
 let loop run_mode ~opts:_ state =
   init_state := Some (Vernacstate.freeze_interp_state ~marshallable:false);
   let open Lwt.Infix in
-  let ui () = read_request Lwt_io.stdin >>= fun req -> log "[T] UI req ready"; Lwt.return @@ `Ui req in
-  let rec loop (actions : [> `Ui of Yojson.Basic.t | `Workers of ExecutionManager.action ] Lwt.t list) =
+  let rec loop (actions : actors list) =
     let open Yojson.Basic.Util in
     log @@ "[T] looking for next step";
     Lwt_io.flush_all () >>= fun () ->

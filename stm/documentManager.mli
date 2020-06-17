@@ -15,7 +15,7 @@
 
 type document
 
-val create_document : Vernacstate.t -> string -> document
+val create_document : Vernacstate.t -> string -> document Lwt.t
 (** [create_document st text] creates a fresh document with initial state
     [st] and content defined by [text]. *)
 
@@ -39,7 +39,7 @@ val apply_text_edits : document -> text_edit list -> document
 (** [apply_text_edits doc edits] updates the text of [doc] with [edits]. The
     new text is not parsed or executed. *)
 
-val validate_document : document -> document
+val validate_document : document -> document Lwt.t
 (** [validate_document doc] reparses the text of [doc] and invalidates the
     states impacted by the diff with the previously validated content. If the
     text of [doc] has not changed since the last call to [validate_document], it
@@ -69,7 +69,7 @@ val executed_ranges : document -> range list * range list
 (** parsed_ranges [doc] returns the ranges corresponding to the sentences
     that have been executed and remotely execute in [doc]. *)
 
-val reset : Vernacstate.t -> document -> document
+val reset : Vernacstate.t -> document -> document Lwt.t
 
 type severity =
   | Warning
