@@ -24,13 +24,8 @@ type progress_hook = state option -> unit Lwt.t
 
 val init : Vernacstate.t -> state
 
-type action
-type 'a actions = ([> `Workers of action ] as 'a) Lwt.t list
-
-val perform_workers_action : action -> 'a actions Lwt.t
-
 val observe : hack:(sentence_id -> ast option) -> progress_hook -> schedule -> sentence_id -> state ->
-  (state * 'a actions) Lwt.t
+  (state * 'a DelegationManager.events) Lwt.t
 val query : sentence_id -> state -> ast -> state
 
 val invalidate : schedule -> sentence_id -> state -> state Lwt.t
