@@ -622,7 +622,7 @@ let validate_document ({ parsed_loc; raw_doc; parsed_doc; execution_state } as d
 
 let create_document vernac_state text =
   let raw_doc = RawDoc.create text in
-  let execution_state = ExecutionManager.init vernac_state in
+  let execution_state = ExecutionManager.init_master vernac_state in
   validate_document
     { parsed_loc = -1;
       executed_loc = None;
@@ -702,7 +702,7 @@ let interpret_to_end ?progress_hook doc =
   interpret_to_loc ~after:false ?progress_hook doc (RawDoc.end_loc doc.raw_doc)
 
 let reset vernac_state doc =
-  let execution_state = ExecutionManager.init vernac_state in
+  let execution_state = ExecutionManager.init_master vernac_state in
   validate_document
     { doc with parsed_loc = -1;
       executed_loc = None;
