@@ -22,7 +22,6 @@ type state
 
 type progress_hook = state option -> unit Lwt.t
 
-val init : Vernacstate.t -> state
 
 val observe : hack:(sentence_id -> ast option) -> progress_hook -> schedule -> sentence_id -> state ->
   (state * 'a DelegationManager.events) Lwt.t
@@ -43,4 +42,5 @@ type job
 val worker_main : state -> job -> unit Lwt.t
 
 type execution_status
-val new_process_worker : Vernacstate.t -> execution_status DelegationManager.marshalable_remote_mapping -> DelegationManager.link -> state
+val init_worker : Vernacstate.t -> execution_status DelegationManager.marshalable_remote_mapping -> DelegationManager.link -> state
+val init_master : Vernacstate.t -> state
