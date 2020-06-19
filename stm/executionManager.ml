@@ -119,22 +119,14 @@ module Jobs = struct
 end
 module Queue = MakeQueue(Jobs)
 
+let mk_remote (st, remote_mapping) id =
+  let remote_mapping, pr = DelegationManager.lwt_remotely_wait remote_mapping id in
+  ({ st with of_sentence = SM.add id pr st.of_sentence }, remote_mapping)
+
 let remotize ~hack (st,remote_mapping) id =
   match hack id with
   | None -> (st, remote_mapping), PSkip id
-  | Some ast ->
-      let remote_mapping, pr = DelegationManager.lwt_remotely_wait remote_mapping id in
-      ({ st with of_sentence = SM.add id pr st.of_sentence }, remote_mapping), PExec(id,ast)
-
-let new_process_worker st mapping link =
-  let st, mapping =
-    List.fold_left (fun (st,mapping) id ->
-      let mapping, pr = DelegationManager.lwt_remotely_wait_m mapping id in
-      { st with of_sentence = SM.add id pr st.of_sentence }, mapping)
-      (st,DelegationManager.(marshalable_remote_mapping (empty_remote_mapping ~progress_hook:(Lwt.return)))) 
-      (DelegationManager.ids_of_mapping_m mapping) in
-  DelegationManager.new_process_worker mapping link;
-  st
+  | Some ast -> mk_remote (st, remote_mapping) id, PExec(id,ast)
 
 let prepare_task ~hack ~progress_hook st task : state * prepared_task =
   match task with
@@ -186,8 +178,8 @@ and execute st (vs,events,interrupted) task =
           let vs, v = interp_ast vs ast in
           update st id v;
           let e =
-            DelegationManager.worker_available () ~job:Queue.dequeue
-              ~fork_action:(fun () -> worker_main st)
+            DelegationManager.worker_available ~job:Queue.dequeue
+              ~fork_action:(worker_main st)
               ~process_action:"vscoqtop_worker.opt" in
           Lwt.return (vs,events @ e,false)
     with Sys.Break ->
@@ -228,6 +220,14 @@ let observe ~hack progress_hook schedule id st : (state * 'a DelegationManager.e
   Lwt_list.fold_left_s execute_w_progress (vs,[],false) tasks >>= fun (_,events,_) ->
   Lwt.return (st,events)
 
+(* Like the OpaqueProof part of prepare_task, but we don't need the tasks.
+   In short: we fill st with entries for the sentences in the mapping *)
+let new_process_worker st remote_mapping link =
+  let ids = DelegationManager.ids_of_mapping remote_mapping in
+  let remote_mapping = DelegationManager.empty_remote_mapping ~progress_hook:Lwt.return in
+  let st, remote_mapping = List.fold_left mk_remote (st,remote_mapping) ids in
+  DelegationManager.new_process_worker remote_mapping link;
+  st
 
 let get_fulfilled_opt x =
   match Lwt.state x with
