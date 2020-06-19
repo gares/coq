@@ -123,10 +123,16 @@ let remotize ~hack (st,remote_mapping) id =
   match hack id with
   | None -> (st, remote_mapping), PSkip id
   | Some ast ->
-      let remote_mapping, pr = DelegationManager.lwt_remotely_wait remote_mapping in
+      let remote_mapping, pr = DelegationManager.lwt_remotely_wait remote_mapping id in
       ({ st with of_sentence = SM.add id pr st.of_sentence }, remote_mapping), PExec(id,ast)
 
 let new_process_worker st mapping link =
+  let st, mapping =
+    List.fold_left (fun (st,mapping) id ->
+      let mapping, pr = DelegationManager.lwt_remotely_wait_m mapping id in
+      { st with of_sentence = SM.add id pr st.of_sentence }, mapping)
+      (st,DelegationManager.(marshalable_remote_mapping (empty_remote_mapping ~progress_hook:(Lwt.return)))) 
+      (DelegationManager.ids_of_mapping_m mapping) in
   DelegationManager.new_process_worker mapping link;
   st
 
@@ -180,8 +186,8 @@ and execute st (vs,events,interrupted) task =
           let vs, v = interp_ast vs ast in
           update st id v;
           let e =
-            DelegationManager.worker_available st ~job:Queue.dequeue
-              ~fork_action:worker_main
+            DelegationManager.worker_available () ~job:Queue.dequeue
+              ~fork_action:(fun () -> worker_main st)
               ~process_action:"vscoqtop_worker.opt" in
           Lwt.return (vs,events @ e,false)
     with Sys.Break ->
