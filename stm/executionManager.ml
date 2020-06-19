@@ -126,6 +126,10 @@ let remotize ~hack (st,remote_mapping) id =
       let remote_mapping, pr = DelegationManager.lwt_remotely_wait remote_mapping in
       ({ st with of_sentence = SM.add id pr st.of_sentence }, remote_mapping), PExec(id,ast)
 
+let new_process_worker st mapping link =
+  DelegationManager.new_process_worker mapping link;
+  st
+
 let prepare_task ~hack ~progress_hook st task : state * prepared_task =
   match task with
   | Skip id ->
@@ -148,7 +152,9 @@ let id_of_prepared_task = function
   | PExec(id, _) -> id
   | PDelegate(id, _, _) -> id
 
-let rec worker_action st (job , vs, _state_id) =
+type job = prepared_task list * Vernacstate.t * sentence_id
+
+let rec worker_main st ((job , vs, _state_id) : job) =
   (* signalling progress is automtically done by the resolution of remote
      promises *)
   Lwt_list.fold_left_s (execute st) (vs,[],false) job >>= fun _ ->
@@ -174,8 +180,9 @@ and execute st (vs,events,interrupted) task =
           let vs, v = interp_ast vs ast in
           update st id v;
           let e =
-            DelegationManager.worker_available ~job:Queue.dequeue
-              ~action:(worker_action st) in
+            DelegationManager.worker_available st ~job:Queue.dequeue
+              ~fork_action:worker_main
+              ~process_action:"vscoqtop_worker.opt" in
           Lwt.return (vs,events @ e,false)
     with Sys.Break ->
       Lwt.return (vs,events,true)
