@@ -185,7 +185,7 @@ and execute st (vs,events,interrupted) task =
     with Sys.Break ->
       Lwt.return (vs,events,true)
 
-let observe ~hack progress_hook schedule id st : (state * 'a DelegationManager.events) Lwt.t =
+let observe ~hack progress_hook schedule id st : (state * DelegationManager.events) Lwt.t =
   log @@ "[M] Observe " ^ Stateid.to_string id;
   let rec build_tasks id tasks =
     begin match find_fulfilled_opt id st.of_sentence with
