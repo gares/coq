@@ -13,6 +13,7 @@
 
 open DocumentManager
 open Printer
+open Lwt.Infix
 
 module NamedDecl = Context.Named.Declaration
 module CompactedDecl = Context.Compacted.Declaration
@@ -30,7 +31,6 @@ let log msg = Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
 let string_field name obj = Yojson.Basic.to_string (List.assoc name obj)
 
 let read_request ic : Yojson.Basic.t Lwt.t =
-  let open Lwt.Infix in
   Lwt_io.read_line ic >>= fun header ->
   let scan_header = Scanf.Scanning.from_string header in
   Scanf.bscanf scan_header "Content-Length: %d" (fun size ->
@@ -125,7 +125,6 @@ let textDocumentDidOpen params : unit Lwt.t =
 
 let textDocumentDidChange params : unit Lwt.t =
   let open Yojson.Basic.Util in
-  let open Lwt.Infix in
   let textDocument = params |> member "textDocument" in
   let uri = textDocument |> member "uri" |> to_string in
   let contentChanges = params |> member "contentChanges" |> to_list in
@@ -145,7 +144,6 @@ let textDocumentDidChange params : unit Lwt.t =
 
 let textDocumentDidSave params : unit Lwt.t =
   let open Yojson.Basic.Util in
-  let open Lwt.Infix in
   let textDocument = params |> member "textDocument" in
   let uri = textDocument |> member "uri" |> to_string in
   let document = Hashtbl.find documents uri in
@@ -201,7 +199,6 @@ let mk_proofview loc Proof.{ goals; shelf; given_up; sigma } =
   ]
 
 let progress_hook uri doc : unit Lwt.t =
-  let open Lwt.Infix in
   let doc =
     match doc with
     | None -> Hashtbl.find documents uri
@@ -209,7 +206,7 @@ let progress_hook uri doc : unit Lwt.t =
   send_highlights uri doc >>= fun () ->
   publish_diagnostics uri doc
 
-let coqtopInterpretToPoint ~id params : 'a DelegationManager.events Lwt.t =
+let coqtopInterpretToPoint ~id params : DelegationManager.events Lwt.t =
   let open Yojson.Basic.Util in
   let open Lwt.Infix in
   let uri = params |> member "uri" |> to_string in
@@ -227,7 +224,7 @@ let coqtopInterpretToPoint ~id params : 'a DelegationManager.events Lwt.t =
     output_json @@ mk_response ~id ~result >>= fun () ->
     Lwt.return events
 
-let coqtopStepBackward ~id params : 'a DelegationManager.events Lwt.t =
+let coqtopStepBackward ~id params : DelegationManager.events Lwt.t =
   let open Yojson.Basic.Util in
   let open Lwt.Infix in
   let uri = params |> member "uri" |> to_string in
@@ -243,7 +240,7 @@ let coqtopStepBackward ~id params : 'a DelegationManager.events Lwt.t =
     output_json @@ mk_response ~id ~result >>= fun () ->
     Lwt.return events
 
-let coqtopStepForward ~id params : 'a DelegationManager.events Lwt.t =
+let coqtopStepForward ~id params : DelegationManager.events Lwt.t =
   let open Yojson.Basic.Util in
   let open Lwt.Infix in
   let uri = params |> member "uri" |> to_string in
@@ -269,7 +266,7 @@ let coqtopResetCoq ~id params : unit Lwt.t =
   send_highlights uri new_doc >>= fun () ->
   publish_diagnostics uri new_doc
 
-let coqtopInterpretToEnd ~id params : 'a DelegationManager.events Lwt.t =
+let coqtopInterpretToEnd ~id params : DelegationManager.events Lwt.t =
   let open Yojson.Basic.Util in
   let open Lwt.Infix in
   let uri = params |> member "uri" |> to_string in
@@ -286,7 +283,21 @@ let coqtopInterpretToEnd ~id params : 'a DelegationManager.events Lwt.t =
     output_json @@ mk_response ~id ~result >>= fun () ->
     Lwt.return events
 
-let dispatch_method ~id method_name params : 'a DelegationManager.events Lwt.t =
+type lsp_event = Request of Yojson.Basic.t
+
+type event =
+ | LspManager of lsp_event
+ | DelegationManager of DelegationManager.event
+
+type events = event Lwt.t list
+
+let inject_dm_event x : event Lwt.t =
+  x >>= fun x -> Lwt.return @@ DelegationManager x
+
+let inject_dm_events l =
+  Lwt.return @@ List.map inject_dm_event l
+
+let dispatch_method ~id method_name params : events Lwt.t =
   let open Lwt.Infix in
   match method_name with
   | "initialize" -> do_initialize ~id >>= fun () -> Lwt.return []
@@ -294,27 +305,20 @@ let dispatch_method ~id method_name params : 'a DelegationManager.events Lwt.t =
   | "textDocument/didOpen" -> textDocumentDidOpen params >>= fun () -> Lwt.return []
   | "textDocument/didChange" -> textDocumentDidChange params >>= fun () -> Lwt.return []
   | "textDocument/didSave" -> textDocumentDidSave params >>= fun () -> Lwt.return []
-  | "coqtop/interpretToPoint" -> coqtopInterpretToPoint ~id params
-  | "coqtop/stepBackward" -> coqtopStepBackward ~id params
-  | "coqtop/stepForward" -> coqtopStepForward ~id params
+  | "coqtop/interpretToPoint" -> coqtopInterpretToPoint ~id params >>= inject_dm_events
+  | "coqtop/stepBackward" -> coqtopStepBackward ~id params  >>= inject_dm_events
+  | "coqtop/stepForward" -> coqtopStepForward ~id params  >>= inject_dm_events
   | "coqtop/resetCoq" -> coqtopResetCoq ~id params >>= fun () -> Lwt.return []
-  | "coqtop/interpretToEnd" -> coqtopInterpretToEnd ~id params
+  | "coqtop/interpretToEnd" -> coqtopInterpretToEnd ~id params >>= inject_dm_events
   | _ -> log @@ "Ignoring call to unknown method: " ^ method_name; Lwt.return []
-
-
-type event = Request of Yojson.Basic.t
-type 'a events =
-  ([> `LspManager of event
-   |  `DelegationManager of DelegationManager.event ] as 'a) Lwt.t list
-
-open Lwt.Infix
 
 let lsp () = [
   read_request Lwt_io.stdin >>= fun req ->
-  log "[T] UI req ready"; Lwt.return @@ `LspManager (Request req)
+  log "[T] UI req ready";
+  Lwt.return @@ LspManager (Request req)
 ]
 
-let handle_event = function
+let handle_lsp_event = function
   | Request req ->
       let open Yojson.Basic.Util in
       let id = Option.default 0 (req |> member "id" |> to_int_option) in
@@ -323,6 +327,11 @@ let handle_event = function
       log @@ "[T] ui step: " ^ method_name;
       dispatch_method ~id method_name params >>= fun more_events ->
       Lwt.return @@ more_events @ lsp()
+
+let handle_event = function
+  | LspManager e -> handle_lsp_event e
+  | DelegationManager e ->
+      DelegationManager.handle_event e >>= inject_dm_events
 
 let init () =
   init_state := Some (Vernacstate.freeze_interp_state ~marshallable:false)
