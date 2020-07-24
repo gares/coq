@@ -34,8 +34,8 @@ let loop run_mode ~opts:_ state =
     log bt;
     flush_all ()
 
-let vscoqtop_specific_usage = Usage.{
-  executable_name = "vscoqtop";
+let vscoqtop_specific_usage = {
+  Usage.executable_name = "vscoqtop";
   extra_args = "";
   extra_options = "";
 }
