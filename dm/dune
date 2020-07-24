@@ -1,0 +1,10 @@
+(library
+ (name dm)
+ (synopsis "Coq's Document Manager and Proof Checking Scheduler")
+ (public_name coq.dm)
+ (wrapped false)
+ (libraries vernac lwt.unix))
+
+(env
+  (dev
+    (flags (:standard -warn-error -A))))
