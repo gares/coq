@@ -22,9 +22,13 @@ type state
 
 type progress_hook = state option -> unit Lwt.t
 
+type event
+type events = event Lwt.t list
+
+val handle_event : event -> events Lwt.t
 
 val observe : hack:(sentence_id -> ast option) -> progress_hook -> schedule -> sentence_id -> state ->
-  (state * DelegationManager.events) Lwt.t
+  (state * events) Lwt.t
 val query : sentence_id -> state -> ast -> state
 
 val invalidate : schedule -> sentence_id -> state -> state Lwt.t
@@ -38,8 +42,10 @@ val is_remotely_executed : state -> sentence_id -> bool
 val get_parsing_state_after : state -> sentence_id -> Vernacstate.Parser.state option
 val get_proofview : state -> sentence_id -> Proof.data option
 
-type job
-type execution_status
-val worker_main : state -> job -> unit Lwt.t
-val init_worker : Vernacstate.t -> sentence_id list -> DelegationManager.link -> (execution_status DelegationManager.remote_mapping * state) Lwt.t
 val init_master : Vernacstate.t -> state
+
+module WorkerProcess : sig
+  type options
+  val parse_options : (options,'b) DelegationManager.coqtop_extra_args_fn
+  val main : st:Vernacstate.t -> options -> unit Lwt.t
+end

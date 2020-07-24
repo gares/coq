@@ -652,7 +652,7 @@ let apply_text_edits document edits =
     let executed_loc = Option.map (min parsed_loc) document.executed_loc in
     { document with parsed_loc; executed_loc }
 
-let interpret_to_loc ~after ?(progress_hook=fun doc -> Lwt.return ()) doc loc : (document * proof_data * DelegationManager.events) Lwt.t =
+let interpret_to_loc ~after ?(progress_hook=fun doc -> Lwt.return ()) doc loc : (document * proof_data * ExecutionManager.events) Lwt.t =
   log @@ "[DM] Interpreting to loc " ^ string_of_int loc;
   let rec make_progress doc =
     let open Lwt.Infix in
