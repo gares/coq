@@ -5,4 +5,4 @@ Record point2d := mkPoint { x2p: nat; y2p: nat }.
 
 
 Definition increment_x (p: point2d) : point2d :=
-  {| x2p := x2p p + 1; |}.
+  {| x2p := x2p p + (fun n => _) 1; |}.
