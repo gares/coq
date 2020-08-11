@@ -163,9 +163,10 @@ type cmd_t = {
   cids : Names.Id.t list;
   cblock : proof_block_name option;
   cqueue : [ `MainQueue
-           | `TacQueue of solving_tac * anon_abstracting_tac * AsyncTaskQueue.cancel_switch
-           | `QueryQueue of AsyncTaskQueue.cancel_switch
-           | `SkipQueue ] }
+           | `ParallelQueue
+           | `QueryQueue
+           | `SkipQueue ];
+  cancel_switch : AsyncTaskQueue.cancel_switch; }
 type fork_t = aast * Vcs_.Branch.t * opacity_guarantee * Names.Id.t list
 type qed_t = {
   qast : aast;
@@ -194,10 +195,10 @@ type step =
 type visit = { step : step; next : Stateid.t }
 
 let mkTransTac cast cblock cqueue =
-  Cmd { ctac = true; cast; cblock; cqueue; cids = []; ceff = false }
+  Cmd { ctac = true; cast; cblock; cqueue; cids = []; ceff = false; cancel_switch = ref false }
 
 let mkTransCmd cast cids ceff cqueue =
-  Cmd { ctac = false; cast; cblock = None; cqueue; cids; ceff }
+  Cmd { ctac = false; cast; cblock = None; cqueue; cids; ceff; cancel_switch = ref false }
 
 type cached_state =
   | EmptyState
@@ -746,8 +747,7 @@ end = struct (* {{{ *)
     Stateid.Set.iter (fun id ->
         match (Vcs_aux.visit old_vcs id).step with
         | `Qed ({ fproof = Some (_, cancel_switch) }, _)
-        | `Cmd { cqueue = `TacQueue (_,_,cancel_switch) }
-        | `Cmd { cqueue = `QueryQueue cancel_switch } ->
+        | `Cmd { cancel_switch } ->
              cancel_switch := true
         | _ -> ())
       erased_nodes;
@@ -851,6 +851,8 @@ module State : sig
 
   val purify : ('a -> 'b) -> 'a -> 'b
 
+  val current : unit -> Stateid.t
+
 end = struct (* {{{ *)
 
   type t = { id : Stateid.t; vernac_state : Vernacstate.t }
@@ -858,6 +860,7 @@ end = struct (* {{{ *)
   (* cur_id holds Stateid.dummy in case the last attempt to define a state
    * failed, so the global state may contain garbage *)
   let cur_id = ref Stateid.dummy
+  let current () = !cur_id
   let freeze () = { id = !cur_id; vernac_state = Vernacstate.freeze_interp_state ~marshallable:false }
   let unfreeze st =
     Vernacstate.unfreeze_interp_state st.vernac_state;
@@ -1940,53 +1943,45 @@ end (* }}} *)
 
 and Partac : sig
 
-  val vernac_interp :
+(*   val vernac_interp :
     solve:bool -> abstract:bool -> cancel_switch:AsyncTaskQueue.cancel_switch ->
     int -> CoqworkmgrApi.priority -> Stateid.t -> Stateid.t -> aast -> unit
-
+ *)
 end = struct (* {{{ *)
 
   module TaskQueue = AsyncTaskQueue.MakeQueue(TacTask) ()
 
-  let stm_fail ~st fail f =
+  let _stm_fail ~st fail f =
     if fail then
       Vernacinterp.with_fail ~st f
     else
       f ()
 
-  let vernac_interp ~solve ~abstract ~cancel_switch nworkers priority safe_id id
-    { indentation; verbose; expr = e; strlen } : unit
-  =
-    let cl, time, batch, fail =
-      let rec find ~time ~batch ~fail cl = match cl with
-        | ControlTime batch :: cl -> find ~time:true ~batch ~fail cl
-        | ControlRedirect _ :: cl -> find ~time ~batch ~fail cl
-        | ControlFail :: cl -> find ~time ~batch ~fail:true cl
-        | cl -> cl, time, batch, fail in
-      find ~time:false ~batch:false ~fail:false e.CAst.v.control in
-    let e = CAst.map (fun cmd -> { cmd with control = cl }) e in
-    let st = Vernacstate.freeze_interp_state ~marshallable:false in
-    stm_fail ~st fail (fun () ->
-    (if time then System.with_time ~batch ~header:(Pp.mt ()) else (fun x -> x)) (fun () ->
-    TaskQueue.with_n_workers nworkers priority (fun queue ->
-    PG_compat.map_proof (fun p ->
+
+  let () =
+    ComTactic.par_implementation := (fun ~pstate ~info ~ast _ ~solve ~abstract ~with_end_tac ->
+    TaskQueue.with_n_workers !cur_opt.async_proofs_n_tacworkers !cur_opt.async_proofs_worker_priority (fun queue ->
+    Declare.Proof.map ~f:(fun p ->
       let Proof.{goals} = Proof.data p in
       let open TacTask in
       let res = CList.map_i (fun i g ->
         let f, assign =
           Future.create_delegate
             ~name:(Printf.sprintf "subgoal %d" i)
-            (State.exn_on id ~valid:safe_id) in
-        let t_ast = (i, { indentation; verbose; expr = e; strlen }) in
+            (fun x -> x) in
+        let expr = CAst.make { Vernacexpr.expr = ast; control = []; attrs = [] } in
+        let t_ast = (i, { indentation = 0; verbose = false; expr; strlen = 0 }) in
         let t_name = Goal.uid g in
         TaskQueue.enqueue_task queue
-          { t_state = safe_id; t_state_fb = id;
+          { t_state = State.current (); t_state_fb = State.current ();
             t_assign = assign; t_ast; t_goal = g; t_name;
             t_kill = (fun () -> if solve then TaskQueue.cancel_all queue) }
-           ~cancel_switch;
+           ~cancel_switch:(ref false);
         g,f)
         1 goals in
       TaskQueue.join queue;
+      Unix.sleep 10;
+
       let assign_tac : unit Proofview.tactic =
         Proofview.(Goal.enter begin fun g ->
         let gid = Goal.goal g in
@@ -2019,7 +2014,7 @@ end = struct (* {{{ *)
         end)
       in
       let p,_,() = Proof.run_tactic (Global.env()) assign_tac p in
-      p))) ())
+      p)) pstate)
 
 end (* }}} *)
 
@@ -2371,7 +2366,7 @@ let known_state ~doc ?(redefine_qed=false) ~cache id =
           ), cache, true
       | `Cmd { cast = x; cqueue = `SkipQueue } -> (fun () ->
             reach view.next), cache, true
-      | `Cmd { cast = x; cqueue = `TacQueue (solve,abstract,cancel_switch); cblock } ->
+(*       | `Cmd { cast = x; cqueue = `TacQueue (solve,abstract,cancel_switch); cblock } ->
           (fun () ->
             resilient_tactic id cblock (fun () ->
               reach ~cache:true view.next;
@@ -2379,19 +2374,20 @@ let known_state ~doc ?(redefine_qed=false) ~cache id =
                 !cur_opt.async_proofs_n_tacworkers
                 !cur_opt.async_proofs_worker_priority view.next id x)
           ), cache, true
-      | `Cmd { cast = x; cqueue = `QueryQueue cancel_switch }
+ *)
+      | `Cmd { cast = x; cqueue = `QueryQueue; cancel_switch }
         when async_proofs_is_master !cur_opt -> (fun () ->
             reach view.next;
             Query.vernac_interp ~cancel_switch view.next id x
           ), cache, false
-      | `Cmd { cast = x; ceff = eff; ctac = true; cblock } -> (fun () ->
+      | `Cmd { cast = x; ceff = eff; ctac = true; cblock; cqueue } -> (fun () ->
             resilient_tactic id cblock (fun () ->
-              reach view.next;
+              reach view.next; (* XXXX *)
               (* State resulting from reach *)
               let st = Vernacstate.freeze_interp_state ~marshallable:false in
               ignore(stm_vernac_interp id st x)
             )
-          ), eff || cache, true
+          ), eff || cache || true, true
       | `Cmd { cast = x; ceff = eff } -> (fun () ->
           (match !cur_opt.async_proofs_mode with
            | APon | APonLazy ->
@@ -2950,10 +2946,7 @@ let process_transaction ~doc ?(newtip=Stateid.fresh ())
 
       | VtProofStep { parallel; proof_block_detection = cblock } ->
           let id = VCS.new_node ~id:newtip proof_mode () in
-          let queue =
-            match parallel with
-            | `Yes(solve,abstract) -> `TacQueue (solve, abstract, ref false)
-            | `No -> `MainQueue in
+          let queue = if parallel then `ParallelQueue else `MainQueue in
           VCS.commit id (mkTransTac x cblock queue);
           (* Static proof block detection delayed until an error really occurs.
              If/when and UI will make something useful with this piece of info,

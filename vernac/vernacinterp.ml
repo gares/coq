@@ -39,6 +39,9 @@ let interp_typed_vernac c ~pm ~stack =
   | VtOpenProof f ->
     Some (Vernacstate.LemmaStack.push stack (f ())), pm
   | VtModifyProof f ->
+
+    Option.map (Vernacstate.LemmaStack.map_top ~f:(fun pstate -> f ~pstate)) stack, pm
+  | VtModifyProofParallel f ->
     Option.map (Vernacstate.LemmaStack.map_top ~f:(fun pstate -> f ~pstate)) stack, pm
   | VtReadProofOpt f ->
     let pstate = Option.map (Vernacstate.LemmaStack.with_top ~f:(fun x -> x)) stack in
