@@ -30,7 +30,7 @@ type vernac_classification =
   | VtQed of vernac_qed_type
   (* A proof step *)
   | VtProofStep of {
-      parallel : [ `Yes of solving_tac * anon_abstracting_tac | `No ];
+      parallel : bool;
       proof_block_detection : proof_block_name option
     }
   (* Queries are commands assumed to be "pure", that is to say, they
@@ -58,6 +58,7 @@ type typed_vernac =
   | VtCloseProof of (lemma:Lemmas.t -> unit)
   | VtOpenProof of (unit -> Lemmas.t)
   | VtModifyProof of (pstate:Declare.Proof.t -> Declare.Proof.t)
+  | VtModifyProofParallel of (pstate:Declare.Proof.t -> Declare.Proof.t)
   | VtReadProofOpt of (pstate:Declare.Proof.t option -> unit)
   | VtReadProof of (pstate:Declare.Proof.t -> unit)
 
@@ -68,7 +69,7 @@ type plugin_args = Genarg.raw_generic_argument list
 (* Table of vernac entries *)
 let vernac_tab =
   (Hashtbl.create 211 :
-    (Vernacexpr.extend_name, bool * (plugin_args -> vernac_command)) Hashtbl.t)
+    (Vernacexpr.extend_name, bool * (plugin_args -> ast:Vernacexpr.vernac_expr -> vernac_command)) Hashtbl.t)
 
 let vinterp_add depr s f =
   try
@@ -103,7 +104,7 @@ let type_vernac opn converted_args ~atts =
       warn_deprecated_command pr;
   in
   let hunk = callback converted_args in
-  hunk ~atts
+  hunk ~ast:(Vernacexpr.VernacExtend(opn,converted_args)) ~atts
 
 (** VERNAC EXTEND registering *)
 
@@ -120,10 +121,10 @@ let declare_vernac_classifier name f =
 
 let classify_as_query = VtQuery
 let classify_as_sideeff = VtSideff ([], VtLater)
-let classify_as_proofstep = VtProofStep { parallel = `No; proof_block_detection = None}
+let classify_as_proofstep = VtProofStep { parallel = false; proof_block_detection = None}
 
 type (_, _) ty_sig =
-| TyNil : (vernac_command, vernac_classification) ty_sig
+| TyNil : (ast:Vernacexpr.vernac_expr -> vernac_command, vernac_classification) ty_sig
 | TyTerminal : string * ('r, 's) ty_sig -> ('r, 's) ty_sig
 | TyNonTerminal : ('a, 'b, 'c) Extend.ty_user_symbol * ('r, 's) ty_sig -> ('a -> 'r, 'a -> 's) ty_sig
 
@@ -149,7 +150,7 @@ let rec untype_classifier : type r s. (r, s) ty_sig -> s -> classifier = functio
   end
 
 (** Stupid GADTs forces us to duplicate the definition just for typing *)
-let rec untype_command : type r s. (r, s) ty_sig -> r -> plugin_args -> vernac_command = function
+let rec untype_command : type r s. (r, s) ty_sig -> r -> plugin_args -> ast:Vernacexpr.vernac_expr -> vernac_command = function
 | TyNil -> fun f args ->
   begin match args with
   | [] -> f
