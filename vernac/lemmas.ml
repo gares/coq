@@ -30,6 +30,9 @@ type t =
   }
 
 let pf_map f pf = { pf with proof = f pf.proof }
+let pf_map_lwt f pf =
+  let open CLwt.Infix in
+  f ~pstate:pf.proof >>= fun (proof,events) -> CLwt.return ({ pf with proof },events)
 let pf_fold f pf = f pf.proof
 
 let set_endline_tactic t = pf_map (Declare.Proof.set_endline_tactic t)

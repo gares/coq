@@ -16,6 +16,9 @@ open Names
 open Safe_typing
 module NamedDecl = Context.Named.Declaration
 
+type event = unit
+let handle_event _ = CLwt.return []
+
 type opacity_flag = Vernacexpr.opacity_flag = Opaque | Transparent
 
 type t =
@@ -37,6 +40,11 @@ let get_initial_euctx ps = ps.initial_euctx
 
 let map_proof f p = { p with proof = f p.proof }
 let map_fold_proof f p = let proof, res = f p.proof in { p with proof }, res
+
+let map_proof_lwt f p =
+  let open CLwt.Infix in
+  f p.proof >>= fun (proof, events) ->
+  CLwt.return ({ p with proof }, events)
 
 let map_fold_proof_endline f ps =
   let et =
@@ -2029,6 +2037,10 @@ let save_lemma_proved_delayed ~proof ~info ~idopt =
 
 module Proof = struct
   type nonrec t = t
+  type nonrec event = event
+  type nonrec events = event CLwt.t list
+  let handle_event = handle_event
+  let map_proof_lwt = map_proof_lwt
   let get_proof = get_proof
   let get_proof_name = get_proof_name
   let map_proof = map_proof

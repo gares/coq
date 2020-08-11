@@ -26,6 +26,7 @@ module LemmaStack : sig
   val push : t option -> Lemmas.t -> t
 
   val map_top_pstate : f:(Declare.Proof.t -> Declare.Proof.t) -> t -> t
+  val map_top_pstate_lwt : f:(pstate:Declare.Proof.t -> (Declare.Proof.t * Declare.Proof.events) CLwt.t) -> t -> (t * Declare.Proof.events) CLwt.t
   val with_top_pstate : t -> f:(Declare.Proof.t -> 'a ) -> 'a
 
 end

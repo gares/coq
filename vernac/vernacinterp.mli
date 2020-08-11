@@ -9,7 +9,7 @@
 (************************************************************************)
 
 (** The main interpretation function of vernacular expressions *)
-val interp : ?verbosely:bool -> st:Vernacstate.t -> Vernacexpr.vernac_control -> Vernacstate.t
+val interp : ?verbosely:bool -> st:Vernacstate.t -> Vernacexpr.vernac_control -> ((Vernacstate.t  * Declare.Proof.events), Exninfo.iexn) CLwt.result
 
 (** Execute a Qed but with a proof_object which may contain a delayed
    proof and won't be forced *)

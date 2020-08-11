@@ -48,6 +48,11 @@ module Proof : sig
   val get_proof : t -> Proof.t
   val get_proof_name : t -> Names.Id.t
 
+  type event
+  type events = event CLwt.t list
+  val handle_event : event -> events CLwt.t
+  val map_proof_lwt : (Proof.t -> (Proof.t * events) CLwt.t) -> t -> (t * events) CLwt.t
+
   val map_proof : (Proof.t -> Proof.t) -> t -> t
   val map_fold_proof : (Proof.t -> Proof.t * 'a) -> t -> t * 'a
   val map_fold_proof_endline : (unit Proofview.tactic -> Proof.t -> Proof.t * 'a) -> t -> t * 'a

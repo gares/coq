@@ -22,32 +22,39 @@ let vernac_require_open_lemma ~stack f =
   | None ->
     CErrors.user_err (Pp.str "Command not supported (No proof-editing in progress)")
 
-let interp_typed_vernac c ~stack =
+let interp_typed_vernac c ~stack : (Vernacstate.LemmaStack.t option * Declare.Proof.events) CLwt.t=
   let open Vernacextend in
+  let open CLwt.Infix in
   match c with
-  | VtDefault f -> f (); stack
+  | VtDefault f -> f (); CLwt.return (stack, [])
   | VtNoProof f ->
     if Option.has_some stack then
       CErrors.user_err (Pp.str "Command not supported (Open proofs remain)");
     let () = f () in
-    stack
+    CLwt.return (stack, [])
   | VtCloseProof f ->
-    vernac_require_open_lemma ~stack (fun stack ->
+    CLwt.return (vernac_require_open_lemma ~stack (fun stack ->
         let lemma, stack = Vernacstate.LemmaStack.pop stack in
         f ~lemma;
-        stack)
+        stack),[])
   | VtOpenProof f ->
-    Some (Vernacstate.LemmaStack.push stack (f ()))
+    CLwt.return (Some (Vernacstate.LemmaStack.push stack (f ())),[])
   | VtModifyProof f ->
-    Option.map (Vernacstate.LemmaStack.map_top_pstate ~f:(fun pstate -> f ~pstate)) stack
+    CLwt.return (Option.map (Vernacstate.LemmaStack.map_top_pstate ~f:(fun pstate -> f ~pstate)) stack,[])
+  | VtModifyProofParallel f ->
+    begin match stack with
+    | None -> CLwt.return (None,[])
+    | Some s ->
+        Vernacstate.LemmaStack.map_top_pstate_lwt ~f s >>= fun (s,e) ->
+        CLwt.return (Some s,e) end
   | VtReadProofOpt f ->
     let pstate = Option.map (Vernacstate.LemmaStack.with_top_pstate ~f:(fun x -> x)) stack in
     f ~pstate;
-    stack
+    CLwt.return (stack,[])
   | VtReadProof f ->
     vernac_require_open_lemma ~stack
       (Vernacstate.LemmaStack.with_top_pstate ~f:(fun pstate -> f ~pstate));
-    stack
+    CLwt.return (stack,[])
 
 (* Default proof mode, to be set at the beginning of proofs for
    programs that cannot be statically classified. *)
@@ -140,7 +147,7 @@ let interp_control_flag ~time_header (f : control_flag) ~st
  * is the outdated/deprecated "Local" attribute of some vernacular commands
  * still parsed as the obsolete_locality grammar entry for retrocompatibility.
  * loc is the Loc.t of the vernacular command being interpreted. *)
-let rec interp_expr ~atts ~st c =
+let rec interp_expr ~atts ~st c : (Vernacstate.LemmaStack.t option * Declare.Proof.events) CLwt.t=
   let stack = st.Vernacstate.lemmas in
   vernac_pperr_endline Pp.(fun () -> str "interpreting: " ++ Ppvernac.pr_vernac_expr c);
   match c with
@@ -158,14 +165,16 @@ let rec interp_expr ~atts ~st c =
 
   (* This one is possible to handle here *)
   | VernacAbort id    -> CErrors.user_err (Pp.str "Abort cannot be used through the Load command")
+  (*
   | VernacLoad (verbosely, fname) ->
     Attributes.unsupported_attributes atts;
-    vernac_load ~verbosely fname
+    vernac_load ~verbosely fname*)
   | v ->
     let fv = Vernacentries.translate_vernac ~atts v in
     interp_typed_vernac ~stack fv
 
-and vernac_load ~verbosely fname =
+and _vernac_load ~verbosely fname =
+  let open CLwt.Infix in
   let exception End_of_input in
 
   (* Note that no proof should be open here, so the state here is just token for now *)
@@ -184,33 +193,32 @@ and vernac_load ~verbosely fname =
          match Pcoq.Entry.parse (Pvernac.main_entry proof_mode) po with
          | Some x -> x
          | None -> raise End_of_input) in
-  let rec load_loop ~stack =
-    try
-      let proof_mode = Option.map (fun _ -> get_default_proof_mode ()) stack in
-      let stack =
+  let rec load_loop ~stack ~events =
+    CLwt.catch
+      (fun () ->
+        let proof_mode = Option.map (fun _ -> get_default_proof_mode ()) stack in
         v_mod (interp_control ~st:{ st with Vernacstate.lemmas = stack })
-          (parse_sentence proof_mode input) in
-      load_loop ~stack
-    with
-      End_of_input ->
-      stack
+          (parse_sentence proof_mode input) >>= fun (stack, ev) ->
+        load_loop ~stack ~events:(events @ ev))
+      (function End_of_input -> CLwt.return (stack, events) | exn -> CLwt.fail exn)
   in
-  let stack = load_loop ~stack:st.Vernacstate.lemmas in
+  load_loop ~stack:st.Vernacstate.lemmas ~events:[] >>= fun (stack, events as res) ->
   (* If Load left a proof open, we fail too. *)
   if Option.has_some stack then
     CErrors.user_err Pp.(str "Files processed by Load cannot leave open proofs.");
-  stack
+  CLwt.return res
 
-and interp_control ~st ({ CAst.v = cmd } as vernac) =
-  let time_header = mk_time_header vernac in
-  List.fold_right (fun flag fn -> interp_control_flag ~time_header flag fn)
-    cmd.control
-    (fun ~st ->
+and interp_control ~st ({ CAst.v = cmd } as _vernac) : (Vernacstate.LemmaStack.t option * Declare.Proof.events) CLwt.t =
+  let open CLwt.Infix in
+  (*let time_header = mk_time_header vernac in
+  Lwt_list.fold_right_s (fun flag fn -> interp_control_flag ~time_header flag fn)
+    cmd.control *)
        let before_univs = Global.universes () in
-       let pstack = interp_expr ~atts:cmd.attrs ~st cmd.expr in
-       if before_univs == Global.universes () then pstack
-       else Option.map (Vernacstate.LemmaStack.map_top_pstate ~f:Declare.Proof.update_global_env) pstack)
-    ~st
+       interp_expr ~atts:cmd.attrs ~st cmd.expr >>= fun (pstack, events as res) ->
+       if before_univs == Global.universes () then CLwt.return res
+       else
+         let pstack = Option.map (Vernacstate.LemmaStack.map_top_pstate ~f:Declare.Proof.update_global_env) pstack in
+         CLwt.return (pstack, events)
 
 (* XXX: This won't properly set the proof mode, as of today, it is
    controlled by the STM. Thus, we would need access information from
@@ -260,9 +268,24 @@ let interp_gen ~verbosely ~st ~interp_fn cmd =
     Vernacstate.invalidate_cache ();
     Exninfo.iraise exn
 
+let interp_lwt ~verbosely ~st ~interp_fn cmd =
+  let open CLwt.Infix in
+  Vernacstate.unfreeze_interp_state st;
+  let v_mod = if verbosely then Flags.verbosely else Flags.silently in
+  CLwt.catch
+    (fun () ->
+      v_mod (interp_fn ~st) cmd >>= fun (ontop, events) ->
+      Vernacstate.Declare.set ontop [@ocaml.warning "-3"];
+      CLwt.result_return (Vernacstate.freeze_interp_state ~marshallable:false, events))
+    (fun exn ->
+      let exn = Exninfo.capture exn in
+      let exn = locate_if_not_already ?loc:cmd.CAst.loc exn in
+      Vernacstate.invalidate_cache ();
+      CLwt.result_fail exn)
+
 (* Regular interp *)
 let interp ?(verbosely=true) ~st cmd =
-  interp_gen ~verbosely ~st ~interp_fn:interp_control cmd
+  interp_lwt ~verbosely ~st ~interp_fn:interp_control cmd
 
 let interp_qed_delayed_proof ~proof ~info ~st ~control pe : Vernacstate.t =
   interp_gen ~verbosely:false ~st

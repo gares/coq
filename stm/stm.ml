@@ -1086,7 +1086,9 @@ let stm_vernac_interp ?route id st { verbose; expr } : Vernacstate.t =
     (stm_pperr_endline Pp.(fun () -> str "ignoring " ++ Ppvernac.pr_vernac expr); st)
   else begin
     stm_pperr_endline Pp.(fun () -> str "interpreting " ++ Ppvernac.pr_vernac expr);
-    Vernacinterp.interp ?verbosely:(Some verbose) ~st expr
+    match CLwt.main_run (Vernacinterp.interp ?verbosely:(Some verbose) ~st expr) with
+    | CLwt.Ok (st,_) -> st
+    | CLwt.Error iexn -> Exninfo.iraise  iexn
   end
 
 (****************************** CRUFT *****************************************)
@@ -2036,7 +2038,8 @@ end = struct (* {{{ *)
         end)
       in
       let p,_,() = Proof.run_tactic (Global.env()) assign_tac p in
-      p))) ())
+      CLwt.return (p, []))) pstate
+    )
 
 end (* }}} *)
 

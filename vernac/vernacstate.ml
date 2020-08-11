@@ -31,6 +31,9 @@ module LemmaStack = struct
   let map f (pf, pfl) = (f pf, List.map f pfl)
 
   let map_top_pstate ~f (pf, pfl) = (Lemmas.pf_map f pf, pfl)
+  let map_top_pstate_lwt ~f (pf, pfl) =
+    let open CLwt.Infix in
+    Lemmas.pf_map_lwt f pf >>= fun (pf,events) -> CLwt.return ((pf, pfl),events)
 
   let pop (ps, p) = match p with
     | [] -> ps, None
