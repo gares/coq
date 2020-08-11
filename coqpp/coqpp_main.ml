@@ -337,6 +337,7 @@ let understand_state = function
   | "close_proof" -> "VtCloseProof", false
   | "open_proof" -> "VtOpenProof", true
   | "proof" -> "VtModifyProof", false
+  | "proof_parallel" -> "VtModifyProofParallel", false
   | "proof_opt_query" -> "VtReadProofOpt", false
   | "proof_query" -> "VtReadProof", false
   | s -> fatal ("unsupported state specifier: " ^ s)
@@ -352,11 +353,12 @@ let print_body_state state fmt r =
       print_code r.vernac_body
 
 let print_body_fun state fmt r =
-  fprintf fmt "let coqpp_body %a%a = @[%a@] in "
+  let ast = if state = Some "proof_parallel" then "~ast" else "~ast:_" in
+  fprintf fmt "let coqpp_body %s %a%a = @[%a@] in " ast
     print_binders r.vernac_toks print_atts_left r.vernac_atts (print_body_state state) r
 
 let print_body state fmt r =
-  fprintf fmt "@[(%afun %a~atts@ -> coqpp_body %a%a)@]"
+  fprintf fmt "@[(%afun %a~ast ~atts@ -> coqpp_body ~ast %a%a)@]"
     (print_body_fun state) r print_binders r.vernac_toks
     print_binders r.vernac_toks print_atts_right r.vernac_atts
 

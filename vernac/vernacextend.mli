@@ -46,7 +46,7 @@ type vernac_classification =
   | VtQed of vernac_qed_type
   (* A proof step *)
   | VtProofStep of {
-      parallel : [ `Yes of solving_tac * anon_abstracting_tac | `No ];
+      parallel : bool;
       proof_block_detection : proof_block_name option
     }
   (* Queries are commands assumed to be "pure", that is to say, they
@@ -76,6 +76,7 @@ type typed_vernac =
   | VtCloseProof of (lemma:Lemmas.t -> unit)
   | VtOpenProof of (unit -> Lemmas.t)
   | VtModifyProof of (pstate:Declare.Proof.t -> Declare.Proof.t)
+  | VtModifyProofParallel of (pstate:Declare.Proof.t -> (Declare.Proof.t * Declare.Proof.events) CLwt.t)
   | VtReadProofOpt of (pstate:Declare.Proof.t option -> unit)
   | VtReadProof of (pstate:Declare.Proof.t -> unit)
 
@@ -90,7 +91,7 @@ val type_vernac : Vernacexpr.extend_name -> plugin_args -> vernac_command
 type classifier = Genarg.raw_generic_argument list -> vernac_classification
 
 type (_, _) ty_sig =
-| TyNil : (vernac_command, vernac_classification) ty_sig
+| TyNil : (ast:Vernacexpr.vernac_expr -> vernac_command, vernac_classification) ty_sig
 | TyTerminal : string * ('r, 's) ty_sig -> ('r, 's) ty_sig
 | TyNonTerminal :
   ('a, 'b, 'c) Extend.ty_user_symbol * ('r, 's) ty_sig ->
