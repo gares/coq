@@ -646,7 +646,8 @@ let error_unresolved_evars env sigma t evars =
   let pr_unresolved_evar e =
     hov 2 (str"- " ++ Printer.pr_existential_key sigma e ++  str ": " ++
       Himsg.explain_pretype_error env sigma
-        (Pretype_errors.UnsolvableImplicit (e,None))) in
+        (Pretype_errors.UnsolvableImplicit (e,None)))
+  in
   CErrors.user_err (hov 0 begin
     str "The following term contains unresolved implicit arguments:"++ fnl () ++
     str "  " ++ Printer.pr_econstr_env env sigma t ++ fnl () ++
