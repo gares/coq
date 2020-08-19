@@ -1,12 +1,8 @@
-File "stdin", line 7, characters 0-88:
+File "stdin", line 7, characters 0-75:
 Error:
 The following term contains unresolved implicit arguments:
-  (fun p : point2d => {| x2p := x2p p + (fun n : nat => ?n) 1; y2p := ?y2p |})
+  (fun p : point2d => {| x2p := x2p p + 1; y2p := ?y2p |})
 More precisely: 
-- ?n: Cannot infer this placeholder of type "nat" in
-  environment:
-  p : point2d
-  n : nat
 - ?y2p: Cannot infer field y2p of record point2d in environment:
   p : point2d
 
