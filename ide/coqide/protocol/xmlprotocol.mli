@@ -37,6 +37,7 @@ val wait        : wait_sty        -> wait_rty call
 val interp      : interp_sty      -> interp_rty call
 val print_ast   : print_ast_sty   -> print_ast_rty call
 val annotate    : annotate_sty    -> annotate_rty call
+val top_cmd     : top_cmd_sty     -> top_cmd_rty call
 
 val abstract_eval_call : handler -> 'a call -> 'a value
 

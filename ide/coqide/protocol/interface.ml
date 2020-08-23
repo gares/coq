@@ -187,6 +187,10 @@ type status_rty = status
 type search_sty = search_flags
 type search_rty = string coq_object list
 
+(** Run a command implemented in Coqloop.process_top_cmd *)
+type top_cmd_sty = string
+type top_cmd_rty = unit
+
 (** Retrieve the list of options of the current toplevel *)
 type get_options_sty = unit
 type get_options_rty = (option_name * option_state) list
@@ -252,6 +256,7 @@ type handler = {
   stop_worker : stop_worker_sty -> stop_worker_rty;
   print_ast   : print_ast_sty   -> print_ast_rty;
   annotate    : annotate_sty    -> annotate_rty;
+  top_cmd     : top_cmd_sty     -> top_cmd_rty;
   handle_exn  : handle_exn_sty  -> handle_exn_rty;
   init        : init_sty        -> init_rty;
   quit        : quit_sty        -> quit_rty;

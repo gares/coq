@@ -35,3 +35,8 @@ val drop_args : Coqargs.t option ref
 
 (** Main entry point of Coq: read and execute vernac commands. *)
 val loop : opts:Coqargs.t -> state:Vernac.State.t -> unit
+
+val read_sentence_ide : Stm.doc -> Stateid.t ->
+      Pcoq.Parsable.t -> G_toplevel.vernac_toplevel option
+
+val process_top_cmd : Stm.doc -> Stateid.t -> G_toplevel.vernac_toplevel -> unit

@@ -1,0 +1,7 @@
+ADD { Goal True /\ False /\ True = False. }
+ADD { split. }
+GOALS
+ADD { split. }
+GOALS
+TOP_CMD { Show Proof Diffs. }
+ADD { auto. }

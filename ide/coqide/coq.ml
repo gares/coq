@@ -512,6 +512,7 @@ let hints x = eval_call (Xmlprotocol.hints x)
 let search flags = eval_call (Xmlprotocol.search flags)
 let init x = eval_call (Xmlprotocol.init x)
 let stop_worker x = eval_call (Xmlprotocol.stop_worker x)
+let top_cmd x = eval_call (Xmlprotocol.top_cmd x)
 
 let break_coqtop coqtop workers =
   if coqtop.status = Busy then

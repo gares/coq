@@ -538,6 +538,7 @@ let interp_sty_t : interp_sty val_t = pair_t (pair_t bool_t bool_t) string_t
 let stop_worker_sty_t : stop_worker_sty val_t = string_t
 let print_ast_sty_t : print_ast_sty val_t = state_id_t
 let annotate_sty_t : annotate_sty val_t = string_t
+let top_cmd_sty_t : top_cmd_sty val_t = string_t
 
 let add_rty_t : add_rty val_t =
   pair_t state_id_t (pair_t (union_t unit_t state_id_t) string_t)
@@ -563,6 +564,7 @@ let interp_rty_t : interp_rty val_t = pair_t state_id_t (union_t string_t string
 let stop_worker_rty_t : stop_worker_rty val_t = unit_t
 let print_ast_rty_t : print_ast_rty val_t = xml_t
 let annotate_rty_t : annotate_rty val_t = xml_t
+let top_cmd_rty_t : top_cmd_rty val_t = unit_t
 
 let ($) x = erase x
 let calls = [|
@@ -585,6 +587,7 @@ let calls = [|
   "StopWorker", ($)stop_worker_sty_t, ($)stop_worker_rty_t;
   "PrintAst",   ($)print_ast_sty_t,   ($)print_ast_rty_t;
   "Annotate",   ($)annotate_sty_t,    ($)annotate_rty_t;
+  "TopCmd",     ($)top_cmd_sty_t,     ($)top_cmd_rty_t;
 |]
 
 type 'a call =
@@ -609,7 +612,9 @@ type 'a call =
   | Interp     : interp_sty -> interp_rty call
   | PrintAst   : print_ast_sty -> print_ast_rty call
   | Annotate   : annotate_sty -> annotate_rty call
+  | TopCmd     : top_cmd_sty -> top_cmd_rty call
 
+(* the order of the entries must match the order in "calls" above *)
 let id_of_call : type a. a call -> int = function
   | Add _        -> 0
   | Edit_at _    -> 1
@@ -630,6 +635,7 @@ let id_of_call : type a. a call -> int = function
   | StopWorker _ -> 16
   | PrintAst _   -> 17
   | Annotate _   -> 18
+  | TopCmd _     -> 19
 
 let str_of_call c = pi1 calls.(id_of_call c)
 
@@ -652,8 +658,9 @@ let init x        : init_rty call        = Init x
 let wait x        : wait_rty call        = Wait x
 let interp x      : interp_rty call      = Interp x
 let stop_worker x : stop_worker_rty call = StopWorker x
-let print_ast   x : print_ast_rty call   = PrintAst x
-let annotate   x : annotate_rty call    = Annotate x
+let print_ast x   : print_ast_rty call   = PrintAst x
+let annotate x    : annotate_rty call    = Annotate x
+let top_cmd x     : top_cmd_rty call     = TopCmd x
 
 let abstract_eval_call : type a. _ -> a call -> a value = fun handler c ->
   let mkGood : type a. a -> a value = fun x -> Good x in
@@ -678,6 +685,7 @@ let abstract_eval_call : type a. _ -> a call -> a value = fun handler c ->
     | StopWorker x -> mkGood (handler.stop_worker x)
     | PrintAst x   -> mkGood (handler.print_ast x)
     | Annotate x   -> mkGood (handler.annotate x)
+    | TopCmd x     -> mkGood (handler.top_cmd x)
   with any ->
     let any = Exninfo.capture any in
     Fail (handler.handle_exn any)
@@ -703,6 +711,7 @@ let of_answer : type a. a call -> a value -> xml = function
   | StopWorker _ -> of_value (of_value_type stop_worker_rty_t)
   | PrintAst _   -> of_value (of_value_type print_ast_rty_t  )
   | Annotate _   -> of_value (of_value_type annotate_rty_t   )
+  | TopCmd _     -> of_value (of_value_type top_cmd_rty_t    )
 
 let of_answer msg_fmt =
   msg_format := msg_fmt; of_answer
@@ -727,6 +736,7 @@ let to_answer : type a. a call -> xml -> a value = function
   | StopWorker _ -> to_value (to_value_type stop_worker_rty_t)
   | PrintAst _   -> to_value (to_value_type print_ast_rty_t  )
   | Annotate _   -> to_value (to_value_type annotate_rty_t   )
+  | TopCmd _     -> to_value (to_value_type top_cmd_rty_t    )
 
 let of_call : type a. a call -> xml = fun q ->
   let mkCall x = constructor "call" (str_of_call q) [x] in
@@ -750,6 +760,7 @@ let of_call : type a. a call -> xml = fun q ->
   | StopWorker x -> mkCall (of_value_type stop_worker_sty_t x)
   | PrintAst x   -> mkCall (of_value_type print_ast_sty_t   x)
   | Annotate x   -> mkCall (of_value_type annotate_sty_t    x)
+  | TopCmd x     -> mkCall (of_value_type top_cmd_sty_t     x)
 
 let to_call : xml -> unknown_call =
   do_match "call" (fun s a ->
@@ -774,6 +785,7 @@ let to_call : xml -> unknown_call =
     | "StopWorker" -> Unknown (StopWorker (mkCallArg stop_worker_sty_t a))
     | "PrintAst"   -> Unknown (PrintAst   (mkCallArg print_ast_sty_t   a))
     | "Annotate"   -> Unknown (Annotate   (mkCallArg annotate_sty_t    a))
+    | "TopCmd"     -> Unknown (TopCmd     (mkCallArg top_cmd_sty_t     a))
     | x -> raise (Marshal_error("call",PCData x)))
 
 (** Debug printing *)
@@ -805,6 +817,7 @@ let pr_full_value : type a. a call -> a value -> string = fun call value -> matc
   | StopWorker _ -> pr_value_gen (print stop_worker_rty_t) value
   | PrintAst _   -> pr_value_gen (print print_ast_rty_t  ) value
   | Annotate _   -> pr_value_gen (print annotate_rty_t   ) value
+  | TopCmd _     -> pr_value_gen (print top_cmd_rty_t    ) value
 let pr_call : type a. a call -> string = fun call ->
   let return what x = str_of_call call ^ " " ^ print what x in
   match call with
@@ -827,6 +840,7 @@ let pr_call : type a. a call -> string = fun call ->
     | StopWorker x -> return stop_worker_sty_t x
     | PrintAst x   -> return print_ast_sty_t x
     | Annotate x   -> return annotate_sty_t x
+    | TopCmd x     -> return top_cmd_sty_t x
 
 let document to_string_fmt =
   Printf.printf "=== Available calls ===\n\n";

@@ -260,10 +260,9 @@ let rec discard_to_dot () =
     | CLexer.Error.E _ -> discard_to_dot ()
     | e when CErrors.noncritical e -> ()
 
-let read_sentence ~state input =
+let read_sentence_ide doc sid input =
   (* XXX: careful with ignoring the state Eugene!*)
-  let open Vernac.State in
-  try Stm.parse_sentence ~doc:state.doc state.sid ~entry:G_toplevel.vernac_toplevel input
+  try Stm.parse_sentence ~doc sid ~entry:G_toplevel.vernac_toplevel input
   with reraise ->
     let reraise = Exninfo.capture reraise in
     discard_to_dot ();
@@ -272,6 +271,10 @@ let read_sentence ~state input =
        printer again *)
     (* TopErr.print_toplevel_parse_error reraise top_buffer; *)
     Exninfo.iraise reraise
+
+let read_sentence ~state input =
+  let open Vernac.State in
+  read_sentence_ide state.doc state.sid input
 
 let extract_default_loc loc doc_id sid : Loc.t option =
   match loc with
@@ -379,21 +382,21 @@ let show_proof_diff_to_pp pstate =
   let pprf = Proof.partial_proof p in
   Pp.prlist_with_sep Pp.fnl (Printer.pr_econstr_env env sigma) pprf
 
-let show_proof_diff_cmd ~state removed =
-  let open Vernac.State in
+let show_proof_diff_cmd doc state removed =
   try
-    let n_pp = show_proof_diff_to_pp state.proof in
+    let n_pp = show_proof_diff_to_pp (Stm.get_proof ~doc state) in
     if true (*Proof_diffs.show_diffs ()*) then
-      let doc = state.doc in
       let oproof = Stm.get_prev_proof ~doc (Stm.get_current_state ~doc) in
       try
-        let o_pp = show_proof_diff_to_pp oproof in
+        let o_pp = match oproof with
+          | Some p -> show_proof_diff_to_pp oproof
+          | None -> Pp.mt()
+        in
         let tokenize_string = Proof_diffs.tokenize_string in
         let show_removed = Some removed in
         Pp_diff.diff_pp_combined ~tokenize_string ?show_removed o_pp n_pp
       with
-      | Proof.NoSuchGoal _
-      | Option.IsNone -> n_pp
+      | Proof.NoSuchGoal _ -> n_pp
       | Pp_diff.Diff_Failure msg -> begin
           (* todo: print the unparsable string (if we know it) *)
           Feedback.msg_warning Pp.(str ("Diff failure: " ^ msg) ++ cut()
@@ -406,6 +409,36 @@ let show_proof_diff_cmd ~state removed =
   | Proof.NoSuchGoal _
   | Option.IsNone ->
     CErrors.user_err (str "No goals to show.")
+
+exception NotSupported of string
+
+(* IDE commands that need to access info from previous states of Stm *)
+let process_top_cmd doc sid stm =
+  let open G_toplevel in
+  match stm with
+  | VernacShowGoal { gid; sid } ->
+    let proof = Stm.get_proof ~doc (Stateid.of_int sid) in
+    let goal = Printer.pr_goal_emacs ~proof gid sid in
+    let evars =
+      match proof with
+      | None -> mt()
+      | Some p ->
+        let gl = (Evar.unsafe_of_int gid) in
+        let { Proof.sigma } = Proof.data p in
+        try Printer.print_dependent_evars (Some gl) sigma [ gl ]
+        with Not_found -> mt()
+    in
+    Feedback.msg_notice (v 0 (goal ++ evars))
+
+  | VernacShowProofDiffs removed ->
+    (* We print nothing if there are no goals left *)
+    if not (Proof_diffs.color_enabled ()) then
+      CErrors.user_err Pp.(str "Show Proof Diffs requires setting the \"-color\" command line argument to \"on\" or \"auto\".")
+    else
+      let out = show_proof_diff_cmd doc sid removed in
+      Feedback.msg_notice out
+
+  | _ -> raise (NotSupported "Not supported by this call")
 
 let process_toplevel_command ~state stm =
   let open Vernac.State in
@@ -429,28 +462,9 @@ let process_toplevel_command ~state stm =
     top_goal_print ~doc:state.doc c state.proof nstate.proof;
     nstate
 
-  | VernacShowGoal { gid; sid } ->
-    let proof = Stm.get_proof ~doc:state.doc (Stateid.of_int sid) in
-    let goal = Printer.pr_goal_emacs ~proof gid sid in
-    let evars =
-      match proof with
-      | None -> mt()
-      | Some p ->
-        let gl = (Evar.unsafe_of_int gid) in
-        let { Proof.sigma } = Proof.data p in
-        try Printer.print_dependent_evars (Some gl) sigma [ gl ]
-        with Not_found -> mt()
-    in
-    Feedback.msg_notice (v 0 (goal ++ evars));
-    state
-
-  | VernacShowProofDiffs removed ->
-    (* We print nothing if there are no goals left *)
-    if not (Proof_diffs.color_enabled ()) then
-      CErrors.user_err Pp.(str "Show Proof Diffs requires setting the \"-color\" command line argument to \"on\" or \"auto\".")
-    else
-      let out = show_proof_diff_cmd ~state removed in
-      Feedback.msg_notice out;
+  | VernacShowGoal _
+  | VernacShowProofDiffs _ ->
+    process_top_cmd state.doc state.sid stm;
     state
 
 (* We return a new state and true if we got a `Drop` command  *)

@@ -142,6 +142,7 @@ object
   method handle_reset_initial : unit task
   method raw_coq_query :
     route_id:int -> next:(query_rty value -> unit task) -> string -> unit task
+  method coq_top_cmd : string -> next:(query_rty value -> unit task) -> unit task
   method show_goals : unit task
   method backtrack_last_phrase : unit task
   method initialize : unit task
@@ -360,6 +361,11 @@ object(self)
     let action = log "raw_coq_query starting now" in
     let query = Coq.query (route_id,(phrase,sid)) in
     Coq.bind (Coq.seq action query) next
+
+  (* for selected commands from g_toplevel.mlg, see Coqloop.process_top_cmd *)
+  method coq_top_cmd phrase ~next : unit Coq.task =
+    let top_cmd = Coq.top_cmd phrase in
+    Coq.bind top_cmd next
 
   method private still_valid { edit_id = id } =
     try ignore(Doc.find_id document (fun _ { edit_id = id1 } -> id = id1)); true
