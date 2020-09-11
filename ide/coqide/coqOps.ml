@@ -142,7 +142,7 @@ object
   method handle_reset_initial : unit task
   method raw_coq_query :
     route_id:int -> next:(query_rty value -> unit task) -> string -> unit task
-  method coq_top_cmd : string -> next:(query_rty value -> unit task) -> unit task
+  method proof_diff : GText.mark -> next:(Pp.t value -> unit task) -> unit task
   method show_goals : unit task
   method backtrack_last_phrase : unit task
   method initialize : unit task
@@ -362,10 +362,14 @@ object(self)
     let query = Coq.query (route_id,(phrase,sid)) in
     Coq.bind (Coq.seq action query) next
 
-  (* for selected commands from g_toplevel.mlg, see Coqloop.process_top_cmd *)
-  method coq_top_cmd phrase ~next : unit Coq.task =
-    let top_cmd = Coq.top_cmd phrase in
-    Coq.bind top_cmd next
+  method proof_diff where ~next : unit Coq.task =
+    let where = buffer#get_iter_at_mark where in
+    let until _ start stop =
+      (buffer#get_iter_at_mark stop)#compare where >= 0 &&
+      (buffer#get_iter_at_mark start)#compare where <= 0 in
+    let removed = false in (* TODO: is this a global CoqIDE option? *)
+    let proof_diff = Coq.proof_diff (removed, fst @@ self#find_id until) in
+    Coq.bind proof_diff next
 
   method private still_valid { edit_id = id } =
     try ignore(Doc.find_id document (fun _ { edit_id = id1 } -> id = id1)); true

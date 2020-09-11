@@ -747,20 +747,20 @@ let coq_icon () =
   let dir = List.find chk (Minilib.coqide_data_dirs ()) in
   Filename.concat dir name
 
-let do_show_proof command sn =
+let show_proof_diff where sn =
   sn.messages#default_route#clear;
-  Coq.try_grab sn.coqtop (sn.coqops#coq_top_cmd command
+  Coq.try_grab sn.coqtop (sn.coqops#proof_diff where
     ~next:(function
         | Interface.Fail (_, _, err) ->
             let err = Ideutils.validate err in
             sn.messages#default_route#add err;
             Coq.return ()
-        | Interface.Good () -> Coq.return ()))
+        | Interface.Good diff ->
+            sn.messages#default_route#add diff;
+            Coq.return ()))
   ignore
 
-let show_top_cmdif command sn = do_show_proof (command ^ ".") sn
-
-let show_proof_diffs _ = cb_on_current_term (show_top_cmdif "Show Proof Diffs") ()
+let show_proof_diffs _ = cb_on_current_term (show_proof_diff `INSERT) ()
 
 let about _ =
   let dialog = GWindow.about_dialog () in

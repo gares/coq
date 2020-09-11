@@ -369,23 +369,13 @@ let export_option_state s = {
 
 exception NotSupported of string
 
-let top_cmd diff_type =
-  let open G_toplevel in
-  let pa = Pcoq.Parsable.make (Stream.of_string diff_type) in
+let proof_diff (removed, sid) =
   let doc = Stm.get_doc 0 in
-  let state = Stm.get_current_state ~doc in
-  begin match Coqloop.read_sentence_ide doc state pa with
-    | Some G_toplevel.VernacDrop
-    | None -> ()
-    | Some stm -> begin
-      match stm with
-      | VernacShowGoal _
-      | VernacShowProofDiffs _ ->
-  (*    | todo: add "Show" command *)
-        Coqloop.process_top_cmd doc state stm
-      | _ -> raise (NotSupported "Input not supported for this call")
-    end;
-  end
+  match Stm.get_proof ~doc sid with
+  | None -> Pp.str "No proofs to diff"
+  | Some proof ->
+      let old = Stm.get_prev_proof ~doc sid in
+      Proof_diffs.diff_proofs ~removed ?old proof
 
 let get_options () =
   let table = Goptions.get_tables () in
@@ -475,7 +465,7 @@ let eval_call c =
     Interface.hints = interruptible hints;
     Interface.status = interruptible status;
     Interface.search = interruptible search;
-    Interface.top_cmd = interruptible top_cmd;
+    Interface.proof_diff = interruptible proof_diff;
     Interface.get_options = interruptible get_options;
     Interface.set_options = interruptible set_options;
     Interface.mkcases = interruptible idetop_make_cases;

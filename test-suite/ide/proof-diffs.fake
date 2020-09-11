@@ -1,7 +1,10 @@
 ADD { Goal True /\ False /\ True = False. }
 ADD { split. }
 GOALS
-ADD { split. }
+ADD here { split. }
 GOALS
-TOP_CMD { Show Proof Diffs. }
-ADD { auto. }
+PDIFF here
+ADD there { auto. }
+GOALS
+PDIFF there
+ADD { Admitted. }

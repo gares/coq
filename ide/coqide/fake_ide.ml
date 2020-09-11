@@ -253,8 +253,9 @@ let eval_print l coq =
       after_edit_at (to_id, need_unfocus) (base_eval_call (edit_at to_id) coq)
   | [ Tok(_,"QUERY"); Top []; Tok(_,phrase) ] ->
       eval_call (query (0,(phrase,tip_id()))) coq
-  | [ Tok(_,"TOP_CMD"); Tok(_,phrase) ] ->
-      eval_call (top_cmd phrase) coq
+  | [ Tok(_,"PDIFF"); Tok(_,id) ] ->
+      let to_id, _ = get_id id in
+      eval_call (proof_diff (false,to_id)) coq
   | [ Tok(_,"QUERY"); Top [Tok(_,id)]; Tok(_,phrase) ] ->
       let to_id, _ = get_id id in
       eval_call (query (0,(phrase, to_id))) coq
@@ -284,7 +285,7 @@ let grammar =
     ; Seq [Item (eat_rex "FAILADD"); Item eat_phrase]
     ; Seq [Item (eat_rex "EDIT_AT"); Item eat_id]
     ; Seq [Item (eat_rex "QUERY"); Opt (Item eat_id); Item eat_phrase]
-    ; Seq [Item (eat_rex "TOP_CMD"); Item eat_phrase]
+    ; Seq [Item (eat_rex "PDIFF");  Item eat_id ]
     ; Seq [Item (eat_rex "WAIT")]
     ; Seq [Item (eat_rex "JOIN")]
     ; Seq [Item (eat_rex "GOALS")]

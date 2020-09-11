@@ -20,7 +20,7 @@ object
   method handle_reset_initial : unit task
   method raw_coq_query :
     route_id:int -> next:(query_rty value -> unit task) -> string -> unit task
-  method coq_top_cmd : string-> next:(query_rty value -> unit task) -> unit task
+  method proof_diff : GText.mark -> next:(Pp.t value -> unit task) -> unit task
   method show_goals : unit task
   method backtrack_last_phrase : unit task
   method initialize : unit task
