@@ -671,11 +671,10 @@ let diff_proofs ~removed ?old proof =
     Pp.prlist_with_sep Pp.fnl (pr_econstr_env env sigma) pprf in
   try
     let n_pp = pp_proof proof in
-    match old with
-    | None -> n_pp
-    | Some old ->
-      let o_pp = pp_proof old in
-      let show_removed = Some removed in
-      Pp_diff.diff_pp_combined ~tokenize_string ?show_removed o_pp n_pp
+    let o_pp = match old with
+      | None -> Pp.mt()
+      | Some old -> pp_proof old in
+    let show_removed = Some removed in
+    Pp_diff.diff_pp_combined ~tokenize_string ?show_removed o_pp n_pp
   with
   | Pp_diff.Diff_Failure msg -> Pp.str msg
