@@ -1118,7 +1118,7 @@ let build_ui () =
         radio "Set diff" 1 ~label:"Show diffs: only _added";
         radio "Set removed diff" 2 ~label:"Show diffs: added and _removed";
       ];
-    item "Show Proof Diffs" ~label:"_Show Proof Diffs" ~accel:"<ALT>S"
+    item "Show Proof Diffs" ~label:"_Show Proof with Diffs" ~accel:"<ALT>S"
       ~callback:MiscMenu.show_proof_diffs;
   ];
   toggle_items view_menu Coq.PrintOpt.bool_items;

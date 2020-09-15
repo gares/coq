@@ -664,17 +664,21 @@ let make_goal_map op np =
   (*db_goal_map op np ng_to_og;*)
   ng_to_og
 
-let diff_proofs ~removed ?old proof =
+let diff_proofs ~diff_opt ?old proof =
   let pp_proof p =
     let sigma, env = Proof.get_proof_context p in
     let pprf = Proof.partial_proof p in
     Pp.prlist_with_sep Pp.fnl (pr_econstr_env env sigma) pprf in
-  try
-    let n_pp = pp_proof proof in
-    let o_pp = match old with
-      | None -> Pp.mt()
-      | Some old -> pp_proof old in
-    let show_removed = Some removed in
-    Pp_diff.diff_pp_combined ~tokenize_string ?show_removed o_pp n_pp
-  with
-  | Pp_diff.Diff_Failure msg -> Pp.str msg
+  if diff_opt = "off" then
+    pp_proof proof
+  else begin
+    try
+      let n_pp = pp_proof proof in
+      let o_pp = match old with
+        | None -> Pp.mt()
+        | Some old -> pp_proof old in
+      let show_removed = Some (diff_opt = "removed") in
+      Pp_diff.diff_pp_combined ~tokenize_string ?show_removed o_pp n_pp
+    with
+    | Pp_diff.Diff_Failure msg -> Pp.str msg
+  end

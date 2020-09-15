@@ -145,6 +145,10 @@ sig
 
   val set : 'a t -> 'a -> unit
 
+  val get : 'a t -> Interface.option_value
+
+  val diff : string t
+
   val printing_unfocused: unit -> bool
 
   (** [enforce] transmits to coq the current option values.

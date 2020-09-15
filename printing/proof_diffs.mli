@@ -85,4 +85,4 @@ type hyp_info = {
 
 val diff_hyps : string list list -> hyp_info CString.Map.t -> string list list -> hyp_info CString.Map.t -> Pp.t list
 
-val diff_proofs : removed:bool -> ?old:Proof.t -> Proof.t -> Pp.t
+val diff_proofs : diff_opt:string -> ?old:Proof.t -> Proof.t -> Pp.t

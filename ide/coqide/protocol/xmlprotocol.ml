@@ -549,7 +549,7 @@ let interp_sty_t : interp_sty val_t = pair_t (pair_t bool_t bool_t) string_t
 let stop_worker_sty_t : stop_worker_sty val_t = string_t
 let print_ast_sty_t : print_ast_sty val_t = state_id_t
 let annotate_sty_t : annotate_sty val_t = string_t
-let proof_diff_sty_t : proof_diff_sty val_t = pair_t bool_t state_id_t
+let proof_diff_sty_t : proof_diff_sty val_t = pair_t string_t state_id_t
 
 let add_rty_t : add_rty val_t =
   pair_t state_id_t (pair_t (union_t unit_t state_id_t) string_t)

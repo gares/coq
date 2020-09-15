@@ -255,7 +255,7 @@ let eval_print l coq =
       eval_call (query (0,(phrase,tip_id()))) coq
   | [ Tok(_,"PDIFF"); Tok(_,id) ] ->
       let to_id, _ = get_id id in
-      eval_call (proof_diff (false,to_id)) coq
+      eval_call (proof_diff ("on",to_id)) coq
   | [ Tok(_,"QUERY"); Top [Tok(_,id)]; Tok(_,phrase) ] ->
       let to_id, _ = get_id id in
       eval_call (query (0,(phrase, to_id))) coq

@@ -367,8 +367,10 @@ object(self)
     let until _ start stop =
       (buffer#get_iter_at_mark stop)#compare where >= 0 &&
       (buffer#get_iter_at_mark start)#compare where <= 0 in
-    let removed = false in (* TODO: is this a global CoqIDE option? *)
-    let proof_diff = Coq.proof_diff (removed, fst @@ self#find_id until) in
+    let diff_opt = Interface.(match Coq.PrintOpt.(get diff) with
+      | StringValue diffs -> diffs
+      | _ -> "off") in
+    let proof_diff = Coq.proof_diff (diff_opt, fst @@ self#find_id until) in
     Coq.bind proof_diff next
 
   method private still_valid { edit_id = id } =

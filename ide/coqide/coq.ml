@@ -579,6 +579,9 @@ struct
   let set (type a) (opt : a t) (v : a) =
     Hashtbl.replace current_state (opt_name opt) (opt_data opt v)
 
+  let get (type a) (opt : a t) =
+    Hashtbl.find current_state (opt_name opt)
+
   let reset () =
     let init_descr d = List.iter (fun o -> set o d.init) d.opts in
     List.iter init_descr bool_items;

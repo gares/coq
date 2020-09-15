@@ -371,13 +371,13 @@ let exit_on_error =
   declare_bool_option_and_ref ~depr:false ~key:["Coqtop";"Exit";"On";"Error"]
     ~value:false
 
-let show_proof_diff_cmd ~state removed =
+let show_proof_diff_cmd ~state diff_opt =
   let open Vernac.State in
   match state.proof with
   | None -> CErrors.user_err (str "No proofs to diff.")
   | Some proof ->
       let old = Stm.get_prev_proof ~doc:state.doc state.sid in
-      Proof_diffs.diff_proofs ~removed ?old proof
+      Proof_diffs.diff_proofs ~diff_opt ?old proof
 
 let process_toplevel_command ~state stm =
   let open Vernac.State in
@@ -416,12 +416,12 @@ let process_toplevel_command ~state stm =
     Feedback.msg_notice (v 0 (goal ++ evars));
     state
 
-  | VernacShowProofDiffs removed ->
+  | VernacShowProofDiffs diff_opt ->
     (* We print nothing if there are no goals left *)
     if not (Proof_diffs.color_enabled ()) then
       CErrors.user_err Pp.(str "Show Proof Diffs requires setting the \"-color\" command line argument to \"on\" or \"auto\".")
     else
-      let out = show_proof_diff_cmd ~state removed in
+      let out = show_proof_diff_cmd ~state diff_opt in
       Feedback.msg_notice out;
     state
 

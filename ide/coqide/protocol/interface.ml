@@ -188,7 +188,7 @@ type search_sty = search_flags
 type search_rty = string coq_object list
 
 (** Diffs between the proof term at a given stateid and the previous one *)
-type proof_diff_sty = (*removed:*)bool * Stateid.t
+type proof_diff_sty = (*removed:*)string * Stateid.t
 type proof_diff_rty = Pp.t
 
 (** Retrieve the list of options of the current toplevel *)

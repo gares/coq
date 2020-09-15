@@ -369,13 +369,13 @@ let export_option_state s = {
 
 exception NotSupported of string
 
-let proof_diff (removed, sid) =
+let proof_diff (diff_opt, sid) =
   let doc = Stm.get_doc 0 in
   match Stm.get_proof ~doc sid with
   | None -> Pp.str "No proofs to diff"
   | Some proof ->
       let old = Stm.get_prev_proof ~doc sid in
-      Proof_diffs.diff_proofs ~removed ?old proof
+      Proof_diffs.diff_proofs ~diff_opt ?old proof
 
 let get_options () =
   let table = Goptions.get_tables () in
