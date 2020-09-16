@@ -365,16 +365,12 @@ object(self)
   method proof_diff where ~next : unit Coq.task =
     (* todo: would be nice to ignore comments, too *)
     let rec back iter =
-      try match char_of_int iter#char with
-        | '\x00' when iter#is_start -> iter
-        | '\x00'
-        | ' '
-        | '\r'
-        | '\n' -> back (iter#backward_char)
-        | '.' -> iter#backward_char
-        | _ -> iter
-      with Invalid_argument _ -> iter
-    in
+      if iter#is_start then iter
+      else
+        let c = iter#char in
+        if Glib.Unichar.isspace c then back (iter#backward_char)
+        else if c = int_of_char '.' then iter#backward_char
+        else iter in
 
     let where = back (buffer#get_iter_at_mark where) in
     let until _ start stop =
