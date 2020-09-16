@@ -363,14 +363,30 @@ object(self)
     Coq.bind (Coq.seq action query) next
 
   method proof_diff where ~next : unit Coq.task =
-    let where = buffer#get_iter_at_mark where in
+    (* todo: would be nice to ignore comments, too *)
+    let rec back iter =
+      try match char_of_int iter#char with
+        | '\x00' when iter#is_start -> iter
+        | '\x00'
+        | ' '
+        | '\r'
+        | '\n' -> back (iter#backward_char)
+        | '.' -> iter#backward_char
+        | _ -> iter
+      with Invalid_argument _ -> iter
+    in
+
+    let where = back (buffer#get_iter_at_mark where) in
     let until _ start stop =
       (buffer#get_iter_at_mark stop)#compare where >= 0 &&
       (buffer#get_iter_at_mark start)#compare where <= 0 in
+    let state_id = fst @@ self#find_id until in
+    if Stateid.to_int state_id = 1 then
+      Printf.eprintf "MOVE THE CURSOR OVER PROVEN LINES\n%!";
     let diff_opt = Interface.(match Coq.PrintOpt.(get diff) with
       | StringValue diffs -> diffs
       | _ -> "off") in
-    let proof_diff = Coq.proof_diff (diff_opt, fst @@ self#find_id until) in
+    let proof_diff = Coq.proof_diff (diff_opt, state_id) in
     Coq.bind proof_diff next
 
   method private still_valid { edit_id = id } =
