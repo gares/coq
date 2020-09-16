@@ -377,8 +377,14 @@ object(self)
       (buffer#get_iter_at_mark stop)#compare where >= 0 &&
       (buffer#get_iter_at_mark start)#compare where <= 0 in
     let state_id = fst @@ self#find_id until in
-    if Stateid.to_int state_id = 1 then
-      Printf.eprintf "MOVE THE CURSOR OVER PROVEN LINES\n%!";
+    if Stateid.to_int state_id = 1 then begin
+      let dialog = GWindow.message_dialog ~buttons:GWindow.Buttons.ok
+        ~message_type:`ERROR
+        ~modal:true
+        ~message:"Move the cursor over proven lines in order to show proof differences" () in
+      ignore(dialog#run ());
+      dialog#destroy ()
+    end;
     let diff_opt = Interface.(match Coq.PrintOpt.(get diff) with
       | StringValue diffs -> diffs
       | _ -> "off") in
