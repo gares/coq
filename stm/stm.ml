@@ -1981,9 +1981,13 @@ end = struct (* {{{ *)
 
 
   let () =
+    assert(0=1);
     ComTactic.par_implementation := (fun ~pstate ~info ~ast _ ~solve ~abstract ~with_end_tac ->
+    Printf.eprintf "1\n%!"; x
     TaskQueue.with_n_workers !cur_opt.async_proofs_n_tacworkers !cur_opt.async_proofs_worker_priority (fun queue ->
+    Printf.eprintf "2\n%!";
     Declare.Proof.map_proof (fun p ->
+    Printf.eprintf "3\n%!";
       let Proof.{goals} = Proof.data p in
       let open TacTask in
       let res = CList.map_i (fun i g ->
@@ -2001,8 +2005,8 @@ end = struct (* {{{ *)
            ~cancel_switch:(ref false);
         g,f)
         1 goals in
+      Printf.eprintf "4\n%!";
       TaskQueue.join queue;
-      Unix.sleep 10;
 
       let assign_tac : unit Proofview.tactic =
         Proofview.(Goal.enter begin fun g ->
