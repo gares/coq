@@ -89,8 +89,7 @@ let interpret_to_loc ?(progress_hook=fun doc -> Lwt.return ()) state loc : (stat
     | None -> (* document is empty *) Lwt.return (state, [])
     | Some { id; stop; start } ->
       let progress_hook () = Lwt.return () in
-      let vernac_st, (st, tasks) = ExecutionManager.build_tasks_for ~progress_hook state.document state.execution_state id in
-      let state = { state with execution_state = st } in
+      let vernac_st, tasks = ExecutionManager.build_tasks_for ~progress_hook state.document state.execution_state id in
       if CList.is_empty tasks then
         let state = { state with observe_loc = Some loc } in
         Lwt.return (state, [])
@@ -212,13 +211,13 @@ let handle_event ev st =
   | ExecuteToLoc (loc, vernac_st, task :: tasks) ->
     log "[DM] event: Execute (more tasks)";
     let doc_id = Document.id_of_doc st.document in
-    ExecutionManager.execute ~doc_id st.execution_state (vernac_st, [], false) task >>= fun (vernac_st,events,interrupted) ->
+    ExecutionManager.execute ~doc_id st.execution_state (vernac_st, [], false) task >>= fun (execution_state,vernac_st,events,interrupted) ->
     (* We do not update the state here because we may have received feedback while
        executing *)
-    Lwt.return (None, inject_em_events events @ [Lwt.return @@ ExecuteToLoc(loc, vernac_st,tasks)])
+    Lwt.return (Some {st with execution_state}, inject_em_events events @ [Lwt.return @@ ExecuteToLoc(loc, vernac_st,tasks)])
   | ExecutionManagerEvent ev ->
-    ExecutionManager.handle_event ev >>= fun events ->
-      Lwt.return (None, inject_em_events events)
+    ExecutionManager.handle_event ev st.execution_state >>= fun (execution_state_update,events) ->
+      Lwt.return (Option.map (fun execution_state -> {st with execution_state}) execution_state_update, inject_em_events events)
 
 let get_current_proof st =
   match Option.bind st.observe_loc (Document.find_sentence_before st.document) with
