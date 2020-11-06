@@ -12,8 +12,7 @@ type sentence_id = Stateid.t
 type link
 (* Coqtop module not in scope *)
 type ('a,'b) coqtop_extra_args_fn = opts:'b -> string list -> 'a * string list
-(** Promises that can be resolved across process boundaries *)
-type 'a remote_mapping
+val write : link -> 'a -> unit Lwt.t
 
 module type Job = sig
   type t
@@ -22,21 +21,22 @@ module type Job = sig
   val pool_size : int
 end
 
+type execution_status =
+  | Success of Vernacstate.t option
+  | Error of string Loc.located * Vernacstate.t option (* State to use for resiliency *)
+
+type job_id
+val cancel_job : job_id -> unit
+val mk_job_id : unit -> job_id
+
 module MakeWorker (Job : Job) : sig
-
-
-(* When resolved (asynchronously) the hook is called to notify the UI *)
-val empty_remote_mapping :
-  progress_hook:(unit -> unit Lwt.t) -> 'a remote_mapping
-
-(* Like Lwt.wait() but remotely resolvable *)
-val lwt_remotely_wait : 'a remote_mapping -> sentence_id -> 'a remote_mapping * ('a Lwt.t * 'a Lwt.u)
 
 (* Event for the main loop *)
 type event
 type events = event Lwt.t list
 
-val handle_event : event -> events Lwt.t
+(* handling an even may require an update to a sentence in the exec state *)
+val handle_event : event -> ((sentence_id * execution_status) option * events) Lwt.t
 val pr_event : event -> Pp.t
 
 (* When a worker is available [job] is called and when it returns the
@@ -50,15 +50,14 @@ val pr_event : event -> Pp.t
    [new_process_workers] to setup remote promise fullfillment.
    See ExecutionManager.init_worker *)
 val worker_available :
-  job:(unit -> ('a remote_mapping * Job.t) Lwt.t) ->
-  fork_action:(Job.t  -> unit Lwt.t) ->
+  job:(unit -> (job_id * Job.t) Lwt.t) ->
+  fork_action:(Job.t -> link -> unit Lwt.t) ->
   events
 
 (* for worker toplevels *)
 type options
 val parse_options : (options,'b) coqtop_extra_args_fn
 (* the sentence ids of the remote_mapping being delegated *)
-val setup_plumbing : options -> (sentence_id list * link * Job.t) Lwt.t
-val new_process_worker : 'a remote_mapping -> link -> unit
+val setup_plumbing : options -> (link * Job.t) Lwt.t
 
 end
