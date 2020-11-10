@@ -17,7 +17,7 @@ open Document
 type state
 
 type event
-type events = event Lwt.t list
+type events = event Sel.event list
 
 val init : Vernacstate.t -> document -> state
 (** [init st doc] initializes the document manager with initial vernac state
@@ -25,7 +25,7 @@ val init : Vernacstate.t -> document -> state
 
 type proof_data = (Proof.data * Position.t) option
 
-type progress_hook = unit -> unit Lwt.t
+type progress_hook = unit -> unit
 
 val apply_text_edits : state -> text_edit list -> state
 
@@ -35,19 +35,19 @@ val validate_document : state -> state
     text of [doc] has not changed since the last call to [validate_document], it
     has no effect. *)
 
-val interpret_to_position : ?progress_hook:progress_hook -> state -> Position.t -> (state * events) Lwt.t
+val interpret_to_position : ?progress_hook:progress_hook -> state -> Position.t -> (state * events)
 (** [interpret_to_position doc pos] navigates to the last sentence ending
     before or at [pos] and returns the resulting state. *)
 
-val interpret_to_previous : state -> (state * events) Lwt.t
+val interpret_to_previous : state -> (state * events)
 (** [interpret_to_previous doc] navigates to the previous sentence in [doc]
     and returns the resulting state. *)
 
-val interpret_to_next : state -> (state * events) Lwt.t
+val interpret_to_next : state -> (state * events)
 (** [interpret_to_next doc] navigates to the next sentence in [doc]
     and returns the resulting state. *)
 
-val interpret_to_end : ?progress_hook:progress_hook -> state -> (state * events) Lwt.t
+val interpret_to_end : ?progress_hook:progress_hook -> state -> (state * events)
 (** [interpret_to_next doc] navigates to the last sentence in [doc]
     and returns the resulting state. *)
 
@@ -71,6 +71,6 @@ val get_current_proof : state -> proof_data
 
 val handle_feedback : Stateid.t -> Feedback.feedback_content -> state -> state
 
-val handle_event : event -> state -> (state option * events) Lwt.t
+val handle_event : event -> state -> (state option * events)
 
 val pr_event : event -> Pp.t

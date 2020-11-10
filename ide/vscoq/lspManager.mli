@@ -8,10 +8,10 @@
 (*         *     (see LICENSE file for the text of the license)         *)
 (************************************************************************)
 type event
-type events = event Lwt.t list
+type events = event Sel.event list
 
-val lsp : unit -> events
-val handle_event : event -> events Lwt.t
+val lsp : event Sel.event
+val handle_event : event -> events
 val pr_event : event -> Pp.t
 val handle_feedback : Feedback.feedback -> unit
 

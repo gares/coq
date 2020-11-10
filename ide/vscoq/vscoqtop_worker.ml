@@ -14,11 +14,8 @@
 let log msg = Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
 
 let main_worker options ~opts:_ state =
-  let open Lwt.Infix in
   let initial_vernac_state = Vernacstate.freeze_interp_state ~marshallable:false in
-  let main () =
-    ExecutionManager.WorkerProcess.main ~st:initial_vernac_state options in
-  try Lwt_main.run @@ main ()
+  try ExecutionManager.WorkerProcess.main ~st:initial_vernac_state options
   with exn ->
     let bt = Printexc.get_backtrace () in
     log Printexc.(to_string exn);

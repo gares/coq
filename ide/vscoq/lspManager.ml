@@ -14,8 +14,6 @@
 open Document
 open DocumentManager
 open Printer
-open Lwt.Infix
-open Lwt_err.Infix
 
 module CompactedDecl = Context.Compacted.Declaration
 
@@ -40,36 +38,39 @@ let log ~verbosity msg =
 
 (*let string_field name obj = Yojson.Basic.to_string (List.assoc name obj)*)
 
-let read_request ic : Yojson.Basic.t option Lwt.t =
-  Lwt_io.read_line ic >?= function
-  | Result.Error _ -> Lwt.return None
-  | Result.Ok(header) ->
-  let scan_header = Scanf.Scanning.from_string header in
-  try
-    Scanf.bscanf scan_header "Content-Length: %d" (fun size ->
-      let buf = Bytes.create size in
-      (* Discard a second newline *)
-      Lwt_io.read_line ic >!= fun _ ->
-      Lwt_io.read_into_exactly ic buf 0 size >!= fun () ->
-      Lwt.return @@ Bytes.to_string buf
-    ) >>= fun obj_str ->
-    log ~verbosity:2 @@ "received: " ^ obj_str;
-    Lwt.return @@ Some (Yojson.Basic.from_string obj_str)
-  with Scanf.Scan_failure _ | Failure _ | End_of_file | Invalid_argument _ ->
-    log ~verbosity:1 @@ "failed to decode header: " ^ header;
-    Lwt.return None
+type lsp_event = Request of Yojson.Basic.t option
 
-let output_json obj : unit Lwt.t =
+type event =
+ | LspManagerEvent of lsp_event
+ | DocumentManagerEvent of string * DocumentManager.event
+
+type events = event Sel.event list
+
+let lsp : event Sel.event =
+  Sel.on_httpcle Unix.stdin (function
+    | Ok buff ->
+      begin
+        log ~verbosity:2 "[T] UI req ready";
+        try LspManagerEvent (Request (Some (Yojson.Basic.from_string (Bytes.to_string buff))))
+        with exn ->
+          log ~verbosity:1 @@ "failed to decode json";
+          LspManagerEvent (Request None)
+      end
+    | Error exn ->
+        log ~verbosity:1 @@ ("failed to read message: " ^ Printexc.to_string exn);
+        LspManagerEvent (Request None))
+
+let output_json obj =
   let msg  = Yojson.Basic.pretty_to_string ~std:true obj in
   let size = String.length msg in
   let s = Printf.sprintf "Content-Length: %d\r\n\r\n%s" size msg in
   (* log @@ "sent: " ^ msg; *)
-  Lwt_io.write Lwt_io.stdout s >!= fun () -> Lwt.return ()
+  ignore(Unix.write_substring Unix.stdout s 0 (String.length s)) (* TODO ERROR *)
 
 let mk_notification ~event ~params = `Assoc ["jsonrpc", `String "2.0"; "method", `String event; "params", params]
 let mk_response ~id ~result = `Assoc ["jsonrpc", `String "2.0"; "id", `Int id; "result", result]
 
-let do_initialize ~id : unit Lwt.t =
+let do_initialize ~id =
   let capabilities = `Assoc [
     "textDocumentSync", `Int 2 (* Incremental *)
   ]
@@ -95,7 +96,7 @@ let mk_range Range.{ start; stop } =
     "end", mk_loc stop;
   ]
 
-let publish_diagnostics uri doc : unit Lwt.t =
+let publish_diagnostics uri doc =
   let mk_severity lvl =
     let open Feedback in
     `Int (match lvl with
@@ -121,7 +122,7 @@ let publish_diagnostics uri doc : unit Lwt.t =
   in
   output_json @@ mk_notification ~event:"textDocument/publishDiagnostics" ~params
 
-let send_highlights uri doc : unit Lwt.t =
+let send_highlights uri doc =
   let executed_ranges, incomplete_ranges = DocumentManager.executed_ranges doc in
   let executed_ranges = List.map mk_range executed_ranges in
   let incomplete_ranges = List.map mk_range incomplete_ranges in
@@ -184,9 +185,9 @@ let mk_proofview loc Proof.{ goals; sigma } =
     "focus", mk_loc loc
   ]
 
-let send_proofview uri doc : unit Lwt.t =
+let send_proofview uri doc =
   match DocumentManager.get_current_proof doc with
-  | None -> Lwt.return ()
+  | None -> ()
   | Some (proofview, pos) ->
     let result = mk_proofview pos proofview in
     let params = `Assoc [
@@ -197,11 +198,11 @@ let send_proofview uri doc : unit Lwt.t =
     output_json @@ mk_notification ~event:"coqtop/updateProofview" ~params
 
 let update_view uri st =
-  send_highlights uri st >>= fun () ->
-  send_proofview uri st >>= fun () ->
+  send_highlights uri st;
+  send_proofview uri st;
   publish_diagnostics uri st
 
-let textDocumentDidOpen params : unit Lwt.t =
+let textDocumentDidOpen params =
   let open Yojson.Basic.Util in
   let textDocument = params |> member "textDocument" in
   let uri = textDocument |> member "uri" |> to_string in
@@ -213,7 +214,7 @@ let textDocumentDidOpen params : unit Lwt.t =
   Hashtbl.add states uri st;
   update_view uri st
 
-let textDocumentDidChange params : unit Lwt.t =
+let textDocumentDidChange params =
   let open Yojson.Basic.Util in
   let textDocument = params |> member "textDocument" in
   let uri = textDocument |> member "uri" |> to_string in
@@ -231,7 +232,7 @@ let textDocumentDidChange params : unit Lwt.t =
   Hashtbl.replace states uri st;
   update_view uri st
 
-let textDocumentDidSave params : unit Lwt.t =
+let textDocumentDidSave params =
   let open Yojson.Basic.Util in
   let textDocument = params |> member "textDocument" in
   let uri = textDocument |> member "uri" |> to_string in
@@ -240,42 +241,40 @@ let textDocumentDidSave params : unit Lwt.t =
   Hashtbl.replace states uri st;
   update_view uri st
 
-let progress_hook uri () : unit Lwt.t =
+let progress_hook uri () =
   let st = Hashtbl.find states uri in
   update_view uri st
 
-let coqtopInterpretToPoint ~id params : (string * DocumentManager.events) Lwt.t =
+let coqtopInterpretToPoint ~id params : (string * DocumentManager.events) =
   let open Yojson.Basic.Util in
-  let open Lwt.Infix in
   let uri = params |> member "uri" |> to_string in
   let loc = params |> member "location" |> parse_loc in
   let st = Hashtbl.find states uri in
   let progress_hook = progress_hook uri in
-  DocumentManager.interpret_to_position ~progress_hook st loc >>= fun (st, events) ->
+  let (st, events) = DocumentManager.interpret_to_position ~progress_hook st loc in
   Hashtbl.replace states uri st;
-  update_view uri st >>= fun () ->
-  Lwt.return (uri, events)
+  update_view uri st;
+  (uri, events)
 
-let coqtopStepBackward ~id params : (string * DocumentManager.events) Lwt.t =
-  let open Yojson.Basic.Util in
-  let open Lwt.Infix in
-  let uri = params |> member "uri" |> to_string in
-  let st = Hashtbl.find states uri in
-  DocumentManager.interpret_to_previous st >>= fun (st, events) ->
-  Hashtbl.replace states uri st;
-  update_view uri st >>= fun () ->
-  Lwt.return (uri,events)
-
-let coqtopStepForward ~id params : (string * DocumentManager.events) Lwt.t =
+let coqtopStepBackward ~id params : (string * DocumentManager.events) =
   let open Yojson.Basic.Util in
   let uri = params |> member "uri" |> to_string in
   let st = Hashtbl.find states uri in
-  DocumentManager.interpret_to_next st >>= fun (st, events) ->
+  let (st, events) = DocumentManager.interpret_to_previous st in
   Hashtbl.replace states uri st;
-  update_view uri st >>= fun () ->
-  Lwt.return (uri,events)
+  update_view uri st;
+  (uri,events)
 
-let coqtopResetCoq ~id params : unit Lwt.t =
+let coqtopStepForward ~id params : (string * DocumentManager.events) =
+  let open Yojson.Basic.Util in
+  let uri = params |> member "uri" |> to_string in
+  let st = Hashtbl.find states uri in
+  let (st, events) = DocumentManager.interpret_to_next st in
+  Hashtbl.replace states uri st;
+  update_view uri st;
+  (uri,events)
+
+let coqtopResetCoq ~id params =
   let open Yojson.Basic.Util in
   let uri = params |> member "uri" |> to_string in
   let st = Hashtbl.find states uri in
@@ -283,63 +282,47 @@ let coqtopResetCoq ~id params : unit Lwt.t =
   Hashtbl.replace states uri st;
   update_view uri st
 
-let coqtopInterpretToEnd ~id params : (string * DocumentManager.events) Lwt.t =
+let coqtopInterpretToEnd ~id params : (string * DocumentManager.events) =
   let open Yojson.Basic.Util in
-  let open Lwt.Infix in
   let uri = params |> member "uri" |> to_string in
   let st = Hashtbl.find states uri in
   let progress_hook = progress_hook uri in
-  DocumentManager.interpret_to_end ~progress_hook st >>= fun (st, events) ->
+  let (st, events) = DocumentManager.interpret_to_end ~progress_hook st in
   Hashtbl.replace states uri st;
-  update_view uri st >>= fun () ->
-  Lwt.return (uri,events)
+  update_view uri st;
+  (uri,events)
 
-type lsp_event = Request of Yojson.Basic.t option
-
-type event =
- | LspManagerEvent of lsp_event
- | DocumentManagerEvent of string * DocumentManager.event
-
-type events = event Lwt.t list
-
-let inject_dm_event uri x : event Lwt.t =
-  x >>= fun e -> Lwt.return @@ DocumentManagerEvent(uri,e)
+let inject_dm_event uri x : event Sel.event =
+  Sel.map (fun e -> DocumentManagerEvent(uri,e)) x
 
 let inject_dm_events (uri,l) =
-  Lwt.return @@ List.map (inject_dm_event uri) l
+  List.map (inject_dm_event uri) l
 
-let dispatch_method ~id method_name params : events Lwt.t =
-  let open Lwt.Infix in
+let dispatch_method ~id method_name params : events =
   match method_name with
-  | "initialize" -> do_initialize ~id >>= fun () -> Lwt.return []
-  | "initialized" -> Lwt.return []
-  | "textDocument/didOpen" -> textDocumentDidOpen params >>= fun () -> Lwt.return []
-  | "textDocument/didChange" -> textDocumentDidChange params >>= fun () -> Lwt.return []
-  | "textDocument/didSave" -> textDocumentDidSave params >>= fun () -> Lwt.return []
-  | "coqtop/interpretToPoint" -> coqtopInterpretToPoint ~id params >>= inject_dm_events
-  | "coqtop/stepBackward" -> coqtopStepBackward ~id params  >>= inject_dm_events
-  | "coqtop/stepForward" -> coqtopStepForward ~id params  >>= inject_dm_events
-  | "coqtop/resetCoq" -> coqtopResetCoq ~id params >>= fun () -> Lwt.return []
-  | "coqtop/interpretToEnd" -> coqtopInterpretToEnd ~id params >>= inject_dm_events
-  | _ -> log ~verbosity:1 @@ "Ignoring call to unknown method: " ^ method_name; Lwt.return []
-
-let lsp () = [
-  read_request Lwt_io.stdin >!= fun req ->
-  log ~verbosity:2 "[T] UI req ready";
-  Lwt.return @@ LspManagerEvent (Request req)
-]
+  | "initialize" -> do_initialize ~id; []
+  | "initialized" -> []
+  | "textDocument/didOpen" -> textDocumentDidOpen params; []
+  | "textDocument/didChange" -> textDocumentDidChange params; []
+  | "textDocument/didSave" -> textDocumentDidSave params; []
+  | "coqtop/interpretToPoint" -> coqtopInterpretToPoint ~id params |> inject_dm_events
+  | "coqtop/stepBackward" -> coqtopStepBackward ~id params |> inject_dm_events
+  | "coqtop/stepForward" -> coqtopStepForward ~id params |> inject_dm_events
+  | "coqtop/resetCoq" -> coqtopResetCoq ~id params; []
+  | "coqtop/interpretToEnd" -> coqtopInterpretToEnd ~id params |> inject_dm_events
+  | _ -> log ~verbosity:1 @@ "Ignoring call to unknown method: " ^ method_name; []
 
 let handle_lsp_event = function
   | Request None ->
-    Lwt.return []
+      []
   | Request (Some req) ->
       let open Yojson.Basic.Util in
       let id = Option.default 0 (req |> member "id" |> to_int_option) in
       let method_name = req |> member "method" |> to_string in
       let params = req |> member "params" in
       log ~verbosity:1 @@ "[T] ui step: " ^ method_name;
-      dispatch_method ~id method_name params >>= fun more_events ->
-      Lwt.return @@ more_events @ lsp()
+      let more_events = dispatch_method ~id method_name params in
+      more_events @ [lsp]
 
 let pr_lsp_event = function
   | Request req ->
@@ -351,15 +334,15 @@ let handle_event = function
     begin match Hashtbl.find_opt states uri with
     | None ->
       log ~verbosity:1 @@ "[LSP] ignoring event on non-existing document";
-      Lwt.return []
+      []
     | Some st ->
-      DocumentManager.handle_event e st >>= fun (ost, events) ->
+      let (ost, events) = DocumentManager.handle_event e st in
       begin match ost with
-        | None -> Lwt.return ()
+        | None -> ()
         | Some st->
           Hashtbl.replace states uri st;
           update_view uri st
-      end >>= fun () ->
+      end;
       inject_dm_events (uri, events)
     end
 
