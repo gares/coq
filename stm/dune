@@ -11,7 +11,7 @@
  (synopsis "Coq's Document Manager and Proof Checking Scheduler")
  (public_name coq.dm)
  (wrapped false)
- (modules delegationManager documentManager document executionManager lwt_err scheduler)
+ (modules delegationManager documentManager document executionManager lwt_err scheduler sel)
  (libraries sysinit lwt.unix))
 
 (env
