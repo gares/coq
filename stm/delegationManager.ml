@@ -8,9 +8,6 @@
 (*         *     (see LICENSE file for the text of the license)         *)
 (************************************************************************)
 
-open Lwt.Infix
-open Lwt_err.Infix
-
 let debug_delegation_manager = CDebug.create ~name:"delegation-manager"
 
 let log msg =
@@ -21,18 +18,20 @@ type sentence_id = Stateid.t
 type ('a,'b) coqtop_extra_args_fn = opts:'b -> string list -> 'a * string list
 
 type link = {
-  write_to :  Lwt_io.output_channel;
-  read_from:  Lwt_io.input_channel;
-  pid : int option;
+  write_to :  Unix.file_descr;
+  read_from:  Unix.file_descr;
+  pid : int;
 }
 
-let write { write_to; _ } x = Lwt_io.write_value write_to x
+let write_value { write_to; _ } x =
+  let data = Marshal.to_bytes x [] in
+  let datalength = Bytes.length data in
+  log @@ "[M] marshaling " ^ string_of_int datalength;
+  let writeno = Unix.write write_to data 0 datalength in
+  assert(writeno = datalength);
+  flush_all ()
 
-let kill_link { pid } () = match pid with
-  | Some pid -> Unix.kill pid 9
-  | None -> ()
-
-type ('a,'b) corresponding = { on_worker : 'b; on_master : 'a; cancel : 'b }
+let kill_link { pid } () = Unix.kill pid 9
 
 module M = Map.Make(Stateid)
 
@@ -59,166 +58,156 @@ module MakeWorker (Job : Job) = struct
 
 let option_name = "-" ^ Str.global_replace (Str.regexp_string " ") "." Job.name ^ "_master_address"
 
-type event =
- | WorkerStart : job_id * 'job * ('job -> link -> unit Lwt.t) * string -> event
- | WorkerDied
+type dm =
+ | WorkerStart : job_id * 'job * ('job -> link -> unit) * string -> dm
  | WorkerProgress of { link : link; sentence_id : sentence_id; result : execution_status }
  | WorkerEnd of (int * Unix.process_status)
-type events = event Lwt.t list
+type events = dm Sel.event list
 
-let worker_progress link =
-  Lwt_io.read_value link.read_from >?= function
-    | Result.Error e ->
+let worker_progress link : dm Sel.event =
+  Sel.on_ocaml_value link.read_from (function
+    | Error e ->
       log @@ "[M] Worker died: " ^ Printexc.to_string e;
-      Lwt.return WorkerDied
-    | Result.Ok (sentence_id,result) ->
+      WorkerEnd(0,Unix.WEXITED 0)
+    | Ok (sentence_id,result) ->
       log @@ "[M] Worker sent back result for " ^ Stateid.to_string sentence_id ^ "  " ^
         (match result with Success _ -> "ok" | _ -> "ko");
-      Lwt.return @@ WorkerProgress { link; sentence_id; result }
+      WorkerProgress { link; sentence_id; result })
 
 type role = Master | Worker of link
 
-let pool = Lwt_condition.create ()
-let pool_occupants = ref 0
-let pool_size = Job.pool_size
+let pool = Queue.create ()
+let () = for i = 0 to Job.pool_size do Queue.push () pool done
 
-let wait_worker pid =
-  Lwt_unix.wait () >>= fun x ->
-  decr pool_occupants; Lwt_condition.signal pool ();
-  log @@ "[T] vacation request ready";
-  Lwt.return @@ WorkerEnd x
+let wait_worker pid : dm Sel.event =
+  Sel.on_death_of ~pid (fun reason -> WorkerEnd(pid,reason))
 
-let wait_process proc =
-  proc#close >>= fun x ->
-  decr pool_occupants; Lwt_condition.signal pool ();
-  log @@ "[T] vacation request ready";
-  Lwt.return @@ WorkerEnd (0,x)
-
-let fork_worker : job_id -> (role * events) Lwt.t = fun job_id ->
-  let open Lwt_unix in
+let fork_worker : job_id -> (role * events) = fun job_id ->
+  let open Unix in
   let chan = socket PF_INET SOCK_STREAM 0 in
-  bind chan (ADDR_INET (Unix.inet_addr_loopback,0)) >>= fun () ->
+  bind chan (ADDR_INET (Unix.inet_addr_loopback,0));
   listen chan 1;
   let address = getsockname chan in
   log @@ "[M] Forking...";
-  Lwt_io.flush_all () >!= fun () ->
-  openfile "/dev/null" [O_RDWR] 0o640 >>= fun null ->
-  let pid = Lwt_unix.fork () in
+  flush_all ();
+  let null = openfile "/dev/null" [O_RDWR] 0o640 in
+  let pid = fork () in
   if pid = 0 then begin
     (* Children process *)
     dup2 null stdin;
-    close chan >>= fun () ->
+    close chan;
     log @@ "[W] Borning...";
     let chan = socket PF_INET SOCK_STREAM 0 in
-    connect chan address >>= fun () ->
-    let read_from = Lwt_io.of_fd ~mode:Lwt_io.Input chan in
-    let write_to = Lwt_io.of_fd ~mode:Lwt_io.Output chan in
-    let link = { write_to; read_from; pid = None } in
-    Lwt.return (Worker link, [])
+    connect chan address;
+    let read_from = chan in
+    let write_to = chan in
+    let link = { write_to; read_from; pid } in
+    (Worker link, [])
   end else
     (* Parent process *)
     let () = job_id := Some pid in
-    let timeout = sleep 2. >>= fun () -> Lwt.return None in
-    let accept = accept chan >>= fun x -> Lwt.return @@ Some x in
-    Lwt.pick [timeout; accept] >>= function
-      | None ->
-          log @@ "[M] Forked worker does not connect back";
-          Lwt.return (Master, []) (* TODO, error *)
-      | Some (worker, _worker_addr) -> (* TODO: timeout *)
-          close chan >!= fun () ->
-          log @@ "[M] Forked pid " ^ string_of_int pid;
-          let read_from = Lwt_io.of_fd ~mode:Lwt_io.Input worker in
-          let write_to = Lwt_io.of_fd ~mode:Lwt_io.Output worker in
-          let link = { write_to; read_from; pid = Some pid } in
-          Lwt.return (Master, [worker_progress link; wait_worker pid])
+    let worker, _worker_addr = accept chan  in (* TODO, error *) (* TODO: timeout *)
+    close chan;
+    log @@ "[M] Forked pid " ^ string_of_int pid;
+    let read_from = worker in
+    let write_to = worker in
+    let link = { write_to; read_from; pid } in
+    (Master, [worker_progress link; wait_worker pid])
 ;;
 
 let create_process_worker procname job_id job =
-  let open Lwt_unix in
+  let open Unix in
   let chan = socket PF_INET SOCK_STREAM 0 in
-  bind chan (ADDR_INET (Unix.inet_addr_loopback,0)) >!= fun () ->
+  bind chan (ADDR_INET (Unix.inet_addr_loopback,0));
   listen chan 1;
   let port = match getsockname chan with
     | ADDR_INET(_,port) -> port
     | _ -> assert false in
-  let proc =
-    new Lwt_process.process_none
-      (procname,[|procname;option_name;string_of_int port|]) in
-  let () = job_id := Some proc#pid in
+  let null = openfile "/dev/null" [O_RDWR] 0o640 in
+  let pid = create_process procname [|procname;option_name;string_of_int port;"-debug"|] null stdout stderr in
+  close null;
+  let () = job_id := Some pid in
   log @@ "[M] Created worker pid waiting on port " ^ string_of_int port;
-  let timeout = sleep 2. >>= fun () -> Lwt.return None in
-  let accept = accept chan >>= fun x -> Lwt.return @@ Some x in
-  Lwt.pick [timeout; accept] >>= function
-  | None -> log @@ "[M] Created worker does not connect back"; Lwt.return [] (* TODO ERR *)
-  | Some (worker, _) ->
-      close chan >>= fun () ->
-      let read_from = Lwt_io.of_fd ~mode:Lwt_io.Input worker in
-      let write_to = Lwt_io.of_fd ~mode:Lwt_io.Output worker in
-      let link = { write_to; read_from; pid = Some proc#pid } in
-      log @@ "[M] sending job";
-      Lwt_io.write_value write_to job >!= fun () ->
-      Lwt.return [worker_progress link; wait_process proc]
+  let worker, _worker_addr = accept chan  in (* TODO, error *) (* TODO: timeout *)
+  close chan;
+  let read_from = worker in
+  let write_to = worker in
+  let link = { write_to; read_from; pid } in
+  log @@ "[M] sending job";
+  write_value link job;
+  flush_all ();
+  log @@ "[M] sent";
+  [worker_progress link; wait_worker pid]
 
 let handle_event = function
+  | WorkerEnd (0, Unix.WEXITED 0) -> (* dummy *)
+      (None, [])
   | WorkerEnd (pid, _status) ->
       log @@ Printf.sprintf "[M] Worker %d went on holidays" pid;
-      Lwt.return (None,[])
-  | WorkerDied ->
-      log @@ Printf.sprintf "[M] Worker died";
-      Lwt.return (None,[])
+      Queue.push () pool;
+      (None,[])
   | WorkerProgress { link; sentence_id; result } ->
       log "[M] WorkerProgress";
-      Lwt.return  (Some (sentence_id,result), [worker_progress link])
+      (Some (sentence_id,result), [worker_progress link])
   | WorkerStart (job_id,job,action,procname) ->
     log "[M] WorkerStart";
     if false (* Sys.os_type = "Unix" *) then
-      fork_worker job_id >>= fun (role,events) ->
+      let role, events = fork_worker job_id in
       match role with
       | Master ->
         log "[M] Worker forked, returning events";
-        Lwt.return (None, events)
+        (None, events)
       | Worker link ->
-        action job link >>= fun () ->
-        log "[W] I'm going on holidays"; Lwt_io.flush_all () >>= fun () -> exit 0
+        action job link;
+        exit 0
     else
-      create_process_worker procname job_id job >>= fun events ->
-      Lwt.return (None, events)
+      let events = create_process_worker procname job_id job in
+      (None, events)
 
 let pr_event = function
   | WorkerEnd (pid, _status) ->
     Pp.str "WorkerEnd"
-  | WorkerDied ->
-    Pp.str "WorkerDied"
   | WorkerProgress _ ->
     Pp.str "WorkerProgress"
   | WorkerStart _ ->
     Pp.str "WorkerStart"
 
-let worker_available ~job ~fork_action = [
-  begin
-    if !pool_occupants >= pool_size
-    then Lwt_condition.wait pool
-    else Lwt.return (incr pool_occupants)
-  end
-  >>= fun () ->
-  job () >>= fun (job_id, job) ->
-  Lwt.return @@ WorkerStart (job_id,job,fork_action,Job.binary_name)
+let worker_available ~jobs ~fork_action : dm Sel.event list = [
+  Sel.on_queues jobs pool (fun (job_id, job) () ->
+    WorkerStart (job_id,job,fork_action,Job.binary_name))
 ]
-;;
 
 type options = int
 
-let setup_plumbing port =
-  let open Lwt_unix in
+let rec read_exactly read_from buff off data_size =
+  let readno = Unix.read read_from buff off data_size in
+  if readno = 0 then (log @@ "[PM] cannot read job"; exit 1)
+  else if readno != data_size then read_exactly read_from buff (off + readno) (data_size - readno)
+  else ()
+
+let setup_plumbing port = try
+  let open Unix in
   let chan = socket PF_INET SOCK_STREAM 0 in
-  let address = ADDR_INET (Unix.inet_addr_loopback,port) in
+  let address = ADDR_INET (inet_addr_loopback,port) in
   log @@ "[PW] connecting to " ^ string_of_int port;
-  connect chan address >!= fun () ->
-  let read_from = Lwt_io.of_fd ~mode:Lwt_io.Input chan in
-  let write_to = Lwt_io.of_fd ~mode:Lwt_io.Output chan in
-  let link = { read_from; write_to; pid = None } in
-  Lwt_io.read_value link.read_from >!= fun (job : Job.t) ->
-  Lwt.return (link, job)
+  connect chan address;
+  let read_from = chan in
+  let write_to = chan in
+  let link = { read_from; write_to; pid = 0 } in
+  let buff = Bytes.create Marshal.header_size in
+  let readno = read read_from buff 0 Marshal.header_size in
+  if(readno != Marshal.header_size) then begin
+    log @@ "[PW] error receiving job head, read " ^ string_of_int readno ^ " != " ^ string_of_int Marshal.header_size;
+    exit 1;
+  end;
+  let data_size = Marshal.data_size buff 0 in
+  let buff = Bytes.extend buff 0 data_size in
+  read_exactly read_from buff Marshal.header_size data_size;
+  let job : Job.t = Marshal.from_bytes buff 0 in
+  (link, job)
+with Unix.Unix_error(code,syscall,param) ->
+  log @@ "[PW] error starting: " ^ syscall ^ ": " ^ param ^ ": " ^ Unix.error_message code;
+  exit 1
 
 let parse_options ~opts extra_args =
   match extra_args with

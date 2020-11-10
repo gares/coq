@@ -33,9 +33,9 @@ type event =
   | ExecuteToLoc of int * Vernacstate.t * ExecutionManager.prepared_task list
   | ExecutionManagerEvent of ExecutionManager.event
 
-type events = event Lwt.t list
+type events = event Sel.event list
 
-type progress_hook = unit -> unit Lwt.t
+type progress_hook = unit -> unit
 
 let executed_ranges doc execution_state loc =
   let valid_ids = List.map (fun s -> s.id) @@ Document.sentences_before doc loc in
@@ -75,27 +75,28 @@ let init vernac_state document =
   let execution_state = ExecutionManager.init_master vernac_state in
   { document; execution_state; observe_loc = None }
 
-let interpret_to_loc ?(progress_hook=fun doc -> Lwt.return ()) state loc : (state * events) Lwt.t =
-    let open Lwt.Infix in
+let interpret_to_loc ?(progress_hook=fun doc -> ()) state loc : (state * events) =
     let parsing_state_hook = ExecutionManager.get_parsing_state_after state.execution_state in
     let invalid_ids, document = validate_document ~parsing_state_hook state.document in
-    Lwt_list.fold_left_s (fun st id ->
-        ExecutionManager.invalidate (Document.schedule state.document) id st) state.execution_state (Stateid.Set.elements invalid_ids) >>= fun execution_state ->
+    let execution_state =
+      List.fold_left (fun st id ->
+        ExecutionManager.invalidate (Document.schedule state.document) id st
+        ) state.execution_state (Stateid.Set.elements invalid_ids) in
     let state = { document; execution_state; observe_loc = Some loc } in
     (** We jump to the sentence before the position, otherwise jumping to the
     whitespace at the beginning of a sentence will observe the state after
     executing the sentence, which is unnatural. *)
     match find_sentence_before state.document loc with
-    | None -> (* document is empty *) Lwt.return (state, [])
+    | None -> (* document is empty *) (state, [])
     | Some { id; stop; start } ->
-      let progress_hook () = Lwt.return () in
+      let progress_hook () = () in
       let vernac_st, tasks = ExecutionManager.build_tasks_for ~progress_hook state.document state.execution_state id in
       if CList.is_empty tasks then
         let state = { state with observe_loc = Some loc } in
-        Lwt.return (state, [])
+        (state, [])
       else
         if Document.parsed_loc state.document < loc && Document.more_to_parse state.document then
-          Lwt.return (state, List.map Lwt.return [ExecuteToLoc (loc, vernac_st, tasks)])
+          (state, [Sel.now (ExecuteToLoc (loc, vernac_st, tasks))])
         else
       (*
       let executed_loc = Some stop in
@@ -104,7 +105,7 @@ let interpret_to_loc ?(progress_hook=fun doc -> Lwt.return ()) state loc : (stat
         | Some pv -> let pos = Document.position_of_loc state.document stop in Some (pv, pos)
       in
       *)
-        Lwt.return (state, [Lwt.return @@ ExecuteToLoc (loc, vernac_st, tasks)])
+        (state, [Sel.now (ExecuteToLoc (loc, vernac_st, tasks))])
 
 (*
 let interpret_to_loc ~after ?(progress_hook=fun doc -> Lwt.return ()) state loc : (state * proof_data * events) Lwt.t =
@@ -150,11 +151,11 @@ let interpret_to_position ?progress_hook state pos =
 
 let interpret_to_previous doc =
   match doc.observe_loc with
-  | None -> Lwt.return (doc, [])
+  | None -> (doc, [])
   | Some loc ->
     interpret_to_loc doc (loc-1)
 
-let interpret_to_next doc = Lwt.return (doc, []) (* TODO
+let interpret_to_next doc = (doc, []) (* TODO
   match doc.executed_loc with
   | None -> Lwt.return (doc, None, [])
   | Some stop ->
@@ -197,27 +198,27 @@ let handle_feedback state_id contents state =
   | Custom(_,_,_) -> state
   | _ -> state
 
-let inject_em_event x = Lwt.Infix.(x >>= fun e -> Lwt.return @@ ExecutionManagerEvent e)
+let inject_em_event x = Sel.map (fun e -> ExecutionManagerEvent e) x
 let inject_em_events events = List.map inject_em_event events
 
 let handle_event ev st =
-  let open Lwt.Infix in
   match ev with
   | ExecuteToLoc (loc, vernac_st, []) ->
     log "[DM] event: Execute (no tasks)";
     (* We update the state to trigger a publication of diagnostics *)
-    interpret_to_loc st loc >>= fun (st, events) ->
-    Lwt.return (Some st, events)
+    let st, events = interpret_to_loc st loc in
+    (Some st, events)
   | ExecuteToLoc (loc, vernac_st, task :: tasks) ->
     log "[DM] event: Execute (more tasks)";
     let doc_id = Document.id_of_doc st.document in
-    ExecutionManager.execute ~doc_id st.execution_state (vernac_st, [], false) task >>= fun (execution_state,vernac_st,events,interrupted) ->
+    let (execution_state,vernac_st,events,interrupted) =
+      ExecutionManager.execute ~doc_id st.execution_state (vernac_st, [], false) task in
     (* We do not update the state here because we may have received feedback while
        executing *)
-    Lwt.return (Some {st with execution_state}, inject_em_events events @ [Lwt.return @@ ExecuteToLoc(loc, vernac_st,tasks)])
+    (Some {st with execution_state}, inject_em_events events @ [Sel.now (ExecuteToLoc(loc, vernac_st,tasks))])
   | ExecutionManagerEvent ev ->
-    ExecutionManager.handle_event ev st.execution_state >>= fun (execution_state_update,events) ->
-      Lwt.return (Option.map (fun execution_state -> {st with execution_state}) execution_state_update, inject_em_events events)
+    let execution_state_update,events = ExecutionManager.handle_event ev st.execution_state in
+    (Option.map (fun execution_state -> {st with execution_state}) execution_state_update, inject_em_events events)
 
 let get_current_proof st =
   match Option.bind st.observe_loc (Document.find_sentence_before st.document) with

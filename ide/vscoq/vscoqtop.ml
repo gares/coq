@@ -16,21 +16,15 @@ let log msg = Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
 let loop run_mode ~opts:_ state =
   LspManager.init ();
   let _feeder_id = Feedback.add_feeder LspManager.handle_feedback in
-  let open Lwt.Infix in
   let rec loop (events : LspManager.events) =
     log @@ "[T] looking for next step";
-    Lwt_io.flush_all () >>= fun () ->
-    Lwt.nchoose_split events >>= fun (ready, remaining) ->
-      let perform acc e =
-          LspManager.handle_event e >>= fun more_events ->
-          Lwt.return @@ acc @ more_events
-     in
-        let nremaining = List.length remaining in
-        log @@ "Main loop events ready: " ^ Pp.string_of_ppcmds Pp.(prlist_with_sep spc LspManager.pr_event ready) ^ " , " ^ string_of_int nremaining ^ " events waiting";
-        Lwt_list.fold_left_s perform remaining ready >>= fun events ->
-        loop events
+    flush_all ();
+    let (ready, remaining) = Sel.wait events in
+    let nremaining = List.length remaining in
+    log @@ "Main loop events ready: " ^ Pp.string_of_ppcmds Pp.(prlist_with_sep spc LspManager.pr_event ready) ^ " , " ^ string_of_int nremaining ^ " events waiting";
+    loop (remaining @ CList.map_append LspManager.handle_event ready)
   in
-  try Lwt_main.run @@ loop (LspManager.lsp ())
+  try loop [LspManager.lsp]
   with exn ->
     let bt = Printexc.get_backtrace () in
     log Printexc.(to_string exn);

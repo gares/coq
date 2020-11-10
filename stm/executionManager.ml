@@ -8,46 +8,6 @@
 (*         *     (see LICENSE file for the text of the license)         *)
 (************************************************************************)
 
-open Lwt.Infix
-
-(* TODO: move away? *)
-module type QueueElement = sig
-  type data
-  type dependency
-  val is_invalid : dependency -> data -> bool
-end
-
-module MakeQueue(E : QueueElement) : sig
-  val enqueue : E.data -> unit
-  val dequeue : unit -> E.data Lwt.t
-  val remove_invalid : E.dependency -> E.data list
-end = struct
-
-type t = E.data list ref
-let queue : t = ref []
-let queue_cond = Lwt_condition.create ()
-
-let enqueue m =
-  queue := !queue @ [m];
-  Lwt_condition.signal queue_cond ()
-
-let dequeue () =
-  begin
-    if !queue = []
-    then Lwt_condition.wait queue_cond
-    else Lwt.return ()
-  end >>= fun () ->
-  let x = List.hd !queue in
-  queue := List.tl !queue;
-  Lwt.return x
-
-let remove_invalid id =
-  let invalid, valid = List.partition (E.is_invalid id) !queue in
-  queue := valid;
-  invalid
-
-end
-
 open Scheduler
 
 let log msg = Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
@@ -83,8 +43,8 @@ module ProofWorker = DelegationManager.MakeWorker(struct
   let pool_size = 1
 end)
 
-type event = ProofWorkerEvent of ProofWorker.event (*| TacticWorkerEvent of Declare.Proof.event*)
-type events = event Lwt.t list
+type event = ProofWorkerEvent of ProofWorker.dm (*| TacticWorkerEvent of Declare.Proof.event*)
+type events = event Sel.event list
 
 let pr_event = function
   | ProofWorkerEvent event -> ProofWorker.pr_event event
@@ -145,18 +105,17 @@ type state = {
   of_sentence : (sentence_state * feedback_message list) SM.t;
 }
 
-type progress_hook = unit -> unit Lwt.t
+type progress_hook = unit -> unit
 
 let init_master vernac_state = {
   initial = vernac_state;
   of_sentence = SM.empty;
 }
 
-let inject_dm_event x : event Lwt.t =
-  Lwt.map (fun x -> ProofWorkerEvent x) x
+let inject_dm_event = Sel.map (fun x -> ProofWorkerEvent x)
 
 let inject_dm_events st l =
-  Lwt.return (st, List.map inject_dm_event l)
+  (st, List.map inject_dm_event l)
 
 let update_all id v fl state =
   { state with of_sentence = SM.add id (v, fl) state.of_sentence }
@@ -168,7 +127,8 @@ let update state id v =
 
 let handle_event event state =
   match event with
-  | ProofWorkerEvent event -> ProofWorker.handle_event event >>= fun (state_update,events) ->
+  | ProofWorkerEvent event ->
+      let state_update,events = ProofWorker.handle_event event in
       let state =
         match state_update with
         | None -> None
@@ -191,12 +151,7 @@ let find_fulfilled_opt x m =
     | Delegated _ -> None
   with Not_found -> None
 
-module Jobs = struct
-  type data = DelegationManager.job_id * job
-  type dependency = sentence_id
-  let is_invalid id (_, { terminator_id;_ }) = Stateid.equal id terminator_id
-end
-module Queue = MakeQueue(Jobs)
+let jobs : (DelegationManager.job_id * job) Queue.t = Queue.create ()
 
 let remotize doc id =
   match Document.get_sentence doc id with
@@ -232,38 +187,36 @@ let ensure_proof_over = function
         ~f:(fun p -> if Proof.is_done @@ Declare.Proof.get p then x else Error((None,"Proof is not finished"),None))
   | x -> x
 
-open Lwt_err.Infix
-
 (* TODO move to proper place *)
 let worker_execute ~doc_id last_step_id link (vs,events) = function
   | PSkip id ->
-    Lwt.return (vs, events)
+    (vs, events)
   | PExec (id,ast) ->
     let vs, v, ev = interp_ast ~doc_id ~state_id:id vs ast in
     let v = if Stateid.equal id last_step_id then ensure_proof_over v else purge_state v in
-    DelegationManager.write link (id,v) >!= fun () ->
-    Lwt.return (vs, events @ ev)
+    DelegationManager.write_value link (id,v);
+    (vs, events @ ev)
   | _ -> assert false
 
 let worker_main { tasks; initial_vernac_state = vs; doc_id; last_proof_step_id; _ } link =
-  Lwt_list.fold_left_s (worker_execute ~doc_id last_proof_step_id link) (vs,[]) tasks >>= fun (last_vs, _) ->
-  Lwt_io.flush_all () >>= fun () ->
+  let last_vs, _ = List.fold_left (worker_execute ~doc_id last_proof_step_id link) (vs,[]) tasks in
+  flush_all ();
   exit 0
 
 let execute ~doc_id st (vs, events, interrupted) task =
   if interrupted then begin
     let st = update st (id_of_prepared_task task) (Error ((None,"interrupted"),None)) in
-    Lwt.return (st, vs, events, true)
+    (st, vs, events, true)
   end else
     try
       match task with
       | PSkip id ->
           let st = update st id (success vs) in
-          Lwt.return (st, vs, events, false)
+          (st, vs, events, false)
       | PExec (id,ast) ->
           let vs, v, ev = interp_ast ~doc_id ~state_id:id vs ast in
           let st = update st id v in
-          Lwt.return (st, vs, events @ ev, false)
+          (st, vs, events @ ev, false)
       | PDelegate { terminator_id; opener_id; last_step_id; tasks } ->
           begin match find_fulfilled_opt opener_id st.of_sentence with
           | Some (Success _) ->
@@ -293,19 +246,19 @@ let execute ~doc_id st (vs, events, interrupted) task =
                else
                  update_all id (Delegated (job_id,None)) [] st)
                st (List.map id_of_prepared_task tasks) in
-            Queue.enqueue (job_id, job);
+            Queue.push (job_id, job) jobs;
             let e =
-              ProofWorker.worker_available ~job:Queue.dequeue
+              ProofWorker.worker_available ~jobs
                 ~fork_action:worker_main in
-            Lwt.return (st, last_vs,events @ List.map inject_dm_event e ,false)
+            (st, last_vs,events @ List.map inject_dm_event e ,false)
           | _ ->
             (* If executing the proof opener failed, we skip the proof *)
             let st = update st terminator_id (success vs) in
-            Lwt.return (st, vs,events,false)
+            (st, vs,events,false)
           end
     with Sys.Break ->
       let st = update st (id_of_prepared_task task) (Error ((None,"interrupted"),None)) in
-      Lwt.return (st, vs, events, true)
+      (st, vs, events, true)
 
 let build_tasks_for ~progress_hook doc st id =
   let rec build_tasks id tasks =
@@ -336,7 +289,7 @@ let build_tasks_for ~progress_hook doc st id =
    execute the sentences and send feedback. It is easier/faster than sending a
    stripped state *)
 let init_worker () =
-  Lwt.return ()
+  ()
 
 let errors st =
   List.fold_left (fun acc (id, (p,_)) ->
@@ -393,14 +346,15 @@ let invalidate1 of_sentence id =
 let rec invalidate schedule id st =
   log @@ "Invalidating: " ^ Stateid.to_string id;
   let of_sentence = invalidate1 st.of_sentence id in
-  let removed = Queue.remove_invalid id in
+  let old_jobs = Queue.copy jobs in
+  let removed = ref [] in
+  Queue.clear jobs;
+  Queue.iter (fun ((_, { terminator_id; tasks }) as job) -> if terminator_id != id then Queue.push job jobs else removed := tasks :: !removed) old_jobs;
   let of_sentence = List.fold_left invalidate1 of_sentence
-    List.(concat (map (fun (_, { tasks; _ }) -> map id_of_prepared_task tasks) removed)) in
-  if of_sentence == st.of_sentence then Lwt.return st else
+    List.(concat (map (fun tasks -> map id_of_prepared_task tasks) !removed)) in
+  if of_sentence == st.of_sentence then st else
   let deps = Scheduler.dependents schedule id in
-  Stateid.Set.fold (fun dep_id st ->
-    st >>= fun st -> invalidate schedule dep_id st) deps
-    (Lwt.return { st with of_sentence })
+  Stateid.Set.fold (invalidate schedule) deps { st with of_sentence }
 
 let get_parsing_state_after st id =
   Option.bind (find_fulfilled_opt id st.of_sentence)
@@ -436,6 +390,6 @@ module WorkerProcess = struct
   type options = ProofWorker.options
   let parse_options = ProofWorker.parse_options
   let main ~st:initial_vernac_state options =
-    ProofWorker.setup_plumbing options >>= fun (link, job) ->
+    let link, job = ProofWorker.setup_plumbing options in
     worker_main job link
 end

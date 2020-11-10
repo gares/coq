@@ -21,12 +21,12 @@ type ast = Vernacexpr.vernac_control
 type state
 (** Execution state, includes the cache *)
 
-type progress_hook = unit -> unit Lwt.t
+type progress_hook = unit -> unit
 
 type event
-type events = event Lwt.t list
+type events = event Sel.event list
 
-val handle_event : event -> state -> (state option * events) Lwt.t
+val handle_event : event -> state -> (state option * events)
 val pr_event : event -> Pp.t
 
 type prepared_task
@@ -35,9 +35,9 @@ val build_tasks_for : progress_hook:progress_hook -> document -> state -> senten
 
 val query : sentence_id -> state -> ast -> state
 
-val invalidate : schedule -> sentence_id -> state -> state Lwt.t
+val invalidate : schedule -> sentence_id -> state -> state
 
-val execute : doc_id:Feedback.doc_id -> state -> Vernacstate.t * events * bool -> prepared_task -> (state * Vernacstate.t * event Lwt.t list * bool) Lwt.t
+val execute : doc_id:Feedback.doc_id -> state -> Vernacstate.t * events * bool -> prepared_task -> (state * Vernacstate.t * events * bool)
 
 val errors : state -> (sentence_id * Loc.t option * string) list
 val feedback : state -> (sentence_id * Feedback.level * Loc.t option * string) list
@@ -55,5 +55,5 @@ val handle_feedback : Stateid.t -> Feedback.feedback_content -> state -> state
 module WorkerProcess : sig
   type options
   val parse_options : (options,'b) DelegationManager.coqtop_extra_args_fn
-  val main : st:Vernacstate.t -> options -> unit Lwt.t
+  val main : st:Vernacstate.t -> options -> unit
 end

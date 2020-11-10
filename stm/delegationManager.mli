@@ -12,7 +12,7 @@ type sentence_id = Stateid.t
 type link
 (* Coqtop module not in scope *)
 type ('a,'b) coqtop_extra_args_fn = opts:'b -> string list -> 'a * string list
-val write : link -> 'a -> unit Lwt.t
+val write_value : link -> 'a -> unit
 
 module type Job = sig
   type t
@@ -32,12 +32,12 @@ val mk_job_id : unit -> job_id
 module MakeWorker (Job : Job) : sig
 
 (* Event for the main loop *)
-type event
-type events = event Lwt.t list
+type dm
+type events = dm Sel.event list
 
 (* handling an even may require an update to a sentence in the exec state *)
-val handle_event : event -> ((sentence_id * execution_status) option * events) Lwt.t
-val pr_event : event -> Pp.t
+val handle_event : dm -> ((sentence_id * execution_status) option * events)
+val pr_event : dm -> Pp.t
 
 (* When a worker is available [job] is called and when it returns the
    event becomes ready; in turn the event triggers the action.
@@ -50,14 +50,14 @@ val pr_event : event -> Pp.t
    [new_process_workers] to setup remote promise fullfillment.
    See ExecutionManager.init_worker *)
 val worker_available :
-  job:(unit -> (job_id * Job.t) Lwt.t) ->
-  fork_action:(Job.t -> link -> unit Lwt.t) ->
+  jobs:((job_id * Job.t) Queue.t) ->
+  fork_action:(Job.t -> link -> unit) ->
   events
 
 (* for worker toplevels *)
 type options
 val parse_options : (options,'b) coqtop_extra_args_fn
 (* the sentence ids of the remote_mapping being delegated *)
-val setup_plumbing : options -> (link * Job.t) Lwt.t
+val setup_plumbing : options -> (link * Job.t)
 
 end
