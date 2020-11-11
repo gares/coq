@@ -179,12 +179,6 @@ let worker_available ~jobs ~fork_action : dm Sel.event list = [
 
 type options = int
 
-let rec read_exactly read_from buff off data_size =
-  let readno = Unix.read read_from buff off data_size in
-  if readno = 0 then (log @@ "[PM] cannot read job"; exit 1)
-  else if readno != data_size then read_exactly read_from buff (off + readno) (data_size - readno)
-  else ()
-
 let setup_plumbing port = try
   let open Unix in
   let chan = socket PF_INET SOCK_STREAM 0 in
@@ -194,17 +188,13 @@ let setup_plumbing port = try
   let read_from = chan in
   let write_to = chan in
   let link = { read_from; write_to; pid = 0 } in
-  let buff = Bytes.create Marshal.header_size in
-  let readno = read read_from buff 0 Marshal.header_size in
-  if(readno != Marshal.header_size) then begin
-    log @@ "[PW] error receiving job head, read " ^ string_of_int readno ^ " != " ^ string_of_int Marshal.header_size;
-    exit 1;
-  end;
-  let data_size = Marshal.data_size buff 0 in
-  let buff = Bytes.extend buff 0 data_size in
-  read_exactly read_from buff Marshal.header_size data_size;
-  let job : Job.t = Marshal.from_bytes buff 0 in
-  (link, job)
+  (* Unix.read_value does not exist, we use Sel *)
+  match Sel.wait [Sel.on_ocaml_value read_from (fun x -> x)] with
+  | [Ok (job : Job.t)], _ -> (link, job)
+  | [Error exn], _ ->
+    log @@ "[PW] error receiving job: " ^ Printexc.to_string exn;
+    exit 1
+  | _ -> assert false
 with Unix.Unix_error(code,syscall,param) ->
   log @@ "[PW] error starting: " ^ syscall ^ ": " ^ param ^ ": " ^ Unix.error_message code;
   exit 1
