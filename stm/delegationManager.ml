@@ -27,10 +27,6 @@ type execution_status =
   | Success of Vernacstate.t option
   | Error of string Loc.located * Vernacstate.t option (* State to use for resiliency *)
 
-type update_request =
-  | UpdateExecStatus of sentence_id * execution_status
-  | AppendFeedback of sentence_id * (Feedback.level * Loc.t option * Pp.t)
-
 let write_value { write_to; _ } x =
   let data = Marshal.to_bytes x [] in
   let datalength = Bytes.length data in
@@ -44,6 +40,9 @@ module type Job = sig
   val name : string
   val binary_name : string
   val pool_size : int
+  type update_request
+  val appendFeedback : sentence_id -> (Feedback.level * Loc.t option * Pp.t) -> update_request
+
 end
 
 type job_id = int option ref
@@ -72,17 +71,17 @@ let master_feeder = install_feedback (fun x -> Queue.push x master_feedback_queu
 let local_feedback : (sentence_id * (Feedback.level * Loc.t option * Pp.t)) Sel.event =
   Sel.on_queue master_feedback_queue (fun x -> x)
 
+module MakeWorker (Job : Job) = struct
+
 let install_feedback_worker link =
   Feedback.del_feeder master_feeder;
-  ignore(install_feedback (fun (id,fb) -> write_value link (AppendFeedback(id,fb))));
-
-module MakeWorker (Job : Job) = struct
+  ignore(install_feedback (fun (id,fb) -> write_value link (Job.appendFeedback id fb)))
 
 let option_name = "-" ^ Str.global_replace (Str.regexp_string " ") "." Job.name ^ "_master_address"
 
 type delegation =
- | WorkerStart : job_id * 'job * ('job -> link -> unit) * string -> delegation
- | WorkerProgress of { link : link; update_request : update_request }
+ | WorkerStart : job_id * 'job * ('job -> send_back:(Job.update_request -> unit) -> unit) * string -> delegation
+ | WorkerProgress of { link : link; update_request : Job.update_request }
  | WorkerEnd of (int * Unix.process_status)
  | WorkerIOError of exn
 type events = delegation Sel.event list
@@ -181,7 +180,7 @@ let handle_event = function
         log "[M] Worker forked, returning events";
         (None, events)
       | Worker link ->
-        action job link;
+        action job ~send_back:(write_value link);
         exit 0
     else
       let events = create_process_worker procname job_id job in
@@ -210,7 +209,7 @@ let setup_plumbing port = try
   let link = { read_from; write_to } in
   (* Unix.read_value does not exist, we use Sel *)
   match Sel.wait [Sel.on_ocaml_value read_from (fun x -> x)] with
-  | [Ok (job : Job.t)], _ -> (link, job)
+  | [Ok (job : Job.t)], _ -> (write_value link, job)
   | [Error exn], _ ->
     log @@ "[PW] error receiving job: " ^ Printexc.to_string exn;
     exit 1

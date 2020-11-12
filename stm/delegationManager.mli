@@ -9,16 +9,17 @@
 (************************************************************************)
 
 type sentence_id = Stateid.t
-type link
+
 (* Coqtop module not in scope *)
 type ('a,'b) coqtop_extra_args_fn = opts:'b -> string list -> 'a * string list
-val write_value : link -> 'a -> unit
 
 module type Job = sig
   type t
   val name : string
   val binary_name : string
   val pool_size : int
+  type update_request
+  val appendFeedback : sentence_id -> (Feedback.level * Loc.t option * Pp.t) -> update_request
 end
 
 type execution_status =
@@ -29,10 +30,6 @@ type job_id
 val cancel_job : job_id -> unit
 val mk_job_id : unit -> job_id
 
-type update_request =
-  | UpdateExecStatus of sentence_id * execution_status
-  | AppendFeedback of sentence_id * (Feedback.level * Loc.t option * Pp.t)
-
 module MakeWorker (Job : Job) : sig
 
 (* Event for the main loop *)
@@ -40,7 +37,7 @@ type delegation
 type events = delegation Sel.event list
 
 (* handling an even may require an update to a sentence in the exec state *)
-val handle_event : delegation -> (update_request option * events)
+val handle_event : delegation -> (Job.update_request option * events)
 val pr_event : delegation -> Pp.t
 
 (* When a worker is available [job] is called and when it returns the
@@ -55,14 +52,14 @@ val pr_event : delegation -> Pp.t
    See ExecutionManager.init_worker *)
 val worker_available :
   jobs:((job_id * Job.t) Queue.t) ->
-  fork_action:(Job.t -> link -> unit) ->
+  fork_action:(Job.t -> send_back:(Job.update_request -> unit) -> unit) ->
   delegation Sel.event
 
 (* for worker toplevels *)
 type options
 val parse_options : (options,'b) coqtop_extra_args_fn
 (* the sentence ids of the remote_mapping being delegated *)
-val setup_plumbing : options -> (link * Job.t)
+val setup_plumbing : options -> ((Job.update_request -> unit) * Job.t)
 
 end
 
