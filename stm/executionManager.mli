@@ -23,11 +23,11 @@ type state
 
 type progress_hook = unit -> unit
 
-type event
-type events = event Sel.event list
+type execution
+type events = execution Sel.event list
 
-val handle_event : event -> state -> (state option * events)
-val pr_event : event -> Pp.t
+val handle_event : execution -> state -> (state option * events)
+val pr_event : execution -> Pp.t
 
 type prepared_task
 

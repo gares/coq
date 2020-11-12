@@ -58,17 +58,16 @@ module MakeWorker (Job : Job) = struct
 
 let option_name = "-" ^ Str.global_replace (Str.regexp_string " ") "." Job.name ^ "_master_address"
 
-type dm =
- | WorkerStart : job_id * 'job * ('job -> link -> unit) * string -> dm
+type delegation =
+ | WorkerStart : job_id * 'job * ('job -> link -> unit) * string -> delegation
  | WorkerProgress of { link : link; sentence_id : sentence_id; result : execution_status }
  | WorkerEnd of (int * Unix.process_status)
-type events = dm Sel.event list
+ | WorkerIOError of exn
+type events = delegation Sel.event list
 
-let worker_progress link : dm Sel.event =
+let worker_progress link : delegation Sel.event =
   Sel.on_ocaml_value link.read_from (function
-    | Error e ->
-      log @@ "[M] Worker died: " ^ Printexc.to_string e;
-      WorkerEnd(0,Unix.WEXITED 0)
+    | Error e -> WorkerIOError e
     | Ok (sentence_id,result) ->
       log @@ "[M] Worker sent back result for " ^ Stateid.to_string sentence_id ^ "  " ^
         (match result with Success _ -> "ok" | _ -> "ko");
@@ -79,7 +78,7 @@ type role = Master | Worker of link
 let pool = Queue.create ()
 let () = for i = 0 to Job.pool_size do Queue.push () pool done
 
-let wait_worker pid : dm Sel.event =
+let wait_worker pid : delegation Sel.event =
   Sel.on_death_of ~pid (fun reason -> WorkerEnd(pid,reason))
 
 let fork_worker : job_id -> (role * events) = fun job_id ->
@@ -140,8 +139,9 @@ let create_process_worker procname job_id job =
   [worker_progress link; wait_worker pid]
 
 let handle_event = function
-  | WorkerEnd (0, Unix.WEXITED 0) -> (* dummy *)
-      (None, [])
+  | WorkerIOError e ->
+     log @@ "[M] Worker IO Error: " ^ Printexc.to_string e;
+     (None, [])
   | WorkerEnd (pid, _status) ->
       log @@ Printf.sprintf "[M] Worker %d went on holidays" pid;
       Queue.push () pool;
@@ -165,14 +165,12 @@ let handle_event = function
       (None, events)
 
 let pr_event = function
-  | WorkerEnd (pid, _status) ->
-    Pp.str "WorkerEnd"
-  | WorkerProgress _ ->
-    Pp.str "WorkerProgress"
-  | WorkerStart _ ->
-    Pp.str "WorkerStart"
+  | WorkerEnd _ -> Pp.str "WorkerEnd"
+  | WorkerIOError _ -> Pp.str "WorkerIOError"
+  | WorkerProgress _ -> Pp.str "WorkerProgress"
+  | WorkerStart _ -> Pp.str "WorkerStart"
 
-let worker_available ~jobs ~fork_action : dm Sel.event list = [
+let worker_available ~jobs ~fork_action : delegation Sel.event list = [
   Sel.on_queues jobs pool (fun (job_id, job) () ->
     WorkerStart (job_id,job,fork_action,Job.binary_name))
 ]
