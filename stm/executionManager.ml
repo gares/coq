@@ -43,8 +43,8 @@ module ProofWorker = DelegationManager.MakeWorker(struct
   let pool_size = 1
 end)
 
-type event = ProofWorkerEvent of ProofWorker.dm (*| TacticWorkerEvent of Declare.Proof.event*)
-type events = event Sel.event list
+type execution = ProofWorkerEvent of ProofWorker.delegation (*| TacticWorkerEvent of Declare.Proof.event*)
+type events = execution Sel.event list
 
 let pr_event = function
   | ProofWorkerEvent event -> ProofWorker.pr_event event

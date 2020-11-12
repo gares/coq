@@ -16,8 +16,8 @@ open Document
 
 type state
 
-type event
-type events = event Sel.event list
+type doc_management
+type events = doc_management Sel.event list
 
 val init : Vernacstate.t -> document -> state
 (** [init st doc] initializes the document manager with initial vernac state
@@ -71,6 +71,6 @@ val get_current_proof : state -> proof_data
 
 val handle_feedback : Stateid.t -> Feedback.feedback_content -> state -> state
 
-val handle_event : event -> state -> (state option * events)
+val handle_event : doc_management -> state -> (state option * events)
 
-val pr_event : event -> Pp.t
+val pr_event : doc_management -> Pp.t

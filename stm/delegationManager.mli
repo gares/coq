@@ -32,12 +32,12 @@ val mk_job_id : unit -> job_id
 module MakeWorker (Job : Job) : sig
 
 (* Event for the main loop *)
-type dm
-type events = dm Sel.event list
+type delegation
+type events = delegation Sel.event list
 
 (* handling an even may require an update to a sentence in the exec state *)
-val handle_event : dm -> ((sentence_id * execution_status) option * events)
-val pr_event : dm -> Pp.t
+val handle_event : delegation -> ((sentence_id * execution_status) option * events)
+val pr_event : delegation -> Pp.t
 
 (* When a worker is available [job] is called and when it returns the
    event becomes ready; in turn the event triggers the action.

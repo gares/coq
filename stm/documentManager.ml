@@ -29,11 +29,11 @@ type state = {
   observe_loc : int option; (* TODO materialize observed loc and line-by-line execution status *)
 }
 
-type event =
+type doc_management =
   | ExecuteToLoc of int * Vernacstate.t * ExecutionManager.prepared_task list
-  | ExecutionManagerEvent of ExecutionManager.event
+  | ExecutionManagerEvent of ExecutionManager.execution
 
-type events = event Sel.event list
+type events = doc_management Sel.event list
 
 type progress_hook = unit -> unit
 
