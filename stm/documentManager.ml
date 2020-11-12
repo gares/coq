@@ -33,6 +33,9 @@ type doc_management =
   | ExecuteToLoc of int * Vernacstate.t * ExecutionManager.prepared_task list
   | ExecutionManagerEvent of ExecutionManager.execution
 
+let inject_em_event x = Sel.map (fun e -> ExecutionManagerEvent e) x
+let inject_em_events events = List.map inject_em_event events
+
 type events = doc_management Sel.event list
 
 type progress_hook = unit -> unit
@@ -73,7 +76,7 @@ let diagnostics st =
 
 let init vernac_state document =
   let execution_state = ExecutionManager.init_master vernac_state in
-  { document; execution_state; observe_loc = None }
+  { document; execution_state; observe_loc = None }, [inject_em_event ExecutionManager.local_feedback]
 
 let interpret_to_loc ?(progress_hook=fun doc -> ()) state loc : (state * events) =
     let parsing_state_hook = ExecutionManager.get_parsing_state_after state.execution_state in
@@ -166,7 +169,7 @@ let interpret_to_end ?progress_hook state =
   interpret_to_loc ?progress_hook state (Document.end_loc state.document)
 
 let reset vernac_st state =
-  init vernac_st state.document
+  fst (init vernac_st state.document)
 
 let retract state loc =
   let observe_loc = Option.map (fun loc' -> min loc loc') state.observe_loc in
@@ -181,25 +184,6 @@ let validate_document state =
   let parsing_state_hook = ExecutionManager.get_parsing_state_after state.execution_state in
   let invalid_ids, document = validate_document ~parsing_state_hook state.document in
   { state with document }
-
-let handle_feedback state_id contents state =
-  let open Feedback in
-  match contents with
-  | Message(level,loc,pp) ->
-    let execution_state = ExecutionManager.handle_feedback state_id contents state.execution_state in
-    { state with execution_state}
-  | AddedAxiom -> state
-  (* These 4 constructors are used to store the mappings for name resolution *)
-  | GlobRef _ -> state
-  | GlobDef _ -> state
-  | FileDependency _ -> state
-  | FileLoaded _ -> state
-  (* Custom is used by plugins like Ltac (profiler, debugger) *)
-  | Custom(_,_,_) -> state
-  | _ -> state
-
-let inject_em_event x = Sel.map (fun e -> ExecutionManagerEvent e) x
-let inject_em_events events = List.map inject_em_event events
 
 let handle_event ev st =
   match ev with

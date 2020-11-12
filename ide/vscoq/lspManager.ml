@@ -210,9 +210,10 @@ let textDocumentDidOpen params =
   let id = fresh_doc_id () in
   let doc = Document.create_document ~id text in
   Hashtbl.add doc_ids id uri;
-  let st = DocumentManager.init (get_init_state ()) doc in
+  let st, events = DocumentManager.init (get_init_state ()) doc in
   Hashtbl.add states uri st;
-  update_view uri st
+  update_view uri st;
+  uri, events
 
 let textDocumentDidChange params =
   let open Yojson.Basic.Util in
@@ -302,7 +303,7 @@ let dispatch_method ~id method_name params : events =
   match method_name with
   | "initialize" -> do_initialize ~id; []
   | "initialized" -> []
-  | "textDocument/didOpen" -> textDocumentDidOpen params; []
+  | "textDocument/didOpen" -> textDocumentDidOpen params |> inject_dm_events
   | "textDocument/didChange" -> textDocumentDidChange params; []
   | "textDocument/didSave" -> textDocumentDidSave params; []
   | "coqtop/interpretToPoint" -> coqtopInterpretToPoint ~id params |> inject_dm_events
@@ -350,15 +351,6 @@ let pr_event = function
   | LspManagerEvent e -> pr_lsp_event e
   | DocumentManagerEvent (uri, e) ->
     DocumentManager.pr_event e
-
-let handle_feedback feedback =
-  let Feedback.{ doc_id; span_id; contents } = feedback in
-  match Hashtbl.find_opt doc_ids doc_id with
-  | None -> log ~verbosity:1 @@ "[LSP] ignoring feedback with doc_id = " ^ (string_of_int doc_id)
-  | Some uri ->
-    let st = Hashtbl.find states uri in
-    let st = DocumentManager.handle_feedback span_id contents st in
-    Hashtbl.replace states uri st (* TODO could we publish diagnostics here? *)
 
 let init () =
   init_state := Some (Vernacstate.freeze_interp_state ~marshallable:false)

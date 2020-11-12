@@ -29,6 +29,10 @@ type job_id
 val cancel_job : job_id -> unit
 val mk_job_id : unit -> job_id
 
+type update_request =
+  | UpdateExecStatus of sentence_id * execution_status
+  | AppendFeedback of sentence_id * (Feedback.level * Loc.t option * Pp.t)
+
 module MakeWorker (Job : Job) : sig
 
 (* Event for the main loop *)
@@ -36,7 +40,7 @@ type delegation
 type events = delegation Sel.event list
 
 (* handling an even may require an update to a sentence in the exec state *)
-val handle_event : delegation -> ((sentence_id * execution_status) option * events)
+val handle_event : delegation -> (update_request option * events)
 val pr_event : delegation -> Pp.t
 
 (* When a worker is available [job] is called and when it returns the
@@ -52,7 +56,7 @@ val pr_event : delegation -> Pp.t
 val worker_available :
   jobs:((job_id * Job.t) Queue.t) ->
   fork_action:(Job.t -> link -> unit) ->
-  events
+  delegation Sel.event
 
 (* for worker toplevels *)
 type options
@@ -61,3 +65,6 @@ val parse_options : (options,'b) coqtop_extra_args_fn
 val setup_plumbing : options -> (link * Job.t)
 
 end
+
+(* To be put in in the initial events *)
+val local_feedback : (sentence_id * (Feedback.level * Loc.t option * Pp.t)) Sel.event
