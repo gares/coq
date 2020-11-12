@@ -151,7 +151,7 @@ let handle_event = function
       (Some (sentence_id,result), [worker_progress link])
   | WorkerStart (job_id,job,action,procname) ->
     log "[M] WorkerStart";
-    if false (* Sys.os_type = "Unix" *) then
+    if Sys.os_type = "Unix" then
       let role, events = fork_worker job_id in
       match role with
       | Master ->
