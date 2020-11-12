@@ -36,12 +36,20 @@ type job = {
   last_proof_step_id : sentence_id;
 }
 
-module ProofWorker = DelegationManager.MakeWorker(struct
+module ProofJob = struct
+  type update_request =
+    | UpdateExecStatus of sentence_id * execution_status
+    | AppendFeedback of sentence_id * (Feedback.level * Loc.t option * Pp.t)
+  let appendFeedback id fb = AppendFeedback(id,fb)
+
   type t = job
   let name = "proof"
   let binary_name = "vscoqtop_worker.opt"
   let pool_size = 1
-end)
+
+end
+
+module ProofWorker = DelegationManager.MakeWorker(ProofJob)
 
 type execution =
   | ProofWorkerEvent of ProofWorker.delegation
@@ -147,9 +155,9 @@ let handle_event event state =
       let state =
         match update with
         | None -> None
-        | Some (DelegationManager.AppendFeedback(id,fb)) ->
+        | Some (ProofJob.AppendFeedback(id,fb)) ->
             Some (handle_feedback id fb state)
-        | Some (DelegationManager.UpdateExecStatus(id,v)) ->
+        | Some (ProofJob.UpdateExecStatus(id,v)) ->
             match SM.find id state.of_sentence with
             | (Delegated (_,completion), fl) ->
                 Option.default ignore completion v;
@@ -205,18 +213,18 @@ let ensure_proof_over = function
   | x -> x
 
 (* TODO move to proper place *)
-let worker_execute ~doc_id last_step_id link (vs,events) = function
+let worker_execute ~doc_id last_step_id ~send_back (vs,events) = function
   | PSkip id ->
     (vs, events)
   | PExec (id,ast) ->
     let vs, v, ev = interp_ast ~doc_id ~state_id:id vs ast in
     let v = if Stateid.equal id last_step_id then ensure_proof_over v else purge_state v in
-    DelegationManager.write_value link (id,v);
+    send_back (ProofJob.UpdateExecStatus (id,v));
     (vs, events @ ev)
   | _ -> assert false
 
-let worker_main { tasks; initial_vernac_state = vs; doc_id; last_proof_step_id; _ } link =
-  let _ = List.fold_left (worker_execute ~doc_id last_proof_step_id link) (vs,[]) tasks in
+let worker_main { tasks; initial_vernac_state = vs; doc_id; last_proof_step_id; _ } ~send_back =
+  let _ = List.fold_left (worker_execute ~doc_id last_proof_step_id ~send_back) (vs,[]) tasks in
   flush_all ();
   exit 0
 
@@ -389,6 +397,6 @@ module WorkerProcess = struct
   type options = ProofWorker.options
   let parse_options = ProofWorker.parse_options
   let main ~st:initial_vernac_state options =
-    let link, job = ProofWorker.setup_plumbing options in
-    worker_main job link
+    let send_back, job = ProofWorker.setup_plumbing options in
+    worker_main job ~send_back
 end
