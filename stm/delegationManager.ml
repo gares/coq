@@ -8,7 +8,8 @@
 (*         *     (see LICENSE file for the text of the license)         *)
 (************************************************************************)
 
-let debug_delegation_manager = CDebug.create ~name:"delegation-manager"
+
+let _debug_delegation_manager = CDebug.create ~name:"delegation-manager"
 
 let log msg =
   if CDebug.get_debug_level "delegation-manager" >= 1 then
@@ -20,8 +21,15 @@ type ('a,'b) coqtop_extra_args_fn = opts:'b -> string list -> 'a * string list
 type link = {
   write_to :  Unix.file_descr;
   read_from:  Unix.file_descr;
-  pid : int;
 }
+
+type execution_status =
+  | Success of Vernacstate.t option
+  | Error of string Loc.located * Vernacstate.t option (* State to use for resiliency *)
+
+type update_request =
+  | UpdateExecStatus of sentence_id * execution_status
+  | AppendFeedback of sentence_id * (Feedback.level * Loc.t option * Pp.t)
 
 let write_value { write_to; _ } x =
   let data = Marshal.to_bytes x [] in
@@ -30,10 +38,6 @@ let write_value { write_to; _ } x =
   let writeno = Unix.write write_to data 0 datalength in
   assert(writeno = datalength);
   flush_all ()
-
-let kill_link { pid } () = Unix.kill pid 9
-
-module M = Map.Make(Stateid)
 
 module type Job = sig
   type t
@@ -50,9 +54,27 @@ let cancel_job id =
   | None -> ()
   | Some pid -> Unix.kill pid 9
 
-type execution_status =
-  | Success of Vernacstate.t option
-  | Error of string Loc.located * Vernacstate.t option (* State to use for resiliency *)
+(* TODO: this queue should not be here, it should be "per URI" but we want to
+   keep here the conversion (STM) feedback -> (LSP) feedback *)
+let master_feedback_queue = Queue.create ()
+
+let install_feedback send =
+  Feedback.add_feeder (fun fb ->
+    match fb.Feedback.contents with
+    (* | Feedback.Message(Feedback.Info,_,_) -> () idtac sends an info *)
+    | Feedback.Message(lvl,loc,m) -> send (fb.Feedback.span_id,(lvl,loc,m))
+    | Feedback.AddedAxiom -> send (fb.Feedback.span_id,(Feedback.Warning,None,Pp.str "axiom added"))
+      (* STM feedbacks are handled differently *)
+    | _ -> ())
+
+let master_feeder = install_feedback (fun x -> Queue.push x master_feedback_queue)
+
+let local_feedback : (sentence_id * (Feedback.level * Loc.t option * Pp.t)) Sel.event =
+  Sel.on_queue master_feedback_queue (fun x -> x)
+
+let install_feedback_worker link =
+  Feedback.del_feeder master_feeder;
+  ignore(install_feedback (fun (id,fb) -> write_value link (AppendFeedback(id,fb))));
 
 module MakeWorker (Job : Job) = struct
 
@@ -60,7 +82,7 @@ let option_name = "-" ^ Str.global_replace (Str.regexp_string " ") "." Job.name 
 
 type delegation =
  | WorkerStart : job_id * 'job * ('job -> link -> unit) * string -> delegation
- | WorkerProgress of { link : link; sentence_id : sentence_id; result : execution_status }
+ | WorkerProgress of { link : link; update_request : update_request }
  | WorkerEnd of (int * Unix.process_status)
  | WorkerIOError of exn
 type events = delegation Sel.event list
@@ -68,15 +90,12 @@ type events = delegation Sel.event list
 let worker_progress link : delegation Sel.event =
   Sel.on_ocaml_value link.read_from (function
     | Error e -> WorkerIOError e
-    | Ok (sentence_id,result) ->
-      log @@ "[M] Worker sent back result for " ^ Stateid.to_string sentence_id ^ "  " ^
-        (match result with Success _ -> "ok" | _ -> "ko");
-      WorkerProgress { link; sentence_id; result })
+    | Ok update_request -> WorkerProgress { link; update_request; })
 
 type role = Master | Worker of link
 
 let pool = Queue.create ()
-let () = for i = 0 to Job.pool_size do Queue.push () pool done
+let () = for _i = 0 to Job.pool_size do Queue.push () pool done
 
 let wait_worker pid : delegation Sel.event =
   Sel.on_death_of ~pid (fun reason -> WorkerEnd(pid,reason))
@@ -100,7 +119,8 @@ let fork_worker : job_id -> (role * events) = fun job_id ->
     connect chan address;
     let read_from = chan in
     let write_to = chan in
-    let link = { write_to; read_from; pid } in
+    let link = { write_to; read_from } in
+    install_feedback_worker link;
     (Worker link, [])
   end else
     (* Parent process *)
@@ -110,7 +130,7 @@ let fork_worker : job_id -> (role * events) = fun job_id ->
     log @@ "[M] Forked pid " ^ string_of_int pid;
     let read_from = worker in
     let write_to = worker in
-    let link = { write_to; read_from; pid } in
+    let link = { write_to; read_from } in
     (Master, [worker_progress link; wait_worker pid])
 ;;
 
@@ -123,7 +143,9 @@ let create_process_worker procname job_id job =
     | ADDR_INET(_,port) -> port
     | _ -> assert false in
   let null = openfile "/dev/null" [O_RDWR] 0o640 in
-  let pid = create_process procname [|procname;option_name;string_of_int port;"-debug"|] null stdout stderr in
+  let extra_flags = if !Flags.debug then [|"-debug"|] else [||] in
+  let args = Array.append  [|procname;option_name;string_of_int port|] extra_flags in
+  let pid = create_process procname args null stdout stderr in
   close null;
   let () = job_id := Some pid in
   log @@ "[M] Created worker pid waiting on port " ^ string_of_int port;
@@ -131,7 +153,8 @@ let create_process_worker procname job_id job =
   close chan;
   let read_from = worker in
   let write_to = worker in
-  let link = { write_to; read_from; pid } in
+  let link = { write_to; read_from } in
+  install_feedback_worker link;
   log @@ "[M] sending job";
   write_value link job;
   flush_all ();
@@ -146,9 +169,9 @@ let handle_event = function
       log @@ Printf.sprintf "[M] Worker %d went on holidays" pid;
       Queue.push () pool;
       (None,[])
-  | WorkerProgress { link; sentence_id; result } ->
+  | WorkerProgress { link; update_request } ->
       log "[M] WorkerProgress";
-      (Some (sentence_id,result), [worker_progress link])
+      (Some update_request, [worker_progress link])
   | WorkerStart (job_id,job,action,procname) ->
     log "[M] WorkerStart";
     if Sys.os_type = "Unix" then
@@ -170,10 +193,9 @@ let pr_event = function
   | WorkerProgress _ -> Pp.str "WorkerProgress"
   | WorkerStart _ -> Pp.str "WorkerStart"
 
-let worker_available ~jobs ~fork_action : delegation Sel.event list = [
+let worker_available ~jobs ~fork_action : delegation Sel.event =
   Sel.on_queues jobs pool (fun (job_id, job) () ->
     WorkerStart (job_id,job,fork_action,Job.binary_name))
-]
 
 type options = int
 
@@ -185,7 +207,7 @@ let setup_plumbing port = try
   connect chan address;
   let read_from = chan in
   let write_to = chan in
-  let link = { read_from; write_to; pid = 0 } in
+  let link = { read_from; write_to } in
   (* Unix.read_value does not exist, we use Sel *)
   match Sel.wait [Sel.on_ocaml_value read_from (fun x -> x)] with
   | [Ok (job : Job.t)], _ -> (link, job)

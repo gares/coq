@@ -43,11 +43,15 @@ module ProofWorker = DelegationManager.MakeWorker(struct
   let pool_size = 1
 end)
 
-type execution = ProofWorkerEvent of ProofWorker.delegation (*| TacticWorkerEvent of Declare.Proof.event*)
+type execution =
+  | ProofWorkerEvent of ProofWorker.delegation
+  | LocalFeedback of sentence_id * (Feedback.level * Loc.t option * Pp.t)
+  (*| TacticWorkerEvent of Declare.Proof.event*)
 type events = execution Sel.event list
 
 let pr_event = function
   | ProofWorkerEvent event -> ProofWorker.pr_event event
+  | LocalFeedback _ -> Pp.str "LocalFeedback"
 
 let interp_ast ~doc_id ~state_id vernac_st ast =
     Feedback.set_id_for_feedback doc_id state_id;
@@ -125,14 +129,27 @@ let update state id v =
   update_all id (Done v) fl state
 ;;
 
+let local_feedback = Sel.map (fun (x,y) -> LocalFeedback(x,y)) DelegationManager.local_feedback
+
+let handle_feedback id fb state =
+  match SM.find id state.of_sentence with
+  | (s,fl) -> update_all id s (fb::fl) state
+  | exception Not_found -> 
+      log @@ "Received feedback on non-existing state id " ^ Stateid.to_string id;
+      state
+
 let handle_event event state =
   match event with
+  | LocalFeedback (id,fb) ->
+      Some (handle_feedback id fb state), [local_feedback]
   | ProofWorkerEvent event ->
-      let state_update,events = ProofWorker.handle_event event in
+      let update, events = ProofWorker.handle_event event in
       let state =
-        match state_update with
+        match update with
         | None -> None
-        | Some(id,v) ->
+        | Some (DelegationManager.AppendFeedback(id,fb)) ->
+            Some (handle_feedback id fb state)
+        | Some (DelegationManager.UpdateExecStatus(id,v)) ->
             match SM.find id state.of_sentence with
             | (Delegated (_,completion), fl) ->
                 Option.default ignore completion v;
@@ -199,7 +216,7 @@ let worker_execute ~doc_id last_step_id link (vs,events) = function
   | _ -> assert false
 
 let worker_main { tasks; initial_vernac_state = vs; doc_id; last_proof_step_id; _ } link =
-  let last_vs, _ = List.fold_left (worker_execute ~doc_id last_proof_step_id link) (vs,[]) tasks in
+  let _ = List.fold_left (worker_execute ~doc_id last_proof_step_id link) (vs,[]) tasks in
   flush_all ();
   exit 0
 
@@ -250,7 +267,7 @@ let execute ~doc_id st (vs, events, interrupted) task =
             let e =
               ProofWorker.worker_available ~jobs
                 ~fork_action:worker_main in
-            (st, last_vs,events @ List.map inject_dm_event e ,false)
+            (st, last_vs,events @ [inject_dm_event e] ,false)
           | _ ->
             (* If executing the proof opener failed, we skip the proof *)
             let st = update st terminator_id (success vs) in
@@ -284,12 +301,6 @@ let build_tasks_for ~progress_hook doc st id =
   in
   let vs, tasks = build_tasks id [] in
   vs, List.map (prepare_task ~progress_hook doc) tasks
-
-(* If we don't work we have re-create a minimal state that is good enough to
-   execute the sentences and send feedback. It is easier/faster than sending a
-   stripped state *)
-let init_worker () =
-  ()
 
 let errors st =
   List.fold_left (fun acc (id, (p,_)) ->
@@ -373,18 +384,6 @@ let get_proofview st id =
       let open Declare in
       let open Vernacstate in
       st |> LemmaStack.with_top ~f:Proof.get |> data |> Option.make
-
-let handle_feedback state_id contents st =
-  match contents with
-  | Feedback.Message(Feedback.Info,_,_) -> st
-  | Feedback.Message(lvl,loc,msg) ->
-    begin match SM.find_opt state_id st.of_sentence with
-    | None -> log @@ "Received feedback on non-existing state id " ^ Stateid.to_string state_id; st
-    | Some (p,l) ->
-      let of_sentence = SM.add state_id (p, (lvl,loc,msg) :: l) st.of_sentence in
-      { st with of_sentence }
-    end
-  | _ -> st
 
 module WorkerProcess = struct
   type options = ProofWorker.options

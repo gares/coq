@@ -26,6 +26,8 @@ type progress_hook = unit -> unit
 type execution
 type events = execution Sel.event list
 
+val local_feedback : execution Sel.event
+
 val handle_event : execution -> state -> (state option * events)
 val pr_event : execution -> Pp.t
 
@@ -50,7 +52,6 @@ val get_parsing_state_after : state -> sentence_id -> Vernacstate.Parser.t optio
 val get_proofview : state -> sentence_id -> Proof.data option
 
 val init_master : Vernacstate.t -> state
-val handle_feedback : Stateid.t -> Feedback.feedback_content -> state -> state
 
 module WorkerProcess : sig
   type options

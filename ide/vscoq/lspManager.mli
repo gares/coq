@@ -13,6 +13,5 @@ type events = top Sel.event list
 val lsp : top Sel.event
 val handle_event : top -> events
 val pr_event : top -> Pp.t
-val handle_feedback : Feedback.feedback -> unit
 
 val init : unit -> unit
