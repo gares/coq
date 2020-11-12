@@ -24,6 +24,9 @@ val on_httpcle : Unix.file_descr -> (Bytes.t res -> 'a) -> 'a event
 (** Synchronization events between components (worker pool and a task queue) *)
 val on_queues : 'b Queue.t -> 'c Queue.t -> ('b -> 'c -> 'a) -> 'a event
 
+(** A way to feed the event queue *)
+val on_queue : 'b Queue.t -> ('b -> 'a) -> 'a event
+
 (** Dummy event *)
 val now : 'a -> 'a event
 

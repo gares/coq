@@ -38,11 +38,13 @@ let err : type a b c. (c res -> b) -> a in_progress -> (a -> b fcomp) -> b fcomp
 type 'a event =
   | ReadInProgress of Unix.file_descr * 'a fcomp
   | WaitProcess of int * (Unix.process_status -> 'a)
+  | WaitQueue1 : 'b Queue.t * ('b -> 'a) -> 'a event
   | WaitQueue2 : 'b Queue.t * 'c Queue.t * ('b -> 'c -> 'a) -> 'a event
   | Ready of 'a
 
 let map f = function
   | Ready x -> Ready (f x)
+  | WaitQueue1(q1,k) -> WaitQueue1(q1,(fun x -> f (k x)))
   | WaitQueue2(q1,q2,k) -> WaitQueue2(q1,q2,(fun x y -> f (k x y)))
   | WaitProcess(pid,k) -> WaitProcess(pid, (fun x -> f (k x)))
   | ReadInProgress(fd,fcomp) -> ReadInProgress(fd,map_fcomp f fcomp)
@@ -90,10 +92,13 @@ let httpcle (k : Bytes.t res -> 'b) : 'b fcomp  =
 
 let on_httpcle fd k = ReadInProgress(fd, httpcle k)
 
+let on_queue q1 k = WaitQueue1(q1,k)
 let on_queues q1 q2 k = WaitQueue2(q1,q2,k)
 
 let advance ~ready_fds = function
   | Ready _ as x -> x
+  | WaitQueue1(q1,_) as x when Queue.is_empty q1 -> x
+  | WaitQueue1(q1,k) -> Ready(k (Queue.pop q1))
   | WaitQueue2(q1,q2,_) as x when Queue.is_empty q1 || Queue.is_empty q2 -> x
   | WaitQueue2(q1,q2,k) -> Ready(k (Queue.pop q1) (Queue.pop q2))
   | WaitProcess(pid,k) as x ->
