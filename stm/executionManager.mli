@@ -58,3 +58,9 @@ module ProofWorkerProcess : sig
   val parse_options : (options,'b) DelegationManager.coqtop_extra_args_fn
   val main : st:Vernacstate.t -> options -> unit
 end
+
+module TacticWorkerProcess : sig
+  type options
+  val parse_options : (options,'b) DelegationManager.coqtop_extra_args_fn
+  val main : st:Vernacstate.t -> options -> unit
+end

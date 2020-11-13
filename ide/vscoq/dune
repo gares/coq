@@ -22,6 +22,15 @@
  (libraries coq.dm coq.toplevel)
  (link_flags -linkall))
 
+(executable
+ (name vscoqtop_tactic_worker)
+ (public_name vscoqtop_tactic_worker.opt)
+ (package vscoq-server)
+ (modules vscoqtop_tactic_worker)
+ (libraries coq.dm)
+ (link_flags -linkall))
+
+
 ; (install
 ;  (section bin)
 ;  (package vscoq-server)
