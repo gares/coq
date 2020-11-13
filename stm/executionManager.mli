@@ -53,7 +53,7 @@ val get_proofview : state -> sentence_id -> Proof.data option
 
 val init_master : Vernacstate.t -> state
 
-module WorkerProcess : sig
+module ProofWorkerProcess : sig
   type options
   val parse_options : (options,'b) DelegationManager.coqtop_extra_args_fn
   val main : st:Vernacstate.t -> options -> unit

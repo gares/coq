@@ -15,10 +15,10 @@
  (link_flags -linkall))
 
 (executable
- (name vscoqtop_worker)
- (public_name vscoqtop_worker.opt)
+ (name vscoqtop_proof_worker)
+ (public_name vscoqtop_proof_worker.opt)
  (package vscoq-server)
- (modules vscoqtop_worker)
+ (modules vscoqtop_proof_worker)
  (libraries coq.dm coq.toplevel)
  (link_flags -linkall))
 
