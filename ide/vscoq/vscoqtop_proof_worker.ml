@@ -15,7 +15,7 @@ let log msg = Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
 
 let main_worker options ~opts:_ state =
   let initial_vernac_state = Vernacstate.freeze_interp_state ~marshallable:false in
-  try ExecutionManager.WorkerProcess.main ~st:initial_vernac_state options
+  try ExecutionManager.ProofWorkerProcess.main ~st:initial_vernac_state options
   with exn ->
     let bt = Printexc.get_backtrace () in
     log Printexc.(to_string exn);
@@ -36,7 +36,7 @@ let islave_init run_mode ~opts =
 
 let main () =
   let custom = Coqtop.{
-      parse_extra = ExecutionManager.WorkerProcess.parse_options;
+      parse_extra = ExecutionManager.ProofWorkerProcess.parse_options;
       help = vscoqtop_specific_usage;
       init = islave_init;
       run = main_worker;

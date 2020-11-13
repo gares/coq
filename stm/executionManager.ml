@@ -44,7 +44,7 @@ module ProofJob = struct
 
   type t = job
   let name = "proof"
-  let binary_name = "vscoqtop_worker.opt"
+  let binary_name = "vscoqtop_proof_worker.opt"
   let pool_size = 1
 
 end
@@ -393,7 +393,7 @@ let get_proofview st id =
       let open Vernacstate in
       st |> LemmaStack.with_top ~f:Proof.get |> data |> Option.make
 
-module WorkerProcess = struct
+module ProofWorkerProcess = struct
   type options = ProofWorker.options
   let parse_options = ProofWorker.parse_options
   let main ~st:initial_vernac_state options =
