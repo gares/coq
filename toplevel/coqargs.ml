@@ -41,10 +41,10 @@ type native_compiler = NativeOff | NativeOn of { ondemand : bool }
 type coqargs_logic_config = {
   impredicative_set : Declarations.set_predicativity;
   indices_matter    : bool;
-  toplevel_name     : Stm.interactive_top;
+  toplevel_name     : Vernac_document.interactive_top;
 }
 
-type coqargs_config = {
+type 'dm_flags  coqargs_config = {
   logic       : coqargs_logic_config;
   rcfile      : string option;
   coqlib      : string option;
@@ -53,7 +53,7 @@ type coqargs_config = {
   native_compiler : native_compiler;
   native_output_dir : CUnix.physical_path;
   native_include_dirs : CUnix.physical_path list;
-  stm_flags   : Stm.AsyncOpts.stm_opt;
+  dm_flags   : 'dm_flags;
   debug       : bool;
   time        : bool;
   print_emacs : bool;
@@ -68,13 +68,13 @@ type coqargs_pre = {
   vo_includes : Loadpath.vo_path list;
 
   load_vernacular_list : (string * bool) list;
-  injections  : Stm.injection_command list;
+  injections  : Vernac_document.injection_command list;
 
   inputstate  : string option;
 }
 
 type coqargs_query =
-  | PrintTags | PrintWhere | PrintConfig
+  | PrintWhere | PrintConfig
   | PrintVersion | PrintMachineReadableVersion
   | PrintHelp of Usage.specific_usage
 
@@ -87,8 +87,8 @@ type coqargs_post = {
   output_context : bool;
 }
 
-type t = {
-  config : coqargs_config;
+type 'dm_flags t = {
+  config : 'dm_flags coqargs_config;
   pre : coqargs_pre;
   main : coqargs_main;
   post : coqargs_post;
@@ -104,10 +104,10 @@ let default_native =
 let default_logic_config = {
   impredicative_set = Declarations.PredicativeSet;
   indices_matter = false;
-  toplevel_name = Stm.TopLogical default_toplevel;
+  toplevel_name = Vernac_document.TopLogical default_toplevel;
 }
 
-let default_config = {
+let default_config dm_flags = {
   logic        = default_logic_config;
   rcfile       = None;
   coqlib       = None;
@@ -116,7 +116,7 @@ let default_config = {
   native_compiler = default_native;
   native_output_dir = ".coq-native";
   native_include_dirs = [];
-  stm_flags    = Stm.AsyncOpts.default_opts;
+  dm_flags     = dm_flags;
   debug        = false;
   time         = false;
   print_emacs  = false;
@@ -142,8 +142,8 @@ let default_post = {
   output_context = false;
 }
 
-let default = {
-  config = default_config;
+let default dm_flags = {
+  config = default_config dm_flags;
   pre    = default_pre;
   main   = Run;
   post   = default_post;
@@ -162,13 +162,13 @@ let add_vo_include opts unix_path coq_path implicit =
         unix_path; coq_path; has_ml = false; implicit; recursive = true } :: opts.pre.vo_includes }}
 
 let add_vo_require opts d p export =
-  { opts with pre = { opts.pre with injections = Stm.RequireInjection (d, p, export) :: opts.pre.injections }}
+  { opts with pre = { opts.pre with injections = Vernac_document.RequireInjection (d, p, export) :: opts.pre.injections }}
 
 let add_load_vernacular opts verb s =
     { opts with pre = { opts.pre with load_vernacular_list = (CUnix.make_suffix s ".v",verb) :: opts.pre.load_vernacular_list }}
 
 let add_set_option opts opt_name value =
-  { opts with pre = { opts.pre with injections = Stm.OptionInjection (opt_name, value) :: opts.pre.injections }}
+  { opts with pre = { opts.pre with injections = Vernac_document.OptionInjection (opt_name, value) :: opts.pre.injections }}
 
 (** Options for proof general *)
 let set_emacs opts =
@@ -212,46 +212,10 @@ let get_bool opt = function
   | _ ->
     error_wrong_arg ("Error: yes/no expected after option "^opt)
 
-let get_int opt n =
-  try int_of_string n
-  with Failure _ ->
-    error_wrong_arg ("Error: integer expected after option "^opt)
-
 let get_float opt n =
   try float_of_string n
   with Failure _ ->
     error_wrong_arg ("Error: float expected after option "^opt)
-
-let get_host_port opt s =
-  match String.split_on_char ':' s with
-  | [host; portr; portw] ->
-    Some (Spawned.Socket(host, int_of_string portr, int_of_string portw))
-  | ["stdfds"] -> Some Spawned.AnonPipe
-  | _ ->
-    error_wrong_arg ("Error: host:portr:portw or stdfds expected after option "^opt)
-
-let get_error_resilience opt = function
-  | "on" | "all" | "yes" -> `All
-  | "off" | "no" -> `None
-  | s -> `Only (String.split_on_char ',' s)
-
-let get_priority opt s =
-  try CoqworkmgrApi.priority_of_string s
-  with Invalid_argument _ ->
-    error_wrong_arg ("Error: low/high expected after "^opt)
-
-let get_async_proofs_mode opt = let open Stm.AsyncOpts in function
-  | "no" | "off" -> APoff
-  | "yes" | "on" -> APon
-  | "lazy" -> APonLazy
-  | _ ->
-    error_wrong_arg ("Error: on/off/lazy expected after "^opt)
-
-let get_cache opt = function
-  | "force" -> Some Stm.AsyncOpts.Force
-  | _ ->
-    error_wrong_arg ("Error: force expected after "^opt)
-
 
 let get_native_name s =
   (* We ignore even critical errors because this mode has to be super silent *)
@@ -316,7 +280,9 @@ let parse_debug_flags s =
 (* Main parsing routine *)
 (*s Parsing of the command line *)
 
-let parse_args ~help ~init arglist : t * string list =
+let parse_args ~help ~init ~parse_dm_flags arglist : 'dm_flags t * string list =
+  let dm_flags, arglist = parse_dm_flags ~init:init.config.dm_flags arglist in
+  let init = { init with config = { init.config with dm_flags}} in
   let args = ref arglist in
   let extras = ref [] in
   let rec parse oval = match !args with
@@ -358,52 +324,6 @@ let parse_args ~help ~init arglist : t * string list =
       { oval with config = { oval.config with coqlib = Some (next ())
       }}
 
-    |"-async-proofs" ->
-      { oval with config = { oval.config with stm_flags = { oval.config.stm_flags with
-        Stm.AsyncOpts.async_proofs_mode = get_async_proofs_mode opt (next())
-      }}}
-    |"-async-proofs-j" ->
-      { oval with config = { oval.config with stm_flags = { oval.config.stm_flags with
-        Stm.AsyncOpts.async_proofs_n_workers = (get_int opt (next ()))
-      }}}
-    |"-async-proofs-cache" ->
-      { oval with config = { oval.config with stm_flags = { oval.config.stm_flags with
-        Stm.AsyncOpts.async_proofs_cache = get_cache opt (next ())
-      }}}
-
-    |"-async-proofs-tac-j" ->
-      let j = get_int opt (next ()) in
-      if j <= 0 then begin
-        error_wrong_arg ("Error: -async-proofs-tac-j only accepts values greater than or equal to 1")
-      end;
-      { oval with config = { oval.config with stm_flags = { oval.config.stm_flags with
-        Stm.AsyncOpts.async_proofs_n_tacworkers = j
-      }}}
-
-    |"-async-proofs-worker-priority" ->
-      { oval with config = { oval.config with stm_flags = { oval.config.stm_flags with
-        Stm.AsyncOpts.async_proofs_worker_priority = get_priority opt (next ())
-      }}}
-
-    |"-async-proofs-private-flags" ->
-      { oval with config = { oval.config with stm_flags = { oval.config.stm_flags with
-        Stm.AsyncOpts.async_proofs_private_flags = Some (next ());
-      }}}
-
-    |"-async-proofs-tactic-error-resilience" ->
-      { oval with config = { oval.config with stm_flags = { oval.config.stm_flags with
-        Stm.AsyncOpts.async_proofs_tac_error_resilience = get_error_resilience opt (next ())
-      }}}
-
-    |"-async-proofs-command-error-resilience" ->
-      { oval with config = { oval.config with stm_flags = { oval.config.stm_flags with
-        Stm.AsyncOpts.async_proofs_cmd_error_resilience = get_bool opt (next ())
-      }}}
-
-    |"async-proofs-delegation-threshold" ->
-      { oval with config = { oval.config with stm_flags = { oval.config.stm_flags with
-        Stm.AsyncOpts.async_proofs_delegation_threshold = get_float opt (next ())
-      }}}
 
     |"-worker-id" -> set_worker_id opt (next ()); oval
 
@@ -458,16 +378,10 @@ let parse_args ~help ~init arglist : t * string list =
       let topname = Libnames.dirpath_of_string (next ()) in
       if Names.DirPath.is_empty topname then
         CErrors.user_err Pp.(str "Need a non empty toplevel module name");
-      { oval with config = { oval.config with logic = { oval.config.logic with toplevel_name = Stm.TopLogical topname }}}
+      { oval with config = { oval.config with logic = { oval.config.logic with toplevel_name = Vernac_document.TopLogical topname }}}
 
     |"-topfile" ->
-      { oval with config = { oval.config with logic = { oval.config.logic with toplevel_name = Stm.TopPhysical (next()) }}}
-
-    |"-main-channel" ->
-      Spawned.main_channel := get_host_port opt (next()); oval
-
-    |"-control-channel" ->
-      Spawned.control_channel := get_host_port opt (next()); oval
+      { oval with config = { oval.config with logic = { oval.config.logic with toplevel_name = Vernac_document.TopPhysical (next()) }}}
 
     |"-w" | "-W" ->
       let w = next () in
@@ -487,10 +401,10 @@ let parse_args ~help ~init arglist : t * string list =
 
     | "-set" ->
       let opt, v = parse_option_set @@ next() in
-      add_set_option oval opt (Stm.OptionSet v)
+      add_set_option oval opt (Vernac_document.OptionSet v)
 
     | "-unset" ->
-      add_set_option oval (to_opt_key @@ next ()) Stm.OptionUnset
+      add_set_option oval (to_opt_key @@ next ()) Vernac_document.OptionUnset
 
     |"-native-output-dir" ->
       let native_output_dir = next () in
@@ -501,12 +415,6 @@ let parse_args ~help ~init arglist : t * string list =
       { oval with config = {oval.config with native_include_dirs = include_dir :: oval.config.native_include_dirs } }
 
     (* Options with zero arg *)
-    |"-async-queries-always-delegate"
-    |"-async-proofs-always-delegate"
-    |"-async-proofs-never-reopen-branch" ->
-      { oval with config = { oval.config with stm_flags = { oval.config.stm_flags with
-        Stm.AsyncOpts.async_proofs_never_reopen_branch = true
-      }}}
     |"-test-mode" -> Vernacinterp.test_mode := true; oval
     |"-beautify" -> Flags.beautify := true; oval
     |"-bt" -> Exninfo.record_backtrace true; oval
@@ -520,18 +428,17 @@ let parse_args ~help ~init arglist : t * string list =
 
     |"-xml-debug" -> Flags.xml_debug := true; Coqinit.set_debug (); oval
     |"-diffs" ->
-      add_set_option oval Proof_diffs.opt_name @@ Stm.OptionSet (Some (next ()))
-    |"-stm-debug" -> Stm.stm_debug := true; oval
+      add_set_option oval Proof_diffs.opt_name @@ Vernac_document.OptionSet (Some (next ()))
     |"-emacs" -> set_emacs oval
     |"-impredicative-set" ->
       set_logic (fun o -> { o with impredicative_set = Declarations.ImpredicativeSet }) oval
     |"-allow-sprop" ->
-      add_set_option oval Vernacentries.allow_sprop_opt_name (Stm.OptionSet None)
+      add_set_option oval Vernacentries.allow_sprop_opt_name (Vernac_document.OptionSet None)
     |"-disallow-sprop" ->
-      add_set_option oval Vernacentries.allow_sprop_opt_name Stm.OptionUnset
+      add_set_option oval Vernacentries.allow_sprop_opt_name Vernac_document.OptionUnset
     |"-sprop-cumulative" ->
       warn_deprecated_sprop_cumul();
-      add_set_option oval Vernacentries.cumul_sprop_opt_name (Stm.OptionSet None)
+      add_set_option oval Vernacentries.cumul_sprop_opt_name (Vernac_document.OptionSet None)
     |"-indices-matter" -> set_logic (fun o -> { o with indices_matter = true }) oval
     |"-m"|"--memory" -> { oval with post = { oval.post with memory_stat = true }}
     |"-noinit"|"-nois" -> { oval with pre = { oval.pre with load_init = false }}
@@ -543,7 +450,6 @@ let parse_args ~help ~init arglist : t * string list =
       Flags.quiet := true;
       Flags.make_warn false;
       oval
-    |"-list-tags" -> set_query oval PrintTags
     |"-time" -> { oval with config = { oval.config with time = true }}
     |"-type-in-type" -> set_type_in_type (); oval
     |"-unicode" -> add_vo_require oval "Utf8_core" None (Some false)
@@ -564,8 +470,8 @@ let parse_args ~help ~init arglist : t * string list =
   with any -> fatal_error any
 
 (* We need to reverse a few lists *)
-let parse_args ~help ~init args =
-  let opts, extra = parse_args ~help ~init args in
+let parse_args ~help ~init ~parse_dm_flags args =
+  let opts, extra = parse_args ~help ~init ~parse_dm_flags args in
   let opts =
     { opts with
       pre = { opts.pre with
@@ -584,7 +490,7 @@ let parse_args ~help ~init args =
 let prelude_data = "Prelude", Some "Coq", Some false
 
 let injection_commands opts =
-  if opts.pre.load_init then Stm.RequireInjection prelude_data :: opts.pre.injections else opts.pre.injections
+  if opts.pre.load_init then Vernac_document.RequireInjection prelude_data :: opts.pre.injections else opts.pre.injections
 
 let build_load_path opts =
   let ml_path, vo_path =

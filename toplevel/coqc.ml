@@ -8,6 +8,8 @@
 (*         *     (see LICENSE file for the text of the license)         *)
 (************************************************************************)
 
+open Coq_toplevel
+
 let outputstate opts =
   Option.iter (fun ostate_file ->
     let fname = CUnix.make_suffix ostate_file ".coq" in
@@ -73,13 +75,16 @@ let coqc_run copts ~opts () =
     let exit_code = if (CErrors.is_anomaly exn) then 129 else 1 in
     exit exit_code
 
-let custom_coqc = Coqtop.{
+let custom_coqc = {
   parse_extra = (fun ~opts extras -> Coqcargs.parse extras, []);
   help = coqc_specific_usage;
   init = coqc_init;
   run = coqc_run;
-  opts = Coqargs.default;
+  opts = Coqargs.default Stm.AsyncOpts.default_opts;
+  parse_dm_flags = Stm.AsyncOpts.parse;
+  init_dm = Stm.init_core;
+  rcfile_loader = (fun ~state _ -> state) (* ccompile loads rcfile on his own *)
 }
 
 let main () =
-  Coqtop.start_coq custom_coqc
+  start_coq ~initialization_feeder:Coqloop.coqloop_feed custom_coqc

@@ -29,12 +29,15 @@ let worker_specific_usage name = Usage.{
 }
 
 let start ~init ~loop name =
-  let open Coqtop in
+  let open Coq_toplevel in
   let custom = {
     parse_extra = worker_parse_extra;
     help = worker_specific_usage name;
-    opts = Coqargs.default;
+    opts = Coqargs.default Stm.AsyncOpts.default_opts;
     init = worker_init init;
     run = (fun () ~opts:_ _state (* why is state not used *) -> loop ());
+    parse_dm_flags = Stm.AsyncOpts.parse;
+    init_dm = Stm.init_core;
+    rcfile_loader = Vernac.rcfile_loader
   } in
-  start_coq custom
+  start_coq ~initialization_feeder:Coqloop.coqloop_feed custom

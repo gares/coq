@@ -36,67 +36,27 @@ module AsyncOpts : sig
     async_proofs_delegation_threshold : float;
 
     async_proofs_worker_priority : CoqworkmgrApi.priority;
+
+    main_channel : Spawned.chandescr option;
+    control_channel : Spawned.chandescr option;
   }
 
   val default_opts : stm_opt
 
+  (** consumes known options *)
+  val parse : init:stm_opt -> string list -> stm_opt * string list
+
 end
-
-type interactive_top = TopLogical of DirPath.t | TopPhysical of string
-
-(** The STM document type [stm_doc_type] determines some properties
-   such as what uncompleted proofs are allowed and what gets recorded
-   to aux files. *)
-type stm_doc_type =
-  | VoDoc       of string       (* file path *)
-  | VioDoc      of string       (* file path *)
-  | Interactive of interactive_top    (* module path *)
-
-type option_command = OptionSet of string option | OptionUnset
-
-type injection_command =
-  | OptionInjection of (Goptions.option_name * option_command)
-  (** Set flags or options before the initial state is ready. *)
-  | RequireInjection of (string * string option * bool option)
-  (** Require libraries before the initial state is
-     ready. Parameters follow [Library], that is to say,
-     [lib,prefix,import_export] means require library [lib] from
-     optional [prefix] and [import_export] if [Some false/Some true]
-     is used.  *)
-  (* -load-vernac-source interleaving is not supported yet *)
-  (* | LoadInjection of (string * bool) *)
-
-(** STM initialization options: *)
-type stm_init_options =
-  { doc_type : stm_doc_type
-  (** The STM does set some internal flags differently depending on
-     the specified [doc_type]. This distinction should disappear at
-     some some point. *)
-
-  ; ml_load_path : CUnix.physical_path list
-  (** OCaml load paths for the document. *)
-
-  ; vo_load_path   : Loadpath.vo_path list
-  (** [vo] load paths for the document. Usually extracted from -R
-     options / _CoqProject *)
-
-  ; injections : injection_command list
-  (** Injects Require and Set/Unset commands before the initial
-     state is ready *)
-
-  ; stm_options  : AsyncOpts.stm_opt
-  (** Low-level STM options *)
-  }
 
 (** The type of a STM document *)
 type doc
 
 (** [init_core] performs some low-level initialization; should go away
    in future releases. *)
-val init_core : unit -> unit
+val init_core : AsyncOpts.stm_opt -> unit
 
 (** [new_doc opt] Creates a new document with options [opt] *)
-val new_doc  : stm_init_options -> doc * Stateid.t
+val new_doc  : AsyncOpts.stm_opt Vernac_document.doc_init_options -> doc * Stateid.t
 
 (** [parse_sentence sid entry pa] Reads a sentence from [pa] with parsing state
     [sid] and non terminal [entry]. [entry] receives in input the current proof

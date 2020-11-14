@@ -12,7 +12,11 @@
 
 val set_debug : unit -> unit
 
-val load_rcfile : rcfile:(string option) -> state:Vernac.State.t -> Vernac.State.t
+val load_rcfile :
+  loader:(state:'state -> string -> 'state) ->
+  rcfile:(string option) ->
+  state:'state ->
+  'state
 
 (* LoadPath for Coq user libraries *)
 val libs_init_load_path

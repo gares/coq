@@ -31,7 +31,7 @@ val coqloop_feed : Feedback.feedback -> unit
 
 (** Last document seen after `Drop` *)
 val drop_last_doc : Vernac.State.t option ref
-val drop_args : Coqargs.t option ref
+val drop_args : Stm.AsyncOpts.stm_opt Coqargs.t option ref
 
 (** Main entry point of Coq: read and execute vernac commands. *)
-val loop : opts:Coqargs.t -> state:Vernac.State.t -> unit
+val loop : opts:Stm.AsyncOpts.stm_opt Coqargs.t -> state:Vernac.State.t -> unit

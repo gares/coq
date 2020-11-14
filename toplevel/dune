@@ -3,8 +3,19 @@
  (public_name coq.toplevel)
  (synopsis "Coq's Interactive Shell [terminal-based]")
  (wrapped false)
- (libraries coq.stm))
+ (libraries coq.stm toplevel_core)
+ (modules coqc coqcargs ccompile coqtop coqloop workerLoop vernac g_toplevel)
+ )
 ; Interp provides the `zarith` library to plugins, we could also use
 ; -linkall in the plugins file, to be discussed.
+
+(library
+ (name toplevel_core)
+ (public_name coq.toplevel_core)
+ (synopsis "Coq's toplevel")
+ (wrapped false)
+ (libraries coq.vernac)
+ (modules coqinit coqargs coq_toplevel usage)
+ )
 
 (coq.pp (modules g_toplevel))

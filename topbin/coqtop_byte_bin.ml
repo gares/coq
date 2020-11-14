@@ -38,4 +38,5 @@ let drop_setup () =
 (* Main coqtop initialization *)
 let _ =
   drop_setup ();
-  Coqtop.(start_coq coqtop_toplevel)
+  let () = Coq_toplevel.start_coq ~initialization_feeder:Coqloop.coqloop_feed Coqtop.coqtop_toplevel in
+  exit 0

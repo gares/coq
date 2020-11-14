@@ -24,7 +24,7 @@ let fatal_error msg =
 let load_init_file opts ~state =
   if opts.pre.load_rcfile then
     Topfmt.(in_phase ~phase:LoadingRcFile) (fun () ->
-        Coqinit.load_rcfile ~rcfile:opts.config.rcfile ~state) ()
+        Coqinit.load_rcfile ~loader:Vernac.rcfile_loader ~rcfile:opts.config.rcfile ~state) ()
   else begin
     Flags.if_verbose Feedback.msg_info (str"Skipping rcfile loading.");
     state
@@ -106,7 +106,7 @@ let compile opts copts ~echo ~f_in ~f_out =
   in
   let ml_load_path, vo_load_path = build_load_path opts in
   let injections = injection_commands opts in
-  let stm_options = opts.config.stm_flags in
+  let document_manager_options = opts.config.dm_flags in
   let output_native_objects = match opts.config.native_compiler with
     | NativeOff -> false | NativeOn {ondemand} -> not ondemand
   in
@@ -129,8 +129,8 @@ let compile opts copts ~echo ~f_in ~f_out =
   | BuildVo | BuildVok ->
       let doc, sid = Topfmt.(in_phase ~phase:LoadingPrelude)
           Stm.new_doc
-          Stm.{ doc_type = VoDoc long_f_dot_out; ml_load_path;
-                vo_load_path; injections; stm_options;
+          Vernac_document.{ doc_type = VoDoc long_f_dot_out; ml_load_path;
+                vo_load_path; injections; document_manager_options;
               } in
       let state = { doc; sid; proof = None; time = opts.config.time } in
       let state = load_init_vernaculars opts ~state in
@@ -144,7 +144,7 @@ let compile opts copts ~echo ~f_in ~f_out =
       Dumpglob.dump_string ("F" ^ Names.DirPath.to_string ldir ^ "\n");
 
       let wall_clock1 = Unix.gettimeofday () in
-      let check = Stm.AsyncOpts.(stm_options.async_proofs_mode = APoff) in
+      let check = Stm.AsyncOpts.(document_manager_options.async_proofs_mode = APoff) in
       let state = Vernac.load_vernac ~echo ~check ~interactive:false ~state long_f_dot_in in
       let _doc = Stm.join ~doc:state.doc in
       let wall_clock2 = Unix.gettimeofday () in
@@ -171,8 +171,8 @@ let compile opts copts ~echo ~f_in ~f_out =
 
          This is not necessary in the vo case as it fully checks the
          document anyways. *)
-      let stm_options = let open Stm.AsyncOpts in
-        { stm_options with
+      let document_manager_options = let open Stm.AsyncOpts in
+        { document_manager_options with
           async_proofs_mode = APon;
           async_proofs_n_workers = 0;
           async_proofs_cmd_error_resilience = false;
@@ -181,8 +181,8 @@ let compile opts copts ~echo ~f_in ~f_out =
 
       let doc, sid = Topfmt.(in_phase ~phase:LoadingPrelude)
           Stm.new_doc
-          Stm.{ doc_type = VioDoc long_f_dot_out; ml_load_path;
-                vo_load_path; injections; stm_options;
+          Vernac_document.{ doc_type = VioDoc long_f_dot_out; ml_load_path;
+                vo_load_path; injections; document_manager_options;
               } in
 
       let state = { doc; sid; proof = None; time = opts.config.time } in

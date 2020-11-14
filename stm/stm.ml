@@ -53,6 +53,9 @@ module AsyncOpts = struct
     async_proofs_delegation_threshold : float;
 
     async_proofs_worker_priority : CoqworkmgrApi.priority;
+
+    main_channel : Spawned.chandescr option;
+    control_channel : Spawned.chandescr option;
   }
 
   let default_opts = {
@@ -71,9 +74,154 @@ module AsyncOpts = struct
     async_proofs_delegation_threshold = 0.03;
 
     async_proofs_worker_priority = CoqworkmgrApi.Low;
+
+    main_channel = None;
+    control_channel = None;
   }
 
   let cur_opt = ref default_opts
+
+  let error_wrong_arg msg =
+    prerr_endline msg; exit 1
+
+  let error_missing_arg s =
+    prerr_endline ("Error: extra argument expected after option "^s);
+    prerr_endline "See -help for the syntax of supported options";
+    exit 1
+
+
+  let get_error_resilience opt = function
+    | "on" | "all" | "yes" -> `All
+    | "off" | "no" -> `None
+    | s -> `Only (String.split_on_char ',' s)
+
+  let get_priority opt s =
+    try CoqworkmgrApi.priority_of_string s
+    with Invalid_argument _ ->
+      error_wrong_arg ("Error: low/high expected after "^opt)
+
+  let get_async_proofs_mode opt = function
+    | "no" | "off" -> APoff
+    | "yes" | "on" -> APon
+    | "lazy" -> APonLazy
+    | _ ->
+      error_wrong_arg ("Error: on/off/lazy expected after "^opt)
+
+  let get_cache opt = function
+    | "force" -> Some Force
+    | _ ->
+      error_wrong_arg ("Error: force expected after "^opt)
+
+  let get_bool opt = function
+    | "yes" | "on" -> true
+    | "no" | "off" -> false
+    | _ ->
+      error_wrong_arg ("Error: yes/no expected after option "^opt)
+
+  let get_int opt n =
+    try int_of_string n
+    with Failure _ ->
+      error_wrong_arg ("Error: integer expected after option "^opt)
+
+  let get_float opt n =
+    try float_of_string n
+    with Failure _ ->
+      error_wrong_arg ("Error: float expected after option "^opt)
+
+  let get_host_port opt s =
+    match String.split_on_char ':' s with
+    | [host; portr; portw] ->
+      Some (Spawned.Socket(host, int_of_string portr, int_of_string portw))
+    | ["stdfds"] -> Some Spawned.AnonPipe
+    | _ ->
+      error_wrong_arg ("Error: host:portr:portw or stdfds expected after option "^opt)
+
+  let parse ~init arglist =
+    let args = ref arglist in
+    let extras = ref [] in
+    let rec aux opts =
+      match !args with
+      | [] -> opts, List.rev !extras
+      | arg :: rem ->
+          args := rem;
+          let next () = match !args with
+            | x::rem -> args := rem; x
+            | [] -> error_missing_arg arg
+          in
+          let opts = match arg with
+            |"-async-proofs" ->
+              { opts with
+                async_proofs_mode = get_async_proofs_mode arg (next())
+              }
+            |"-async-proofs-j" ->
+              { opts with
+                async_proofs_n_workers = (get_int arg (next ()))
+              }
+            |"-async-proofs-cache" ->
+              { opts with
+                async_proofs_cache = get_cache arg (next ())
+              }
+
+            |"-async-proofs-tac-j" ->
+              let j = get_int arg (next ()) in
+              if j <= 0 then begin
+                error_wrong_arg ("Error: -async-proofs-tac-j only accepts values greater than or equal to 1")
+              end;
+              { opts with
+                async_proofs_n_tacworkers = j
+              }
+
+            |"-async-proofs-worker-priority" ->
+              { opts with
+                async_proofs_worker_priority = get_priority arg (next ())
+              }
+
+            |"-async-proofs-private-flags" ->
+              { opts with
+                async_proofs_private_flags = Some (next ());
+              }
+
+            |"-async-proofs-tactic-error-resilience" ->
+              { opts with
+                async_proofs_tac_error_resilience = get_error_resilience arg (next ())
+              }
+
+            |"-async-proofs-command-error-resilience" ->
+              { opts with
+                async_proofs_cmd_error_resilience = get_bool arg (next ())
+              }
+
+            |"async-proofs-delegation-threshold" ->
+              { opts with
+                async_proofs_delegation_threshold = get_float arg (next ())
+              }
+            |"-async-queries-always-delegate"
+            |"-async-proofs-always-delegate"
+            |"-async-proofs-never-reopen-branch" ->
+              { opts with
+                async_proofs_never_reopen_branch = true
+              }
+
+            |"-stm-debug" -> stm_debug := true; opts
+
+            |"-main-channel" ->
+              { opts with
+                main_channel = get_host_port arg (next())
+              }
+            |"-control-channel" ->
+              { opts with
+                control_channel = get_host_port arg (next())
+              }
+
+             (* Unknown option *)
+            | s ->
+                extras := s :: !extras;
+                opts
+     in
+            aux opts
+    in
+      aux init
+
 end
 
 open AsyncOpts
@@ -325,7 +473,7 @@ module VCS : sig
 
   type vcs = (branch_type, transaction, vcs state_info, box) Vcs_.t
 
-  val init : stm_doc_type -> id -> Vernacstate.Parser.t -> doc
+  val init : Vernac_document.doc_type -> id -> Vernacstate.Parser.t -> doc
   (* val get_type : unit -> stm_doc_type *)
   val set_ldir : Names.DirPath.t -> unit
   val get_ldir : unit -> Names.DirPath.t
@@ -517,7 +665,7 @@ end = struct (* {{{ *)
   type vcs = (branch_type, transaction, vcs state_info, box) t
   let vcs : vcs ref = ref (empty Stateid.dummy)
 
-  let doc_type = ref (Interactive (TopLogical (Names.DirPath.make [])))
+  let doc_type = ref (Vernac_document.Interactive (Vernac_document.TopLogical (Names.DirPath.make [])))
   let ldir = ref Names.DirPath.empty
 
   let init dt id ps =
@@ -2306,43 +2454,6 @@ end (* }}} *)
 (********************************* STM API ************************************)
 (******************************************************************************)
 
-(** STM initialization options: *)
-
-type option_command = OptionSet of string option | OptionUnset
-
-type injection_command =
-  | OptionInjection of (Goptions.option_name * option_command)
-  (** Set flags or options before the initial state is ready. *)
-  | RequireInjection of (string * string option * bool option)
-  (** Require libraries before the initial state is
-     ready. Parameters follow [Library], that is to say,
-     [lib,prefix,import_export] means require library [lib] from
-     optional [prefix] and [import_export] if [Some false/Some true]
-     is used.  *)
-  (* -load-vernac-source interleaving is not supported yet *)
-  (* | LoadInjection of (string * bool) *)
-
-type stm_init_options =
-  { doc_type : stm_doc_type
-  (** The STM does set some internal flags differently depending on
-     the specified [doc_type]. This distinction should disappear at
-     some some point. *)
-
-  ; ml_load_path : CUnix.physical_path list
-  (** OCaml load paths for the document. *)
-
-  ; vo_load_path   : Loadpath.vo_path list
-  (** [vo] load paths for the document. Usually extracted from -R
-     options / _CoqProject *)
-
-  ; injections : injection_command list
-  (** Injects Require and Set/Unset commands before the initial
-     state is ready *)
-
-  ; stm_options  : AsyncOpts.stm_opt
-  (** Low-level STM options *)
-  }
-
   (* fb_handler   : Feedback.feedback -> unit; *)
 
 (*
@@ -2352,116 +2463,35 @@ let doc_type_module_name (std : stm_doc_type) =
   | Interactive mn -> Names.DirPath.to_string mn
 *)
 
-let init_core () =
-  if !cur_opt.async_proofs_mode = APon then Control.enable_thread_delay := true;
-  if !Flags.async_proofs_worker_id = "master" then Partac.enable_par ~nworkers:!cur_opt.async_proofs_n_tacworkers;
-  State.register_root_state ()
+let init_core cur_opt =
+  Spawned.main_channel := cur_opt.main_channel;
+  Spawned.control_channel := cur_opt.control_channel;
+  Spawned.init_channels ();
+  if cur_opt.async_proofs_mode = APon then Control.enable_thread_delay := true;
+  if !Flags.async_proofs_worker_id = "master" then Partac.enable_par ~nworkers:cur_opt.async_proofs_n_tacworkers;
+  State.register_root_state ();
+  CoqworkmgrApi.(init cur_opt.AsyncOpts.async_proofs_worker_priority)
 
-let dirpath_of_file f =
-  let ldir0 =
-    try
-      let lp = Loadpath.find_load_path (Filename.dirname f) in
-      Loadpath.logical lp
-    with Not_found -> Libnames.default_root_prefix
-  in
-  let f = try Filename.chop_extension (Filename.basename f) with Invalid_argument _ -> f in
-  let id = Id.of_string f in
-  let ldir = Libnames.add_dirpath_suffix ldir0 id in
-  ldir
-
-let new_doc { doc_type ; ml_load_path; vo_load_path; injections; stm_options } =
-
-  let require_file (dir, from, exp) =
-    let mp = Libnames.qualid_of_string dir in
-    let mfrom = Option.map Libnames.qualid_of_string from in
-    Flags.silently (Vernacentries.vernac_require mfrom exp) [mp] in
-
-  let interp_set_option opt v old =
-    let open Goptions in
-    let err expect =
-      let opt = String.concat " " opt in
-      let got = v in (* avoid colliding with Pp.v *)
-      CErrors.user_err
-        Pp.(str "-set: " ++ str opt ++
-            str" expects " ++ str expect ++
-            str" but got " ++ str got)
-    in
-    match old with
-    | BoolValue _ ->
-      let v = match String.trim v with
-        | "true" -> true
-        | "false" | "" -> false
-        | _ -> err "a boolean"
-      in
-      BoolValue v
-    | IntValue _ ->
-      let v = String.trim v in
-      let v = match int_of_string_opt v with
-        | Some _ as v -> v
-        | None -> if v = "" then None else err "an int"
-      in
-      IntValue v
-    | StringValue _ -> StringValue v
-    | StringOptValue _ -> StringOptValue (Some v) in
-
-  let set_option = let open Goptions in function
-      | opt, OptionUnset -> unset_option_value_gen ~locality:OptLocal opt
-      | opt, OptionSet None -> set_bool_option_value_gen ~locality:OptLocal opt true
-      | opt, OptionSet (Some v) -> set_option_value ~locality:OptLocal (interp_set_option opt) opt v in
-
-  let handle_injection = function
-    | RequireInjection r -> require_file r
-    (* | LoadInjection l -> *)
-    | OptionInjection o -> set_option o in
-
-  (* Set the options from the new documents *)
-  AsyncOpts.cur_opt := stm_options;
+let new_doc ({ Vernac_document.document_manager_options = cur_opt; doc_type } as opts) =
 
   (* We must reset the whole state before creating a document! *)
   State.restore_root_state ();
 
   let doc = VCS.init doc_type Stateid.initial (Vernacstate.Parser.init ()) in
 
-  (* Set load path; important, this has to happen before we declare
-     the library below as [Declaremods/Library] will infer the module
-     name by looking at the load path! *)
-  List.iter Mltop.add_ml_dir ml_load_path;
-  List.iter Loadpath.add_vo_path vo_load_path;
-
-  Safe_typing.allow_delayed_constants := !cur_opt.async_proofs_mode <> APoff;
-
-  begin match doc_type with
-    | Interactive ln ->
-      let dp = match ln with
-        | TopLogical dp -> dp
-        | TopPhysical f -> dirpath_of_file f
-      in
-      Declaremods.start_library dp
-
-    | VoDoc f ->
-      let ldir = dirpath_of_file f in
-      let () = Flags.verbosely Declaremods.start_library ldir in
-      VCS.set_ldir ldir;
-      set_compilation_hints f
-
-    | VioDoc f ->
-      let ldir = dirpath_of_file f in
-      let () = Flags.verbosely Declaremods.start_library ldir in
-      VCS.set_ldir ldir;
-      set_compilation_hints f
-  end;
-
-  (* Import initial libraries. *)
-  List.iter handle_injection injections;
+  let ldir = Vernac_document.init_document opts in
 
   (* We record the state at this point! *)
   State.define ~doc ~cache:true ~redefine:true (fun () -> ()) Stateid.initial;
   Backtrack.record ();
-  Slaves.init stm_options.async_proofs_worker_priority;
-  if async_proofs_is_master !cur_opt then begin
+
+  (* Enable delayed proofs *)
+  Safe_typing.allow_delayed_constants := cur_opt.async_proofs_mode <> APoff;
+  Slaves.init cur_opt.async_proofs_worker_priority;
+  if async_proofs_is_master cur_opt then begin
     stm_prerr_endline (fun () -> "Initializing workers");
-    Query.init stm_options.async_proofs_worker_priority;
-    let opts = match !cur_opt.async_proofs_private_flags with
+    Query.init cur_opt.async_proofs_worker_priority;
+    let opts = match cur_opt.async_proofs_private_flags with
       | None -> []
       | Some s -> Str.split_delim (Str.regexp ",") s in
     begin try
@@ -2471,6 +2501,15 @@ let new_doc { doc_type ; ml_load_path; vo_load_path; injections; stm_options } =
         (Str.split_delim (Str.regexp ";") (Str.replace_first env_opt "" env))
     with Not_found -> () end;
   end;
+
+  VCS.set_ldir ldir;
+
+  begin match doc_type with
+    | Vernac_document.Interactive _ -> ()
+    | Vernac_document.VoDoc f -> set_compilation_hints f
+    | Vernac_document.VioDoc f -> set_compilation_hints f
+  end;
+
   doc, VCS.cur_tip ()
 
 let observe ~doc id =

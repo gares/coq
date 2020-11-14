@@ -173,3 +173,5 @@ let load_vernac ~echo ~check ~interactive ~state filename =
   if !Flags.beautify then beautify_pass ~doc:ostate.State.doc ~comments ~ids:(List.rev ids) ~filename;
   (* End pass *)
   ostate
+
+let rcfile_loader = load_vernac ~echo:false ~interactive:false ~check:true
