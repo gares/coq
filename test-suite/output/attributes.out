@@ -1,0 +1,11 @@
+The command has indeed failed with message:
+Attribute for canonical specified twice.
+The command has indeed failed with message:
+key 'polymorphic' has been already set.
+The command has indeed failed with message:
+Invalid value 'foo' for key polymorphic
+use one of {on, off}
+The command has indeed failed with message:
+Invalid syntax polymorphic(foo), try polymorphic={on, off} instead.
+The command has indeed failed with message:
+Invalid syntax polymorphic(foo, bar), try polymorphic={on, off} instead.
