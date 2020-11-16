@@ -30,7 +30,7 @@ let fresh_doc_id =
   let doc_id = ref (-1) in
   fun () -> incr doc_id; !doc_id
 
-let lsp_debug = CDebug.create ~name:"vscoq-lsp"
+let _lsp_debug = CDebug.create ~name:"vscoq-lsp"
 
 let log ~verbosity msg =
   if CDebug.get_debug_level "vscoq-lsp" >= verbosity then

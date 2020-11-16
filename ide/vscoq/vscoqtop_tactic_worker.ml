@@ -13,9 +13,9 @@
 
 let log msg = Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
 
-let main_worker options ~opts:_ state =
+let main_worker tw_options ~opts:_ state =
   let initial_vernac_state = Vernacstate.freeze_interp_state ~marshallable:false in
-  try ExecutionManager.TacticWorkerProcess.main ~st:initial_vernac_state options
+  try ExecutionManager.TacticWorkerProcess.main ~st:initial_vernac_state tw_options
   with exn ->
     let bt = Printexc.get_backtrace () in
     log Printexc.(to_string exn);
@@ -29,19 +29,22 @@ let vscoqtop_specific_usage = Usage.{
 }
 
 let islave_default_opts =
-  Coqargs.default
+  Coqargs.default ()
 
-let islave_init run_mode ~opts =
-  Coqtop.init_toploop opts
+let islave_init tactic_worker_options ~opts = ()
 
 let main () =
-  let custom = Coqtop.{
+  let custom = Coq_toplevel.{
       parse_extra = ExecutionManager.TacticWorkerProcess.parse_options;
       help = vscoqtop_specific_usage;
       init = islave_init;
       run = main_worker;
-      opts = islave_default_opts } in
-  Coqtop.start_coq custom
+      opts = islave_default_opts;
+      parse_dm_flags = (fun ~init l -> init, l);
+      init_dm = (fun _ -> ());
+      rcfile_loader = (fun ~state _ -> state); (* we don't care, do we? *)
+       } in
+  Coq_toplevel.start_coq custom
 
 let _ =
   log @@ "[PW] started";
