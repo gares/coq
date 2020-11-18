@@ -122,7 +122,7 @@ in a universe strictly higher than :g:`Set`.
 Polymorphic, Monomorphic
 -------------------------
 
-.. attr:: universes(polymorphic{? = {| on | off } })
+.. attr:: universes(polymorphic{? = {| yes | no } })
    :name: universes(polymorphic); Polymorphic; Monomorphic
 
    This :term:`boolean attribute` can be used to control whether universe
@@ -131,7 +131,7 @@ Polymorphic, Monomorphic
    :n:`@legacy_attr`) which, as shown in the examples, is more
    commonly used.
 
-   When ``universes(polymorphic=off)`` is used, global universe constraints
+   When ``universes(polymorphic=no)`` is used, global universe constraints
    are produced, even when the :flag:`Universe Polymorphism` flag is
    on. There is also a legacy syntax using the ``Monomorphic`` prefix
    (see :n:`@legacy_attr`).
@@ -140,13 +140,13 @@ Polymorphic, Monomorphic
 
    .. deprecated:: 8.13
 
-      Use :attr:`universes(polymorphic=off) <universes(polymorphic)>`
+      Use :attr:`universes(polymorphic=no) <universes(polymorphic)>`
       instead.
 
 .. flag:: Universe Polymorphism
 
    This flag is off by default.  When it is on, new declarations are
-   polymorphic unless the :attr:`universes(polymorphic=off) <universes(polymorphic)>`
+   polymorphic unless the :attr:`universes(polymorphic=no) <universes(polymorphic)>`
    attribute is used to override the default.
 
 Many other commands can be used to declare universe polymorphic or
@@ -175,7 +175,7 @@ attribute is used:
 Cumulative, NonCumulative
 -------------------------
 
-.. attr:: universes(cumulative{? = {| on | off } })
+.. attr:: universes(cumulative{? = {| yes | no } })
    :name: universes(cumulative); Cumulative; NonCumulative
 
    Polymorphic inductive types, coinductive types, variants and
@@ -204,20 +204,20 @@ Cumulative, NonCumulative
 
    .. note::
 
-      :n:`#[ universes(polymorphic{? = on }), universes(cumulative{? = {| on | off } }) ]` can be
-      abbreviated into :n:`#[ universes(polymorphic{? = on }, cumulative{? = {| on | off } }) ]`.
+      :n:`#[ universes(polymorphic{? = on }), universes(cumulative{? = {| yes | no } }) ]` can be
+      abbreviated into :n:`#[ universes(polymorphic{? = on }, cumulative{? = {| yes | no } }) ]`.
 
 .. attr:: universes(noncumulative)
 
    .. deprecated:: 8.13
 
-      Use :attr:`universes(cumulative=off) <universes(cumulative)>` instead.
+      Use :attr:`universes(cumulative=no) <universes(cumulative)>` instead.
 
 .. flag:: Polymorphic Inductive Cumulativity
 
    When this flag is on (it is off by default), it makes all
    subsequent *polymorphic* inductive definitions cumulative, unless
-   the :attr:`universes(cumulative=off) <universes(cumulative)>` attribute is
+   the :attr:`universes(cumulative=no) <universes(cumulative)>` attribute is
    used to override the default.  It has no effect on *monomorphic* inductive definitions.
 
 Consider the examples below.

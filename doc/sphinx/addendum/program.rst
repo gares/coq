@@ -103,7 +103,7 @@ coercions.
    used, generating obligations if there are unresolved holes after
    typechecking.
 
-.. attr:: program{? = {| on | off } }
+.. attr:: program{? = {| yes | no } }
    :name: program; Program
 
    This :term:`boolean attribute` allows using or disabling the Program mode on a specific

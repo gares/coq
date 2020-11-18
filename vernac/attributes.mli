@@ -88,7 +88,7 @@ val attribute_of_list : (string * 'a key_parser) list -> 'a option attribute
 (** Make an attribute from a list of key parsers together with their
    associated key. *)
 
-(** Define boolean attribute [name], of the form [name={on,off}]. The
+(** Define boolean attribute [name], of the form [name={yes,no}]. The
    attribute may only be set once for a command. *)
 val bool_attribute : name:string -> bool option attribute
 

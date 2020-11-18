@@ -380,8 +380,8 @@ this attribute`.
 The order of top-level attributes doesn't affect their meaning.  ``#[foo,bar]``, ``#[bar,foo]``,
 ``#[foo]#[bar]`` and ``#[bar]#[foo]`` are equivalent.
 
-:gdef:`Boolean attributes <boolean attribute>` take the form :n:`@ident__attr{? = {| on | off } }`.
-When the :n:`{| on | off }` value is omitted, the default is :n:`on`.
+:gdef:`Boolean attributes <boolean attribute>` take the form :n:`@ident__attr{? = {| yes | no } }`.
+When the :n:`{| yes | no }` value is omitted, the default is :n:`yes`.
 
 The legacy attributes (:n:`@legacy_attr`) provide an older, alternate syntax
 for certain attributes.  They are equivalent to new attributes as follows:

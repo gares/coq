@@ -16,7 +16,7 @@ Definition ι T (x: T) := x.
 
 Check ι _ ι.
 
-#[universes(polymorphic=off)]
+#[universes(polymorphic=no)]
 Definition ιι T (x: T) := x.
 
 Fail Check ιι _ ιι.
@@ -25,7 +25,7 @@ Fail Check ιι _ ιι.
 Fixpoint f (n: nat) {wf lt n} : nat := _.
 Reset f.
 
-#[program=on]
+#[program=yes]
 Fixpoint f (n: nat) {wf lt n} : nat := _.
 Reset f.
 

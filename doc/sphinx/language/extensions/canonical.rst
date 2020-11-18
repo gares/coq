@@ -87,7 +87,7 @@ in :ref:`canonicalstructures`; here only a simple example is given.
       If a same field occurs in several canonical structures, then
       only the structure declared first as canonical is considered.
 
-.. attr:: canonical{? = {| on | off } }
+.. attr:: canonical{? = {| yes | no } }
    :name: canonical
 
    This boolean attribute can decorate a :cmd:`Definition` or
@@ -96,7 +96,7 @@ in :ref:`canonicalstructures`; here only a simple example is given.
 
    To prevent a field from being involved in the inference of
    canonical instances, its declaration can be annotated with
-   ``canonical=off`` (cf. the syntax of :n:`@record_field`).
+   ``canonical=no`` (cf. the syntax of :n:`@record_field`).
 
    .. example::
 
@@ -105,7 +105,7 @@ in :ref:`canonicalstructures`; here only a simple example is given.
 
       .. coqdoc::
 
-         #[canonical=off] Prf_equiv : equivalence Carrier Equal
+         #[canonical=no] Prf_equiv : equivalence Carrier Equal
 
    See :ref:`hierarchy_of_structures` for a more realistic example.
 
@@ -331,7 +331,7 @@ We need to define a new class that inherits from both ``EQ`` and ``LE``.
                         LE_class : LE.class T;
                         extra : mixin (EQ.Pack T EQ_class) (LE.cmp T LE_class) }.
 
-    Structure type := _Pack { obj : Type; #[canonical=off] class_of : class obj }.
+    Structure type := _Pack { obj : Type; #[canonical=no] class_of : class obj }.
 
     Arguments Mixin {e le} _.
 

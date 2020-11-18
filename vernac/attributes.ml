@@ -152,7 +152,7 @@ let key_value_attribute ~key ~default ~(values : (string * 'a) list) : 'a option
   attribute_of_list [key, parser]
 
 let bool_attribute ~name : bool option attribute =
-  let values = ["on", true; "off", false] in
+  let values = ["yes", true; "no", false] in
   key_value_attribute ~key:name ~default:true ~values
 
 let legacy_bool_attribute ~name ~on ~off : bool option attribute =
@@ -167,7 +167,7 @@ let deprecated_bool_attribute_warning =
     ~category:"parsing"
     ~default:CWarnings.Enabled
     (fun name ->
-       Pp.(str "Syntax for switching off boolean attributes has been updated, use " ++ str "key=off instead."))
+       Pp.(str "Syntax for switching off boolean attributes has been updated, use " ++ str "key=no instead."))
 
 let deprecated_bool_attribute ~name ~on ~off : bool option attribute =
   bool_attribute ~name:on ++ legacy_bool_attribute ~name ~on ~off |> map (function
@@ -193,9 +193,9 @@ let get_bool_value ~key ~default =
   | VernacFlagList [ "false", VernacFlagEmpty ] ->
     deprecated_bool_attribute_warning key;
     false
-  | VernacFlagLeaf (FlagIdent "on") ->
+  | VernacFlagLeaf (FlagIdent "yes") ->
     true
-  | VernacFlagLeaf (FlagIdent "off") ->
+  | VernacFlagLeaf (FlagIdent "no") ->
     false
   | _ -> user_err Pp.(str "Attribute " ++ str key ++ str " only accepts boolean values.")
 
@@ -324,7 +324,7 @@ let only_polymorphism atts = parse polymorphic atts
 
 
 let vernac_polymorphic_flag = ukey, VernacFlagList ["polymorphic", VernacFlagEmpty]
-let vernac_monomorphic_flag = ukey, VernacFlagList ["polymorphic", VernacFlagLeaf (FlagIdent "off")]
+let vernac_monomorphic_flag = ukey, VernacFlagList ["polymorphic", VernacFlagLeaf (FlagIdent "no")]
 
 let canonical_field =
   enable_attribute ~key:"canonical" ~default:(fun () -> true)
