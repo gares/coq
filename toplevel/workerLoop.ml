@@ -10,6 +10,7 @@
 
 let rec parse = function
   | "--xml_format=Ppcmds" :: rest -> parse rest
+  | "-batch" :: rest -> parse rest
   | x :: rest -> x :: parse rest
   | [] -> []
 
