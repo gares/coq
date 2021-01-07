@@ -17,7 +17,7 @@ open Printer
 
 module CompactedDecl = Context.Compacted.Declaration
 
-let init_state : Vernacstate.t option ref = ref None
+let init_state : (Vernacstate.t * Coqargs.injection_command list) option ref = ref None
 let get_init_state () =
   match !init_state with
   | Some st -> st
@@ -210,7 +210,8 @@ let textDocumentDidOpen params =
   let id = fresh_doc_id () in
   let doc = Document.create_document ~id text in
   Hashtbl.add doc_ids id uri;
-  let st, events = DocumentManager.init (get_init_state ()) doc in
+  let st, events = DocumentManager.init (get_init_state ()) uri doc in
+  let st = DocumentManager.validate_document st in
   Hashtbl.add states uri st;
   update_view uri st;
   uri, events
@@ -279,7 +280,7 @@ let coqtopResetCoq ~id params =
   let open Yojson.Basic.Util in
   let uri = params |> member "uri" |> to_string in
   let st = Hashtbl.find states uri in
-  let st = DocumentManager.reset (get_init_state ()) st in
+  let st = DocumentManager.reset (get_init_state ()) uri st in
   Hashtbl.replace states uri st;
   update_view uri st
 
@@ -352,7 +353,7 @@ let pr_event = function
   | DocumentManagerEvent (uri, e) ->
     DocumentManager.pr_event e
 
-let init () =
-  init_state := Some (Vernacstate.freeze_interp_state ~marshallable:false)
+let init injections =
+  init_state := Some (Vernacstate.freeze_interp_state ~marshallable:false, injections)
 
 

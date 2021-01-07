@@ -13,7 +13,7 @@
 
 let log msg = Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
 
-let main_worker options ~opts:_ state =
+let main_worker options =
   let initial_vernac_state = Vernacstate.freeze_interp_state ~marshallable:false in
   try ExecutionManager.ProofWorkerProcess.main ~st:initial_vernac_state options
   with exn ->
@@ -28,22 +28,11 @@ let vscoqtop_specific_usage = Usage.{
   extra_options = "";
 }
 
-let islave_default_opts =
-  Coqargs.default
-
-let islave_init run_mode ~opts =
-  Coqtop.init_toploop opts
-
-let main () =
-  let custom = Coqtop.{
-      parse_extra = ExecutionManager.ProofWorkerProcess.parse_options;
-      help = vscoqtop_specific_usage;
-      init = islave_init;
-      run = main_worker;
-      opts = islave_default_opts } in
-  Coqtop.start_coq custom
-
 let _ =
+  Coqinit.init_ocaml ();
+  let opts, emoptions = Coqinit.parse_arguments ~parse_extra:ExecutionManager.ProofWorkerProcess.parse_options ~usage:vscoqtop_specific_usage () in
+  let injections = Coqinit.init_runtime opts in
+  Coqinit.start_library ~top:Coqargs.(dirpath_of_top opts.config.logic.toplevel_name) injections;
   log @@ "[PW] started";
   Sys.(set_signal sigint Signal_ignore);
-  main ()
+  main_worker emoptions

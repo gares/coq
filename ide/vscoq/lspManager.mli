@@ -14,4 +14,4 @@ val lsp : top Sel.event
 val handle_event : top -> events
 val pr_event : top -> Pp.t
 
-val init : unit -> unit
+val init : Coqargs.injection_command list -> unit

@@ -19,7 +19,7 @@ type state
 type doc_management
 type events = doc_management Sel.event list
 
-val init : Vernacstate.t -> document -> state * events
+val init : Vernacstate.t * Coqargs.injection_command list -> string -> document -> state * events
 (** [init st doc] initializes the document manager with initial vernac state
     [st] and document [doc]. *)
 
@@ -51,7 +51,7 @@ val interpret_to_end : ?progress_hook:progress_hook -> state -> (state * events)
 (** [interpret_to_next doc] navigates to the last sentence in [doc]
     and returns the resulting state. *)
 
-val reset : Vernacstate.t -> state -> state
+val reset : Vernacstate.t * Coqargs.injection_command list -> string -> state -> state
 val executed_ranges : state -> Range.t list * Range.t list
 
 (** parsed_ranges [doc] returns the ranges corresponding to the sentences

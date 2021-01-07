@@ -586,7 +586,6 @@ let validate_document ~parsing_state_hook ({ parsed_loc; raw_doc; parsed_doc } a
 
 let create_document ~id text =
   let raw_doc = RawDoc.create text in
-  snd @@ validate_document ~parsing_state_hook:(fun _ -> None)
     { id;
       parsed_loc = -1;
       raw_doc;

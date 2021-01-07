@@ -86,3 +86,15 @@ semi-interactive development of machine-checked proofs.
 
 This package provides the Coq Reference Manual."))
 
+(package
+ (name vscoq-server)
+ (depends
+  (dune (and :build (>= 2.5.0)))
+  (coq (and :build (= :version))))
+ (synopsis "The Coq Proof Assistant ---language-server for vscoq")
+ (description "Coq is a formal proof management system. It provides
+a formal language to write mathematical definitions, executable
+algorithms and theorems together with an environment for
+semi-interactive development of machine-checked proofs.
+
+This package provides the language server for VSCoq."))

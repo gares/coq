@@ -10,9 +10,6 @@
 
 type sentence_id = Stateid.t
 
-(* Coqtop module not in scope *)
-type ('a,'b) coqtop_extra_args_fn = opts:'b -> string list -> 'a * string list
-
 module type Job = sig
   type t
   val name : string
@@ -57,7 +54,7 @@ val worker_available :
 
 (* for worker toplevels *)
 type options
-val parse_options : (options,'b) coqtop_extra_args_fn
+val parse_options : string list -> options * string list
 (* the sentence ids of the remote_mapping being delegated *)
 val setup_plumbing : options -> ((Job.update_request -> unit) * Job.t)
 

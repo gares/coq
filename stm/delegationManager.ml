@@ -16,7 +16,6 @@ let log msg =
   Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
 
 type sentence_id = Stateid.t
-type ('a,'b) coqtop_extra_args_fn = opts:'b -> string list -> 'a * string list
 
 type link = {
   write_to :  Unix.file_descr;
@@ -218,7 +217,7 @@ with Unix.Unix_error(code,syscall,param) ->
   log @@ "[PW] error starting: " ^ syscall ^ ": " ^ param ^ ": " ^ Unix.error_message code;
   exit 1
 
-let parse_options ~opts extra_args =
+let parse_options extra_args =
   match extra_args with
   [ o ; port ] when o = option_name -> int_of_string port, []
   | _ -> assert false (* TODO: error *)

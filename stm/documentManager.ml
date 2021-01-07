@@ -74,7 +74,11 @@ let diagnostics st =
     List.map mk_error_diag exec_errors @
     List.map mk_diag feedback
 
-let init vernac_state document =
+let init (vernac_state,injections) uri document =
+  Vernacstate.unfreeze_interp_state vernac_state;
+  let top = Coqargs.(dirpath_of_top (TopPhysical uri)) in
+  Coqinit.start_library ~top injections;
+  let vernac_state = Vernacstate.freeze_interp_state ~marshallable:false in
   let execution_state = ExecutionManager.init_master vernac_state in
   { document; execution_state; observe_loc = None }, [inject_em_event ExecutionManager.local_feedback]
 
@@ -168,8 +172,8 @@ let interpret_to_next doc = (doc, []) (* TODO
 let interpret_to_end ?progress_hook state =
   interpret_to_loc ?progress_hook state (Document.end_loc state.document)
 
-let reset vernac_st state =
-  fst (init vernac_st state.document)
+let reset vernac_st_injections uri state =
+  fst (init vernac_st_injections uri state.document)
 
 let retract state loc =
   let observe_loc = Option.map (fun loc' -> min loc loc') state.observe_loc in

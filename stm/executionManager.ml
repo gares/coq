@@ -92,12 +92,11 @@ let interp_qed_delayed ~state_id vernac_st =
   in
   let lemmas = Option.get @@ vernac_st.Vernacstate.lemmas in
   let proof, assign = Vernacstate.LemmaStack.with_top lemmas ~f in
-  let pinfo = Declare.Proof.Proof_info.default () in
   let control = [] (* FIXME *) in
   let opaque = Vernacexpr.Opaque in
   let pending = CAst.make @@ Vernacexpr.Proved (opaque, None) in
   log "calling interp_qed_delayed done";
-  let vernac_st = Vernacinterp.interp_qed_delayed_proof ~proof ~pinfo ~st:vernac_st ~control pending in
+  let vernac_st = Vernacinterp.interp_qed_delayed_proof ~proof ~st:vernac_st ~control pending in
   log "interp_qed_delayed done";
   vernac_st, success vernac_st, assign
 
@@ -396,7 +395,7 @@ let get_proofview st id =
 module ProofWorkerProcess = struct
   type options = ProofWorker.options
   let parse_options = ProofWorker.parse_options
-  let main ~st:initial_vernac_state options =
+  let main ~st:_ options =
     let send_back, job = ProofWorker.setup_plumbing options in
     worker_main job ~send_back
 end
