@@ -319,9 +319,7 @@ let print_struct is_impl extent env mp struc =
 let print_structure is_type extent env mp locals struc =
   let env' = Modops.add_structure mp struc Mod_subst.empty_delta_resolver env in
   nametab_register_module_body mp struc;
-  let kwd = if is_type then "Sig" else "Struct" in
-  hv 2 (keyword kwd ++ spc () ++ print_struct false extent env' mp struc ++
-        brk (1,-2) ++ keyword "End")
+  hv 0 (print_struct false extent env' mp struc)
 
 let rec flatten_app mexpr l = match mexpr with
   | MEapply (mexpr, arg) -> flatten_app mexpr (arg::l)
@@ -415,20 +413,23 @@ let print_signature' is_type extent env mp me =
 
 let unsafe_print_module extent env mp with_body mb =
   let name = print_modpath [] mp in
-  let pr_equals = spc () ++ str ":= " in
   let body = match with_body, mb.mod_expr with
     | false, _
     | true, Abstract -> mt()
-    | _, Algebraic me -> pr_equals ++ print_expression' false extent env mp me
-    | _, Struct sign -> pr_equals ++ print_signature' false extent env mp sign
-    | _, FullStruct -> pr_equals ++ print_signature' false extent env mp mb.mod_type
+    | _, Algebraic me -> print_expression' false extent env mp me
+    | _, Struct sign -> print_signature' false extent env mp sign
+    | _, FullStruct -> print_signature' false extent env mp mb.mod_type
   in
   let modtype = match mb.mod_expr, mb.mod_type_alg with
     | FullStruct, _ -> mt ()
     | _, Some ty -> brk (1,1) ++ str": " ++ print_expression' true extent env mp ty
     | _, _ -> brk (1,1) ++ str": " ++ print_signature' true extent env mp mb.mod_type
   in
-  hv 0 (keyword "Module" ++ spc () ++ name ++ modtype ++ body)
+  hv 2 (h (keyword "Module" ++ spc () ++ name ++ modtype ++ str".") ++
+        spc () ++
+        v 0 body ++
+        spc () ++
+        h (keyword "End" ++ spc () ++ name ++ str"."))
 
 exception ShortPrinting
 
