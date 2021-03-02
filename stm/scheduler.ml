@@ -11,11 +11,10 @@
 type sentence_id = Stateid.t
 type ast = Vernacexpr.vernac_control
 
-let debug_scheduler = CDebug.create ~name:"scheduler"
+let debug_scheduler = CDebug.create ~name:"scheduler" ()
 
-let log msg =
-  if CDebug.get_debug_level "scheduler" >= 2 then
-    Format.eprintf "@[%s@]@\n%!" msg
+let log msg = debug_scheduler Pp.(fun () ->
+  str @@ Printf.sprintf "@[%s@]@" msg)
 
 type vernac_classification =
   ParsingEffect | StateEffect

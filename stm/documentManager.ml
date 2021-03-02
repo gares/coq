@@ -9,11 +9,10 @@
 (************************************************************************)
 open Document
 
-let debug_dm = CDebug.create ~name:"document-manager"
+let debug_dm = CDebug.create ~name:"document-manager" ()
 
-let log msg =
-  if CDebug.get_debug_level "document-manager" >= 1 then
-  Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
+let log msg = debug_dm Pp.(fun () ->
+  str @@ Printf.sprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg)
 
 type proof_data = (Proof.data * Position.t) option
 
@@ -90,7 +89,7 @@ let interpret_to_loc ?(progress_hook=fun doc -> ()) state loc : (state * events)
         ExecutionManager.invalidate (Document.schedule state.document) id st
         ) state.execution_state (Stateid.Set.elements invalid_ids) in
     let state = { document; execution_state; observe_loc = Some loc } in
-    (** We jump to the sentence before the position, otherwise jumping to the
+    (* We jump to the sentence before the position, otherwise jumping to the
     whitespace at the beginning of a sentence will observe the state after
     executing the sentence, which is unnatural. *)
     match find_sentence_before state.document loc with

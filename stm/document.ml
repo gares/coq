@@ -9,11 +9,10 @@
 (************************************************************************)
 open Scheduler
 
-let debug_document = CDebug.create ~name:"document"
+let debug_document = CDebug.create ~name:"document" ()
 
-let log msg =
-  if CDebug.get_debug_level "document" >= 2 then
-  Format.eprintf "@[%s@]@\n%!" msg
+let log msg = debug_document Pp.(fun () ->
+  str @@ Printf.sprintf "@[%s@]@" msg)
 
 module Position = struct
 
@@ -526,7 +525,7 @@ let parse_more parsing_state stream raw =
   parse_more parsing_state stream raw []
 
 let invalidate ~parsing_state_hook top_edit parsed_doc new_sentences =
-  (** Algo:
+  (* Algo:
   We parse the new doc from the topmost edit to the bottom one.
   - If execution is required, we invalidate everything after the parsing
   effect. Then we diff the truncated zone and invalidate execution states.

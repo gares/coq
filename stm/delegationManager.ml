@@ -9,11 +9,10 @@
 (************************************************************************)
 
 
-let _debug_delegation_manager = CDebug.create ~name:"delegation-manager"
+let debug_delegation_manager = CDebug.create ~name:"delegation-manager" ()
 
-let log msg =
-  if CDebug.get_debug_level "delegation-manager" >= 1 then
-  Format.eprintf "%d] @[%s@]@\n%!" (Unix.getpid ()) msg
+let log msg = debug_delegation_manager Pp.(fun () ->
+  str @@ Printf.sprintf "%d] @[%s@]@" (Unix.getpid ()) msg)
 
 type sentence_id = Stateid.t
 
