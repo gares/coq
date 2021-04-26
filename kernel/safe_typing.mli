@@ -169,6 +169,12 @@ val add_module_parameter :
   MBId.t -> Entries.module_struct_entry -> Declarations.inline ->
     Mod_subst.delta_resolver safe_transformer
 
+(** returns the number of module parameters *)
+val module_num_parameters : safe_environment -> int
+
+(** returns true if the current module is a module type *)
+val module_is_modtype : safe_environment -> bool
+
 (** Traditional mode: check at end of module that no future was
     created. *)
 val allow_delayed_constants : bool ref
