@@ -543,6 +543,26 @@ and lack of checking of relevance marks on constants in coqchk
 - exploit: see issue (requires a plugin or hand crafted .vo file)
 - risk: low
 
+### Incorrect subtyping of inductives with letins in constructor types
+- component: subtyping, inductive declarations
+- introduced: unclear, possibly only exploitable since V8.14 (#13563)
+- impacted versions: until V9.2.0
+- fixed in: 9.2.0, 9.3
+- found by: OpenAI
+- issue: #22387
+- risk: need to use module subtyping to confuse inductives with different letins,
+  and use those letins in a match.
+
+### Including functor application generates garbage delta-resolvers
+
+- component: module inclusion and functors
+- introduced: unclear, only exploitable since #21905
+- impacted released versions: V9.3+rc1
+- fixed in: 9.2.1, 9.3.0
+- found by: Pierre-Marie Pédrot flanked by Claude Opus 5
+- issue: #22409
+- risk: any development relying on inclusion of functor applications
+
 ### Universes
 
 #### issue with two parameters in the same universe level
